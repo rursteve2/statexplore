@@ -22,7 +22,7 @@ Test dataset: `E:\Downloads\hrs_least_missing_1000.sav` (HRS, long format, 1000 
 
 ---
 
-## Phase 1 — Desktop Foundation  ← **built; R verification pending (R not yet installed)**
+## Phase 1 — Desktop Foundation  ✅ **complete (2026-11-21)**
 
 - [x] Project scaffold, `pyproject.toml`, git init
 - [x] `docs/architecture.md`
@@ -37,9 +37,9 @@ Test dataset: `E:\Downloads\hrs_least_missing_1000.sav` (HRS, long format, 1000 
 - [x] EDA: 8 plot types, type-based suggestions, View Code (exact executed script)
 - [x] Background execution (R pool = 1 thread, IO pool)
 - [x] Project save/open (`.sxp` SQLite, atomic save, read-only open)
-- [x] Acceptance tests written: 35 pass (import, labels, missing, project round-trip, source unchanged, codegen/injection, GUI smoke); **20 R tests written but skipped — need R installed**
-- [ ] **Install R 4.6.2 + `Rscript r/install_packages.R`, then run full suite (R tests must pass before Phase 2)**
-- [ ] Manual run of `run.bat` with the HRS file: describe + each plot type
+- [x] Acceptance tests: **55/55 pass** (import, labels, missing, project round-trip, source unchanged, codegen/injection, GUI smoke, R engine: describe vs independent reference to 1e-10, all 8 plots, factor coding, script reproducibility, timeout/restart) — stable over 3 consecutive runs, no orphan R processes
+- [x] R 4.6.2 installed; jsonlite 2.0.0, psych 2.6.9, ggplot2 4.0.4 in `r/library`
+- [x] End-to-end GUI drive on HRS (describeBy, violin, correlation heatmap) — results OK, renders checked
 - Moved to Phase 2: derived variables, row filters (§6.4)
 
 ## Phase 2 — Core Statistical Engine
@@ -103,4 +103,9 @@ Test dataset: `E:\Downloads\hrs_least_missing_1000.sav` (HRS, long format, 1000 
 ## Review (Phase 1)
 - Real HRS file: 16,000 × 168 imported; 82 value-labelled vars and missing-cell count match a direct pyreadstat read; project round-trip is lossless.
 - GUI checked via offscreen renders with HRS loaded; fixed EDA layout stretch, default sort order, sidebar scrollbar.
-- Not yet verified: anything that executes R (describe numbers vs. independent reference, plot rendering, factor coding, script reproducibility). Tests exist; blocked on R install.
+- R verification found and fixed 3 real bugs:
+  1. jsonlite `digits = NA` = 15 significant digits → numbers lost precision. Now `I(17)` (exact round trip).
+  2. `R/bin/Rscript.exe` is a launcher (cmd.exe → bin/x64/Rscript.exe); killing it orphaned R. Locator now uses bin/x64 directly; kill uses `taskkill /T`.
+  3. Old stdout reader thread pushed its EOF into the restarted worker's queue → false "worker exited". Each process now has its own queue.
+- UI fixes: plot scales to panel; correlation subtitle no longer implies a single n for pairwise rs.
+- Data note (HRS): `R_CESDM` = number of *missing* CES-D items, not a depression score; no CES-D total in file (needs derived variable, Phase 2). Activity frequency vars are declared nominal in the .sav but are ordinal; `R_COMP` code 7 "Don't do" isn't declared user-missing.

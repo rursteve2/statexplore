@@ -211,9 +211,12 @@ def plot_body(ds: Dataset, req: PlotRequest, png_path: str) -> tuple[str, list[s
         ]
         packages = ["psych"]
     else:
-        L.append(f"sx_plot <- sx_plot + {gg}labs(title = {r_str(title)}, subtitle = paste0(\"n = \", sx_n"
-                 + (", \" (pairwise deletion for each r)\"" if req.kind == "correlation" else ", \" complete cases\"")
-                 + "))")
+        if req.kind == "correlation":
+            subtitle = ('paste0("Each r uses all rows complete on that pair; ", sx_n, '
+                        '" rows are complete on every variable")')
+        else:
+            subtitle = 'paste0("n = ", sx_n, " complete cases")'
+        L.append(f"sx_plot <- sx_plot + {gg}labs(title = {r_str(title)}, subtitle = {subtitle})")
         if req.kind != "correlation":
             L.append(f"sx_plot <- sx_plot + {gg}theme_minimal()")
         L.append(f"{gg}ggsave(sx_plot_file, sx_plot, width = 7, height = 4.8, dpi = 120)")
@@ -248,6 +251,7 @@ def plot(session: RSession, ds: Dataset, req: PlotRequest) -> tuple[AnalysisResu
             artifacts[key] = png.read_bytes()
             result.plots.append(key)
             result.n_used = int(raw["n"])
-            result.missing_data = ("Pairwise deletion" if req.kind in ("pairs", "correlation")
+            result.missing_data = ("Pairwise deletion; n used = rows complete on every variable"
+                                   if req.kind in ("pairs", "correlation")
                                    else "Complete cases on the plotted variables")
     return result, artifacts

@@ -23,8 +23,9 @@ if (!requireNamespace("jsonlite", quietly = TRUE)) {
 .sx_env <- new.env(parent = globalenv())
 
 .sx_send <- function(x) {
+  # digits = I(17): 17 significant digits, so every double round-trips exactly.
   cat("@@SX@@ ", jsonlite::toJSON(x, auto_unbox = TRUE, null = "null", na = "null",
-                                   digits = NA, force = TRUE), "\n", sep = "")
+                                   digits = I(17), force = TRUE), "\n", sep = "")
   flush(stdout())
 }
 

@@ -44,6 +44,19 @@ class RResponse:
     elapsed: float = 0.0
 
 
+def _kill_tree(proc: subprocess.Popen[str]) -> None:
+    """Kill the process and any children (e.g. if a user-configured Rscript is a launcher)."""
+    if sys.platform == "win32":
+        subprocess.run(["taskkill", "/F", "/T", "/PID", str(proc.pid)],
+                       capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW)
+    if proc.poll() is None:
+        proc.kill()
+    try:
+        proc.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        log.error("R worker process %s did not exit after kill", proc.pid)
+
+
 class RWorker:
     """One long-lived Rscript process. Requests are serialised with a lock."""
 
@@ -77,7 +90,8 @@ class RWorker:
             text=True, encoding="utf-8", errors="replace", bufsize=1,
             env=env, creationflags=flags,
         )
-        threading.Thread(target=self._read_stdout, args=(self._proc,), daemon=True).start()
+        # Each process gets its own queue so a dying process's EOF can't reach its successor.
+        threading.Thread(target=self._read_stdout, args=(self._proc, self._responses), daemon=True).start()
         threading.Thread(target=self._read_stderr, args=(self._proc,), daemon=True).start()
         msg = self._await("ready", self.startup_timeout)
         if not msg.get("ok"):
@@ -98,12 +112,12 @@ class RWorker:
         except (OSError, subprocess.TimeoutExpired, ValueError):
             pass
         if proc.poll() is None:
-            proc.kill()
+            _kill_tree(proc)
 
     def kill(self) -> None:
         proc, self._proc = self._proc, None
         if proc is not None and proc.poll() is None:
-            proc.kill()
+            _kill_tree(proc)
 
     def restart(self) -> None:
         self.stop()
@@ -114,18 +128,19 @@ class RWorker:
         return self._proc is not None and self._proc.poll() is None
 
     # ---- io ---------------------------------------------------------
-    def _read_stdout(self, proc: subprocess.Popen[str]) -> None:
+    @staticmethod
+    def _read_stdout(proc: subprocess.Popen[str], responses: queue.Queue[dict[str, Any] | None]) -> None:
         assert proc.stdout
         for line in proc.stdout:
             line = line.rstrip("\r\n")
             if line.startswith(PREFIX):
                 try:
-                    self._responses.put(json.loads(line[len(PREFIX):]))
+                    responses.put(json.loads(line[len(PREFIX):]))
                 except json.JSONDecodeError:
                     log.error("Unparseable R response: %.200s", line)
             elif line:
                 log.debug("R stdout: %s", line)
-        self._responses.put(None)  # EOF sentinel
+        responses.put(None)  # EOF sentinel
 
     def _read_stderr(self, proc: subprocess.Popen[str]) -> None:
         assert proc.stderr

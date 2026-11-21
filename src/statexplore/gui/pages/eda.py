@@ -5,7 +5,7 @@ from PySide6.QtCore import QSortFilterProxyModel, Qt
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView, QComboBox, QDialog, QDialogButtonBox, QFormLayout, QHBoxLayout, QLabel,
-    QLineEdit, QListWidget, QListWidgetItem, QMessageBox, QPlainTextEdit, QPushButton, QScrollArea,
+    QLineEdit, QListWidget, QListWidgetItem, QMessageBox, QPlainTextEdit, QPushButton,
     QSplitter, QTableView, QTabWidget, QVBoxLayout, QWidget,
 )
 
@@ -37,6 +37,31 @@ class CodeDialog(QDialog):
         copy.clicked.connect(lambda: (text.selectAll(), text.copy()))
         btns.rejected.connect(self.reject)
         lay.addWidget(btns)
+
+
+class ImageView(QLabel):
+    """Shows a pixmap scaled to fit the available space (never upscaled past 100%)."""
+
+    def __init__(self, text: str):
+        super().__init__(text)
+        self.setAlignment(Qt.AlignCenter)
+        self.setMinimumSize(200, 150)
+        self._pix: QPixmap | None = None
+
+    def set_image(self, pix: QPixmap) -> None:
+        self._pix = pix
+        self._rescale()
+
+    def resizeEvent(self, e) -> None:
+        super().resizeEvent(e)
+        self._rescale()
+
+    def _rescale(self) -> None:
+        if self._pix is None or self._pix.isNull():
+            return
+        w = min(self.width(), self._pix.width())
+        h = min(self.height(), self._pix.height())
+        self.setPixmap(self._pix.scaled(w, h, Qt.KeepAspectRatio, Qt.SmoothTransformation))
 
 
 class EdaPage(QWidget):
@@ -87,12 +112,8 @@ class EdaPage(QWidget):
 
         # right: output
         self.out_tabs = QTabWidget()
-        self.image = QLabel("Plots appear here.")
-        self.image.setAlignment(Qt.AlignCenter)
-        scroll = QScrollArea()
-        scroll.setWidget(self.image)
-        scroll.setWidgetResizable(True)
-        self.out_tabs.addTab(scroll, "Plot")
+        self.image = ImageView("Plots appear here.")
+        self.out_tabs.addTab(self.image, "Plot")
         self.desc_model = FrameModel()
         proxy = QSortFilterProxyModel()
         proxy.setSourceModel(self.desc_model)
@@ -220,7 +241,7 @@ class EdaPage(QWidget):
         if result.plots:
             pix = QPixmap()
             pix.loadFromData(artifacts[result.plots[0]])
-            self.image.setPixmap(pix)
+            self.image.set_image(pix)
             self.out_tabs.setCurrentIndex(0)
 
     def _describe(self) -> None:

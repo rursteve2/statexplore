@@ -15,7 +15,7 @@
                 │ stdout: "@@SX@@ {json}" lines; other output = log
 ┌───────────────▼──── Rscript --vanilla r/worker.R (persistent) ───────────┐
 │ .sx_env: `dat` (loaded once per data/metadata change), `sx_names`        │
-│ run: eval(script) → sx_result → jsonlite::toJSON(digits = NA)            │
+│ run: eval(script) → sx_result → jsonlite::toJSON(digits = I(17))            │
 │ warnings captured · errors returned (worker survives) · package versions │
 └──────────────────────────────────────────────────────────────────────────┘
 ```

@@ -46,7 +46,7 @@ def _directory_candidates() -> list[Path]:
     found: list[Path] = []
     for root in roots:
         if root.is_dir():
-            found.extend(root.glob("R-*/bin/Rscript.exe"))
+            found.extend(root.glob("R-*/bin/Rscript.exe"))  # mapped to bin/x64 by _real_rscript
     return sorted(found, key=_version_key, reverse=True)
 
 
@@ -62,8 +62,15 @@ def find_rscript(configured: str | None = None) -> Path | None:
     candidates += _registry_candidates() + _directory_candidates()
     for c in candidates:
         if c.is_file():
-            return c
+            return _real_rscript(c)
     return None
+
+
+def _real_rscript(path: Path) -> Path:
+    """On Windows, R/bin/Rscript.exe is a launcher that spawns bin/x64/Rscript.exe via cmd.exe.
+    Use the real binary so the process we control (and may kill) is R itself."""
+    x64 = path.parent / "x64" / path.name
+    return x64 if path.parent.name.lower() == "bin" and x64.is_file() else path
 
 
 def r_library() -> Path:
