@@ -180,3 +180,38 @@ def test_model_editor_keeps_interaction_in_any_order(window, tmp_path):
     ed = ModelEditor(ds)
     ed.set_model(ModelSpec("y", [("b", "a")], "gaussian"))  # reverse of the widget's variable order
     assert set(map(frozenset, ed.model().terms)) == {frozenset({"a"}), frozenset({"b"}), frozenset({"a", "b"})}
+
+
+@pytest.mark.r
+def test_mixed_page(window, qtbot, tmp_path, r_worker):
+    import numpy as np
+    import pandas as pd
+    from PySide6.QtCore import Qt
+
+    from statexplore.core.importers import import_file
+    from statexplore.core.project import Project
+
+    rng = np.random.default_rng(1)
+    df = pd.DataFrame({"pid": np.repeat(np.arange(1, 31), 4), "wave": np.tile([1, 2, 3, 4], 30),
+                       "grp": np.repeat(rng.choice(["a", "b"], 30), 4)})
+    df["y"] = rng.normal(size=30).repeat(4) + 0.5 * df["wave"] + rng.normal(size=120)
+    p = tmp_path / "long.csv"
+    df.to_csv(p, index=False)
+    window.state.set_project(Project(import_file(p)))
+    page = window.pages["Mixed & Longitudinal Models"]
+    page._detect()
+    texts = [page.suggestions.item(i).text() for i in range(page.suggestions.count())]
+    assert texts[0].startswith("ID: pid") and any(t.startswith("TIME: wave") for t in texts)
+    page.suggestions.setCurrentRow(0)
+    page._apply_suggestion()
+    assert window.state.dataset.var("pid").role.value == "id" and page.idv.currentData() == "pid"
+    page.outcome.setCurrentIndex(page.outcome.findData("y"))
+    page.time.setCurrentIndex(page.time.findData("wave"))
+    for i in range(page.preds.count()):
+        if page.preds.item(i).data(Qt.UserRole) == "grp":
+            page.preds.item(i).setCheckState(Qt.Checked)
+    page._fit()
+    qtbot.waitUntil(lambda: page.current is not None, timeout=60000)
+    assert "Random effects" in page.output.toPlainText() and len(page.current.plots) == 3
+    page.residual.setCurrentIndex(page.residual.findData("unstructured"))
+    assert page.random.currentData() == "none" and "mmrm" in page.engine_label.text()

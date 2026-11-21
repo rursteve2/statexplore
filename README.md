@@ -4,7 +4,7 @@ Offline Windows desktop app for exploratory statistical model discovery and teac
 (Python/PySide6 front end, R statistical engine). Build plan: `tasks/todo.md`.
 Architecture: `docs/architecture.md`.
 
-**Status: Phases 1–4 complete (foundation, statistical engine, model discovery, Teaching Studio & Model Comparison).**
+**Status: Phases 1–5 complete (foundation, statistical engine, model discovery, Teaching Studio & Model Comparison, mixed & longitudinal models).**
 
 ## Requirements
 - Windows 10/11
@@ -79,8 +79,15 @@ R tests skip automatically if R or the Phase 1 packages are missing. The HRS fix
 - Optional flexplot backend: `remotes::install_github("dustinfife/flexplot", lib = "r/library")`
   (GitHub-only package; the option is disabled with an explanation when it is not installed).
 
+## Phase 5 features
+- Mixed & Longitudinal Models: structure detection (ID / time / cluster), wide → long restructuring;
+  lme4/lmerTest random intercepts and slopes (nested clusters), nlme AR(1) / continuous-time AR(1),
+  mmrm unstructured marginal models; continuous, quadratic or categorical time; variance components,
+  marginal/conditional R², singularity and convergence checks; population, individual and conditional
+  trajectory plots; time / random-effect / residual-structure comparisons with the correct ML/REML rules.
+
 ## Known limitations
-- Wide-to-long reshaping arrives in Phase 5. Welch ANOVA has no post hoc test yet (Games-Howell planned).
+- Binary mixed models and mixed models inside discovery are not available yet. Welch ANOVA has no post hoc test yet (Games-Howell planned).
 - z-scores / centering of derived variables use all rows (before filters).
 - Date/time columns are imported and shown but excluded from analyses.
 - Empty strings in text columns are treated as missing.

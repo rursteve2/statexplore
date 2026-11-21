@@ -20,6 +20,7 @@ from .pages.analysis_builder import AnalysisBuilderPage
 from .pages.comparison import ComparisonPage
 from .pages.dataset_explorer import DatasetExplorerPage
 from .pages.discovery import DiscoveryPage
+from .pages.mixed import MixedPage
 from .pages.eda import EdaPage
 from .pages.simple import DashboardPage, PlannedPage, SettingsPage
 from .pages.teaching import TeachingPage
@@ -31,8 +32,6 @@ SECTIONS = [
     "Teaching Studio", "Reports", "Settings",
 ]
 PLANNED = {
-    "Mixed & Longitudinal Models": (5, "Random-intercept/slope models, AR(1) and unstructured covariance, "
-                                       "longitudinal trajectories."),
     "Reports": (7, "Excel, Word, PDF and script exports."),
 }
 FILE_FILTER = "Datasets (*.csv *.sav *.xlsx);;CSV (*.csv);;SPSS (*.sav);;Excel (*.xlsx)"
@@ -103,6 +102,7 @@ class MainWindow(QMainWindow):
             "Automated Model Discovery": DiscoveryPage(self.state),
             "Model Comparison": ComparisonPage(self.state),
             "Teaching Studio": TeachingPage(self.state),
+            "Mixed & Longitudinal Models": MixedPage(self.state),
             "Settings": SettingsPage(self.state),
         }
         for name in SECTIONS:

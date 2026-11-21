@@ -24,3 +24,9 @@
 
 ## UI defaults
 - When a list refreshes, keep the user's check states AND default newly added items to checked; otherwise "add then compare" silently compares fewer items.
+
+## Labelled codes
+- Categorical numeric variables arrive in R as labelled factors; never `as.numeric(as.character(f))` them. Map labels back to codes explicitly.
+
+## Optimizers
+- Prefer the package-default optimizer; add fallbacks explicitly and record when they are used.

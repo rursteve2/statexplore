@@ -124,14 +124,22 @@ Test dataset: `E:\Downloads\hrs_least_missing_1000.sav` (HRS, long format, 1000 
 - Convention noted: linear-model AIC/BIC count the residual variance (R convention; statsmodels differs by 2).
 - HRS demo (wave 10): CES-D 8 ~ neuroticism × gender, F(1, 666) = 5.97, p = .015; slopes 0.73 (men) vs 1.27 (women). Interpretation flags it was selected from 91 candidates.
 
-## Phase 5 — Mixed & Longitudinal Models
-- [ ] Assisted ID/time/cluster detection (HRS: HHIDPN/WAVE) with confirmation; wide→long restructuring
-- [ ] lme4/lmerTest random intercept/slope (correlated/uncorrelated), nested groupings; ML/REML controls
-- [ ] nlme AR(1) / CAR(1); mmrm unstructured marginal models (kept distinct from random-effects models)
-- [ ] Continuous/categorical/nonlinear time; time × group
-- [ ] Trajectory plots (population/individual/group, conditional vs marginal labeled), variance components, singularity/convergence, residual ACF, DHARMa where suitable
-- [ ] Mixed models in discovery (random-intercept default, bounded)
-- [ ] Tests F, G, H, I vs lme4/nlme references
+## Phase 5 — Advanced Mixed and Longitudinal Models  ✅ **complete (2026-11-21)** (mixed models in discovery deferred → see Remaining)
+- [x] Assisted ID / time / cluster detection (suggestions + one-click role); wide → long restructuring into a new project
+- [x] lme4/lmerTest: random intercept, correlated / uncorrelated random slopes, nested clusters; REML/ML; Satterthwaite df; Type III F
+- [x] nlme: AR(1) (occasion order) and continuous-time AR(1); nlminb with optim fallback (recorded)
+- [x] mmrm: unstructured marginal model (no random effects; clearly labelled)
+- [x] Continuous / quadratic / categorical time; time × predictor interactions; labelled time codes handled
+- [x] Variance components, R² marginal/conditional (Nakagawa), singular-fit and convergence checks, lag-1..3 residual autocorrelation
+- [x] Plots: population-level trajectory with CI over sampled observed trajectories (seeded), conditional participant-specific predictions, residuals vs fitted
+- [x] Specification comparisons: time (ML), random effects (REML, boundary-corrected p), residual structure (REML, all in nlme)
+- [x] Workspace UI
+- [x] Tests (13): F vs statsmodels MixedLM, G random slope variances/cov vs statsmodels, H time×group trajectory = fixed effects (with missing occasions), I AR(1) log-likelihood == independent numpy MVN computation, unstructured log-likelihood == numpy, singular fit, spec validation, duplicate occasions rejected, HRS structure detection, wide→long, comparisons vs statsmodels ML LRT + boundary formula, labelled time == numeric time; GUI test
+
+### Review (Phase 5)
+- 128/128 tests pass; no orphan R processes.
+- Bugs found and fixed: (1) nlme `optim` failed on unbalanced data ("coefficient matrix not invertible") → nlminb default + fallback; (2) labelled time (SPSS "Wave 3") became NA as continuous time → explicit label→code map (+ regression test); (3) multi-string check message split again (lessons.md rule applied); (4) spurious ggplot/model.frame warnings; (5) internal names sx_time/sx_id shown in tables.
+- HRS (waves 2–16, 1,000 people, 9,786 rows): CES-D rises 0.053/wave; women +0.58; no time × gender (p = .36) or time × vigorous activity (p = .28); random intercept SD 1.98; AR(1) improves fit (ΔAIC 34). lme4 convergence gradient 0.028 flagged.
 
 ## Phase 6 — Validation & Uncertainty
 - [ ] Holdout reserved before search (cluster-level for repeated data), never used in selection
@@ -147,6 +155,10 @@ Test dataset: `E:\Downloads\hrs_least_missing_1000.sav` (HRS, long format, 1000 
 - [ ] PyInstaller build + Inno Setup offline installer
 - [ ] Clean-VM test (Windows 10 & 11, no network)
 - [ ] Test O (exported code reproduces results), export-value equality tests
+
+## Remaining from earlier phases
+- Mixed models inside the discovery engine (random-intercept, ML LRT focal test).
+- Binary (logistic) mixed models.
 
 ## Later
 - Synthetic teaching dataset generator; mice; mediation workflow (lavaan); count/ordinal outcomes; psychometrics module (alpha/omega/fa).

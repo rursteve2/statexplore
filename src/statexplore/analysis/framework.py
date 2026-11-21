@@ -274,7 +274,21 @@ def _rename(text: str, names: dict[str, str]) -> str:
     return "".join(out)
 
 
-def _parse_table(t: dict[str, Any], names: dict[str, str]) -> Table:
+def _parse_table(t: dict[str, Any], names: dict[str, str], extra: dict[str, str] | None = None) -> Table:
+    """`extra` maps internal non-alias tokens (e.g. sx_time) to display names."""
+    if extra:
+        base = names
+
+        def names_fn(text: str) -> str:
+            text = _rename(text, base)
+            for k, v in extra.items():
+                text = text.replace(k, v)
+            return text
+        return _parse_table_with(t, names_fn)
+    return _parse_table_with(t, lambda text: _rename(text, names))
+
+
+def _parse_table_with(t: dict[str, Any], rename) -> Table:
     columns = [str(c) for c in _as_list(t.get("columns"))]
     data = t.get("data") or {}
     cols = [_as_list(data.get(c)) for c in columns]
@@ -284,17 +298,17 @@ def _parse_table(t: dict[str, Any], names: dict[str, str]) -> Table:
         row = []
         for c in cols:
             v = c[i] if i < len(c) else None
-            row.append(_rename(v, names) if isinstance(v, str) else v)
+            row.append(rename(v) if isinstance(v, str) else v)
         rows.append(row)
-    row_names = [_rename(str(r), names) for r in _as_list(t.get("row_names"))]
+    row_names = [rename(str(r)) for r in _as_list(t.get("row_names"))]
     if row_names and len(row_names) != n:
         raise ValueError(f"Table {t.get('name')!r}: {len(row_names)} row names for {n} rows")
     return Table(
-        name=_rename(str(t.get("name", "")), names),
-        columns=[_rename(c, names) for c in columns],
+        name=rename(str(t.get("name", ""))),
+        columns=[rename(c) for c in columns],
         rows=rows,
         row_names=row_names,
-        notes=_rename(str(t.get("notes") or ""), names),
+        notes=rename(str(t.get("notes") or "")),
     )
 
 
