@@ -37,22 +37,24 @@ run.bat                                  :: GUI
 .venv\Scripts\python -m pytest -q
 .venv\Scripts\python -m pyflakes src tests
 ```
-- 144 tests. Statistical results are checked against independent implementations (scipy,
+- 152 tests. Statistical results are checked against independent implementations (scipy,
   statsmodels, numpy) rather than against R itself.
 - Tests that need R are marked `r` and skip automatically when R or its packages are missing.
 - HRS-based tests look for `E:\Downloads\hrs_least_missing_1000.sav` (override with the
   `STATEXPLORE_HRS` environment variable) and skip if it is absent.
 - GUI tests run offscreen (`QT_QPA_PLATFORM=offscreen`).
 
-## Build the offline distribution and installer
+## Build the offline distribution, installer and release
 ```bat
 .venv\Scripts\python packaging\build.py
-:: -> dist\StatExplore\  (StatExplore.exe, _internal\, R\ = bundled R, rlib\ = bundled packages)
-dist\StatExplore\StatExplore.exe --selftest
+:: dist\StatExplore\        StatExplore.exe, _internal\, R\ (bundled R), rlib\ (bundled packages)
+:: dist\release\           StatExplore-<version>-portable.zip, StatExplore-<version>-Setup.exe
+dist\StatExplore\StatExplore.exe --selftest --full
 :: exit code 0 = OK; report in %TEMP%\statexplore_selftest.txt
-"C:\Program Files (x86)\Inno Setup 6\ISCC.exe" packaging\statexplore.iss
-:: -> dist\installer\StatExplore-Setup.exe
+gh release create v1.0.0 dist\release\* --title "StatExplore 1.0.0" --notes-file docs\RELEASE_NOTES_v1.0.0.md
 ```
+`build.py` finds Inno Setup in Program Files (x86) or `%LOCALAPPDATA%\Programs`. The version comes
+from `src/statexplore/__init__.py` (keep `pyproject.toml` and `packaging/statexplore.iss` in step).
 The bundled library folder is `rlib`, not `r\library`: Windows paths are case-insensitive, so
 `r\library` would merge into R's own `R\library`. Exact R and package versions are in
 `r/packages.lock.json`.

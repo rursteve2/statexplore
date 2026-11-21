@@ -38,3 +38,6 @@
 
 ## Flaky vs real
 - A test that fails once under heavy load must be rerun and investigated; report it even if it doesn't reproduce.
+
+## Commands I give the user (WSL terminal)
+- Never give `cmd.exe /c "\"C:\path with spaces\prog.exe\" args"`: the escaped quotes don't survive. Give the WSL path instead: `"/mnt/c/Program Files/.../prog.exe" args`, or `cmd.exe /c "winget ..."` only for commands without inner quotes. (Mistake made twice: Rscript, gh auth login.)

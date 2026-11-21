@@ -52,10 +52,24 @@ yourself (see 2B).
 
 ## 2. Installing and starting StatExplore
 
-> **Current status:** there is **no ready-made installer yet**. `StatExplore-Setup.exe` does not exist
-> until someone builds it (2C). Large program files are never stored in the code repository itself;
-> when the installer exists it will be attached to the repository's **Releases** page on GitHub. Until
-> then, use 2A or 2B.
+### Download it (for most people)
+1. Go to the **[Releases page](https://github.com/rursteve2/statexplore/releases/latest)**.
+2. Under **Assets**, download **one** of:
+   - **`StatExplore-1.0.0-Setup.exe`**: the installer (recommended). Double-click it and click
+     through; then start **StatExplore** from the Start menu or the desktop shortcut.
+   - **`StatExplore-1.0.0-portable.zip`**: no installation. Right-click ▸ *Extract All…* into, for
+     example, your Documents folder, open the extracted `StatExplore` folder and double-click
+     **`StatExplore.exe`**.
+3. **If Windows says "Windows protected your PC":** click **More info**, then **Run anyway**. This
+   appears for any program downloaded from the internet that isn't signed with a paid certificate.
+
+That's all: R and every statistical package are included. You don't need to install Python or R.
+Requirements: Windows 10 or 11 (64-bit) and about 1.5 GB of free disk space.
+
+> The green **Code ▸ Download ZIP** button on the main GitHub page downloads the *source code*, not
+> the program. Use the Releases page above.
+
+The sections below are for running from source code or building a release yourself.
 
 ### 2A. On the computer where StatExplore was developed (easiest)
 Open the `statexplore` folder and double-click **`run.bat`**. Everything it needs (Python environment,
@@ -76,18 +90,15 @@ This takes about 20 minutes, once.
    (Change `R-4.6.2` to the R version you installed. The last step downloads the R packages once.)
 5. From then on, double-click **`run.bat`**.
 
-### 2C. Building the installer (one-time, for whoever distributes the program)
-1. Do 2B, plus `.venv\Scripts\python -m pip install pyinstaller python-docx`.
-2. Install **Inno Setup 6** (free, jrsoftware.org).
-3. Run `.venv\Scripts\python packaging\build.py`. This creates `dist\StatExplore\`, a folder that
-   already works on its own: `StatExplore.exe` with R and all packages inside. You can zip and share
-   that folder directly.
-4. Run `"C:\Program Files (x86)\Inno Setup 6\ISCC.exe" packaging\statexplore.iss`. This creates
-   `dist\installer\StatExplore-Setup.exe`.
-5. Upload that file to GitHub under **Releases ▸ Draft a new release**, so users can download it.
-
-Once an installer exists, using it is simple: double-click `StatExplore-Setup.exe`, click through,
-then start StatExplore from the Start menu. R and all statistical packages are included.
+### 2C. Building a release (for whoever distributes the program)
+1. Do 2B, plus `.venv\Scripts\python -m pip install -e ".[dev]"`.
+2. Install **Inno Setup 6** (free): `winget install JRSoftware.InnoSetup`.
+3. Run `.venv\Scripts\python packaging\build.py`. In about 15 minutes this creates:
+   - `dist\StatExplore\`: the stand-alone program (StatExplore.exe with R and all packages inside);
+   - `dist\release\StatExplore-<version>-portable.zip` and `dist\release\StatExplore-<version>-Setup.exe`.
+4. Check it: `dist\StatExplore\StatExplore.exe --selftest --full` runs one real analysis from every part
+   of the program plus all exports (report in `%TEMP%\statexplore_selftest.txt`; exit code 0 = OK).
+5. Publish: `gh release create v<version> dist\release\* --notes-file docs\RELEASE_NOTES_v<version>.md`.
 
 ### What you should see
 
@@ -330,9 +341,9 @@ undoable setting.
 
 ## 10. What is not finished yet
 
-- **Installer:** not built yet. The stand-alone program folder (`dist\StatExplore`) has been built and
-  checked on the development computer, but `StatExplore-Setup.exe` still has to be compiled with Inno Setup
-  (section 2C), published on GitHub Releases, and tested on a fresh Windows 10 and 11 computer.
+- **Testing on other computers:** release 1.0.0 was built and checked on the development computer. It
+  hasn't yet been tried on a freshly installed Windows 10/11 machine; please report any problem via
+  GitHub **Issues**.
 - **flexplot** plotting add-on: optional, needs a separate install (developer guide).
 - Games-Howell post hoc for Welch ANOVA, omega / factor analysis, robust standard errors.
 - **Binary-outcome mixed models** (for example yes/no outcomes measured repeatedly) aren't
@@ -351,3 +362,11 @@ How each requirement of the original specification is met: **[docs/spec-complian
 Building, testing, packaging and the architecture are described in
 **[docs/DEVELOPER.md](docs/DEVELOPER.md)**. The development plan and per-phase reviews are in
 [tasks/todo.md](tasks/todo.md).
+
+---
+
+## License
+
+StatExplore is released under the **MIT License** (see [LICENSE](LICENSE)). The downloadable
+program also contains R, R packages, Python and Qt, each under its own license. See
+[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).

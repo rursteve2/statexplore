@@ -15,6 +15,7 @@ from ..core.importers import (
     CSV_DELIMITERS, CSV_ENCODINGS, CsvOptions, ImportError_, SUPPORTED_EXTENSIONS, detect_format,
     import_file, list_sheets,
 )
+from .. import __version__
 from ..core.project import Project, ProjectError
 from .pages.analysis_builder import AnalysisBuilderPage
 from .pages.comparison import ComparisonPage
@@ -83,7 +84,7 @@ class MainWindow(QMainWindow):
     def __init__(self, state: AppState | None = None):
         super().__init__()
         self.state = state or AppState()
-        self.setWindowTitle("StatExplore")
+        self.setWindowTitle(f"StatExplore {__version__}")
         self.resize(1360, 860)
         self.setAcceptDrops(True)
         self.setStyleSheet(STYLE)
@@ -168,7 +169,7 @@ class MainWindow(QMainWindow):
         p = self.state.project
         name = (p.path.name if p and p.path else "Untitled project") if p else ""
         star = " *" if self.state.dirty else ""
-        self.setWindowTitle(f"StatExplore — {name}{star}" if p else "StatExplore")
+        self.setWindowTitle(f"StatExplore {__version__} — {name}{star}" if p else f"StatExplore {__version__}")
 
     # ---- import -----------------------------------------------------
     def import_dialog(self) -> None:

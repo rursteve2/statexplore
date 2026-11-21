@@ -180,6 +180,7 @@ def build(ds: Dataset, s: MixedSpec, plot_paths: list[str]) -> str:
             "  with = ifelse(is.na(sx_vc$var2), \"\", sx_vc$var2), variance_or_cov = sx_vc$vcov, sd_or_corr = sx_vc$sdcor)",
             "sx_singular <- lme4::isSingular(sx_fit)",
             "sx_conv <- unlist(sx_fit@optinfo$conv$lme4$messages)",
+            "sx_conv <- sx_conv[!grepl(\"singular\", sx_conv)]  # reported by the singular-fit check",
             "sx_beta <- lme4::fixef(sx_fit); sx_V <- as.matrix(stats::vcov(sx_fit))",
             "sx_df_note <- \"Satterthwaite degrees of freedom (lmerTest); Type III F-tests.\"",
             "sx_fitted <- stats::fitted(sx_fit); sx_resid <- stats::residuals(sx_fit)",
@@ -307,7 +308,8 @@ def _extra_plots(s: MixedSpec, paths: list[str]) -> list[str]:
         ]
     if len(paths) >= 2:
         L += [
-            "sx_p5 <- ggplot2::ggplot(data.frame(lag = 1:3, correlation = sx_lagcor), ggplot2::aes(x = factor(lag), y = correlation)) +",
+            "sx_acf <- data.frame(lag = 1:3, correlation = sx_lagcor); sx_acf <- sx_acf[!is.na(sx_acf$correlation), ]",
+            "sx_p5 <- ggplot2::ggplot(sx_acf, ggplot2::aes(x = factor(lag), y = correlation)) +",
             "  ggplot2::geom_col(fill = \"#b2182b\", width = 0.5) + ggplot2::geom_hline(yintercept = 0) +",
             "  ggplot2::coord_cartesian(ylim = c(-1, 1)) +",
             "  ggplot2::labs(title = \"Residual autocorrelation within participants\", x = \"Lag (occasions apart)\",",
@@ -397,7 +399,8 @@ def _trajectory(ds: Dataset, s: MixedSpec, paths: list[str]) -> list[str]:
         L += [
             "sx_p3 <- ggplot2::ggplot(data.frame(fitted = as.numeric(sx_fitted), residual = as.numeric(sx_resid)),",
             "  ggplot2::aes(fitted, residual)) + ggplot2::geom_point(alpha = 0.3) + ggplot2::geom_hline(yintercept = 0, linetype = 2) +",
-            "  ggplot2::geom_smooth(method = \"loess\", formula = y ~ x, se = FALSE, colour = \"#b2182b\") +",
+            "  (if (length(unique(round(as.numeric(sx_fitted), 8))) > 20) ggplot2::geom_smooth(method = \"loess\", formula = y ~ x,",
+            "    se = FALSE, colour = \"#b2182b\") else NULL) +",
             "  ggplot2::labs(title = \"Residuals vs fitted\") + ggplot2::theme_minimal()",
             f"ggplot2::ggsave({r_str(paths[2])}, sx_p3, width = 6.5, height = 4.5, dpi = 120)",
         ]

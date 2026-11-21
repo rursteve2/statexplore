@@ -43,8 +43,38 @@ def main() -> None:
                           env={**__import__("os").environ, "R_LIBS": str(DEFAULT_R_LIB)}).stdout
     (DIST / "rlib" / "packages.lock.json").write_text(json.dumps(json.loads(lock), indent=2))
     shutil.copy2(DIST / "rlib" / "packages.lock.json", ROOT / "r" / "packages.lock.json")
+    for f in ("LICENSE", "THIRD-PARTY-NOTICES.md", "README.md"):
+        shutil.copy2(ROOT / f, DIST / f)
     print("Done:", DIST)
+    release_artifacts()
+
+
+def release_artifacts() -> None:  # also: python packaging/build.py --release-only
+    """Portable zip of dist/StatExplore and, if Inno Setup is installed, the installer."""
+    import os
+
+    sys.path.insert(0, str(ROOT / "src"))
+    from statexplore import __version__
+
+    out = ROOT / "dist" / "release"
+    out.mkdir(parents=True, exist_ok=True)
+    zip_base = out / f"StatExplore-{__version__}-portable"
+    print("Zipping", f"{zip_base}.zip")
+    shutil.make_archive(str(zip_base), "zip", root_dir=ROOT / "dist", base_dir="StatExplore")
+    candidates = [Path(os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)")) / "Inno Setup 6" / "ISCC.exe",
+                  Path(os.environ.get("LOCALAPPDATA", "")) / "Programs" / "Inno Setup 6" / "ISCC.exe"]
+    iscc = next((c for c in candidates if c.is_file()), None)
+    if iscc is None:
+        print("Inno Setup not found: installer not built (portable zip only).")
+        return
+    subprocess.run([str(iscc), f"/O{out}", str(ROOT / "packaging" / "statexplore.iss")], check=True)
+    print("Release files:", *sorted(p.name for p in out.iterdir()))
 
 
 if __name__ == "__main__":
-    main()
+    if "--release-only" in sys.argv:
+        for f in ("LICENSE", "THIRD-PARTY-NOTICES.md", "README.md"):
+            shutil.copy2(ROOT / f, DIST / f)
+        release_artifacts()
+    else:
+        main()

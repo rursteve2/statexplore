@@ -185,6 +185,11 @@ User hit: `Interaction plot: HHIDPN ~ HHID * PN + HHID * ADVTR_MATCHED * …` �
 - [x] Also: Cronbach's alpha (§5 optional psychometrics); README corrected (no installer exists yet; how to build/publish it)
 - Result: 152/152 tests pass. Remaining open items are listed at the end of docs/spec-compliance.md.
 
+## Release 1.0.0 (2026-11-21)
+- [x] §28 20-step acceptance workflow executed on HRS: all PASS (docs/release-audit-v1.0.0.md)
+- [x] Packaged full self-test OK; installer silent-install → self-test → uninstall OK
+- [x] MIT license + third-party notices; repo scanned for secrets; made public; GitHub release v1.0.0
+
 ## Remaining from earlier phases
 - [x] Mixed models inside the discovery engine: random intercept per participant, ML likelihood-ratio focal test, Δ marginal R², singular/convergence flags; LR statistic verified against statsmodels MixedLM (2026-11-21)
 - [ ] Binary (logistic) mixed models (glmer) — not started

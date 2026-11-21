@@ -1,11 +1,14 @@
 ; Inno Setup script: compile after packaging\build.py has produced dist\StatExplore
 [Setup]
+LicenseFile=..\LICENSE
 AppName=StatExplore
-AppVersion=1.0
+AppVersion=1.0.0
+AppPublisher=Stephen
+AppPublisherURL=https://github.com/rursteve2/statexplore
+OutputBaseFilename=StatExplore-1.0.0-Setup
 DefaultDirName={autopf}\StatExplore
 DefaultGroupName=StatExplore
 OutputDir=..\dist\installer
-OutputBaseFilename=StatExplore-Setup
 Compression=lzma2
 SolidCompression=yes
 ArchitecturesInstallIn64BitMode=x64compatible
