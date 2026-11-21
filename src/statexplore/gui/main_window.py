@@ -18,6 +18,7 @@ from ..core.importers import (
 from ..core.project import Project, ProjectError
 from .pages.analysis_builder import AnalysisBuilderPage
 from .pages.dataset_explorer import DatasetExplorerPage
+from .pages.discovery import DiscoveryPage
 from .pages.eda import EdaPage
 from .pages.simple import DashboardPage, PlannedPage, SettingsPage
 from .state import AppState
@@ -28,8 +29,6 @@ SECTIONS = [
     "Teaching Studio", "Reports", "Settings",
 ]
 PLANNED = {
-    "Automated Model Discovery": (3, "Bounded exhaustive search for interaction effects with raw and "
-                                     "adjusted p-values, search-size estimates and two ranking views."),
     "Model Comparison": (4, "Side-by-side comparison of fitted models (AIC/BIC, R², valid nested tests)."),
     "Mixed & Longitudinal Models": (5, "Random-intercept/slope models, AR(1) and unstructured covariance, "
                                        "longitudinal trajectories."),
@@ -102,6 +101,7 @@ class MainWindow(QMainWindow):
             "Dataset Explorer": DatasetExplorerPage(self.state),
             "Exploratory Data Analysis": EdaPage(self.state),
             "Analysis Builder": AnalysisBuilderPage(self.state),
+            "Automated Model Discovery": DiscoveryPage(self.state),
             "Settings": SettingsPage(self.state),
         }
         for name in SECTIONS:

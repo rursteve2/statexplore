@@ -105,10 +105,11 @@ class DataPreviewModel(QAbstractTableModel):
 class FrameModel(QAbstractTableModel):
     """Read-only, sortable view of a small DataFrame (summaries, result tables)."""
 
-    def __init__(self, frame: pd.DataFrame | None = None, digits: int = 3):
+    def __init__(self, frame: pd.DataFrame | None = None, digits: int = 3, p_columns: tuple[str, ...] = ()):
         super().__init__()
         self.frame = frame if frame is not None else pd.DataFrame()
         self.digits = digits
+        self.p_columns = set(p_columns)
 
     def set_frame(self, frame: pd.DataFrame) -> None:
         self.beginResetModel()
@@ -126,6 +127,8 @@ class FrameModel(QAbstractTableModel):
             return None
         value = self.frame.iat[index.row(), index.column()]
         if role == Qt.DisplayRole:
+            if self.frame.columns[index.column()] in self.p_columns and isinstance(value, float):
+                return "" if math.isnan(value) else (f"{value:.2e}" if value < 1e-4 else f"{value:.4f}")
             return fmt(value, self.digits)
         if role == Qt.UserRole:  # raw value for sorting
             return value

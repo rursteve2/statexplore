@@ -160,8 +160,12 @@ def validate(spec: AnalysisSpec, ds: Dataset, vars_: dict[str, list[str]], opts:
 # ---- running & parsing --------------------------------------------------------
 
 def run_analysis(session: RSession, ds: Dataset, spec: AnalysisSpec, vars_: dict[str, list[str]],
-                 opts: dict[str, Any] | None = None) -> tuple[AnalysisResult, dict[str, bytes]]:
+                 opts: dict[str, Any] | None = None, internal: dict[str, Any] | None = None,
+                 title: str | None = None) -> tuple[AnalysisResult, dict[str, bytes]]:
+    """`internal` holds program-built options that never come from the UI (e.g. an explicit
+    model formula from the discovery engine); values must be built from validated aliases."""
     clean = validate(spec, ds, vars_, opts or {})
+    clean.update(internal or {})
     plot_paths = [session.new_plot_path() for _ in range(spec.n_plots)]
     ctx = Ctx(ds=ds, vars={k: list(v) for k, v in vars_.items()}, opts=clean,
               plot_paths=[p.as_posix() for p in plot_paths])
@@ -173,7 +177,7 @@ def run_analysis(session: RSession, ds: Dataset, spec: AnalysisSpec, vars_: dict
         "filters": [f.describe() for f in ds.filters],
     }
     dependence = independence_check(ds, spec, ctx.vars)
-    result, raw = session.run(ds, kind=spec.key, title=spec.label, body=body,
+    result, raw = session.run(ds, kind=spec.key, title=title or spec.label, body=body,
                               packages=spec.packages, inputs=inputs)
     result.missing_data = spec.missing_data
     if dependence and raw is not None:

@@ -18,9 +18,14 @@ COMMON_TAIL = "n_used = nrow(sx_d), n_excluded = nrow(dat) - nrow(sx_d)"
 
 def _prologue(ctx: Ctx, *slots: str) -> list[str]:
     used = ctx.used(*slots)
+    extra = [a for a in ctx.opts.get("complete_on", []) if a not in used]
+    if extra:  # same rows as a discovery search's shared complete-case sample
+        sample = [f"sx_d <- droplevels(sx_complete(dat, c(sx_used, {r_vec(extra)}))[, sx_used, drop = FALSE])"]
+    else:
+        sample = ["sx_d <- sx_complete(dat, sx_used)"]
     return [
         f"sx_used <- {r_vec(used)}",
-        "sx_d <- sx_complete(dat, sx_used)",
+        *sample,
         "if (nrow(sx_d) < 3) stop(\"Fewer than 3 complete cases for these variables.\")",
     ]
 
@@ -305,6 +310,8 @@ def _ancova(ctx: Ctx) -> str:
 # ======================================================================= regression
 
 def _rhs(ctx: Ctx, slot: str = "predictors") -> str:
+    if ctx.opts.get("rhs"):
+        return ctx.opts["rhs"]
     preds = ctx.aliases(slot)
     mode = ctx.opts.get("interactions", "none")
     if mode == "none" or len(preds) == 1:
@@ -329,29 +336,34 @@ def _main_effects_rhs(ctx: Ctx) -> str:
 
 
 def _slopes(ctx: Ctx, fit: str) -> list[str]:
-    """Conditional (simple) slopes for each two-way interaction that has a continuous variable."""
-    preds = ctx.aliases("predictors")
-    if ctx.opts.get("interactions", "none") == "none" or len(preds) < 2:
-        return []
+    """Conditional (simple) slopes for each two-way interaction that has a continuous variable.
+    With an explicit focal pair (discovery), only that pair."""
+    focal = ctx.opts.get("focal")
+    if focal:
+        pairs = [tuple(focal)] if len(focal) == 2 else []
+    else:
+        preds = ctx.aliases("predictors")
+        if ctx.opts.get("interactions", "none") == "none":
+            return []
+        pairs = [(a, b) for i, a in enumerate(preds) for b in preds[i + 1:]]
     L = []
-    for i, a in enumerate(preds):
-        for b in preds[i + 1:]:
-            x, m = (a, b) if not ctx.is_cat(a) else (b, a)
-            if ctx.is_cat(x):
-                continue
-            if ctx.is_cat(m):
-                at = ""
-                note = "levels of the moderator"
-            else:
-                at = (f", at = list({m} = mean(sx_d${m}) + c(-1, 0, 1) * stats::sd(sx_d${m}))")
-                note = "moderator at mean - 1 SD, mean, mean + 1 SD"
-            L += [
-                f"sx_et <- emmeans::emtrends({fit}, ~ {m}, var = \"{x}\"{at})",
-                "sx_tabs[[length(sx_tabs) + 1]] <- sx_table(",
-                f"  paste0(\"Conditional slopes of \", sx_names[[\"{x}\"]], \" by \", sx_names[[\"{m}\"]]),",
-                f"  as.data.frame(summary(sx_et, infer = c(TRUE, TRUE), level = {ctx.num('conf')})),",
-                f"  notes = \"Slope of {x} at {note}; other predictors at their means / averaged over factor levels. Unadjusted p-values.\")",
-            ]
+    for a, b in pairs:
+        x, m = (a, b) if not ctx.is_cat(a) else (b, a)
+        if ctx.is_cat(x):
+            continue
+        if ctx.is_cat(m):
+            at = ""
+            note = "levels of the moderator"
+        else:
+            at = (f", at = list({m} = mean(sx_d${m}) + c(-1, 0, 1) * stats::sd(sx_d${m}))")
+            note = "moderator at mean - 1 SD, mean, mean + 1 SD"
+        L += [
+            f"sx_et <- emmeans::emtrends({fit}, ~ {m}, var = \"{x}\"{at})",
+            "sx_tabs[[length(sx_tabs) + 1]] <- sx_table(",
+            f"  paste0(\"Conditional slopes of \", sx_names[[\"{x}\"]], \" by \", sx_names[[\"{m}\"]]),",
+            f"  as.data.frame(summary(sx_et, infer = c(TRUE, TRUE), level = {ctx.num('conf')})),",
+            f"  notes = \"Slope of {x} at {note}; other predictors at their means / averaged over factor levels. Unadjusted p-values.\")",
+        ]
     return L
 
 

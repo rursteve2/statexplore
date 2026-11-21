@@ -71,17 +71,41 @@ Test dataset: `E:\Downloads\hrs_least_missing_1000.sav` (HRS, long format, 1000 
 - [x] Tests vs independent references (scipy/statsmodels): A (t-test, d), B (2×2 interaction, Type III F), D (continuous interaction + conditional slopes), E (logistic OR, predicted p), J (missing → n), plus Welch, paired, one-way, Welch ANOVA, RM ANOVA, ANCOVA, correlations, partial r, hierarchical ΔR², separation detection, derived/filter parity
 - [x] HRS end-to-end check in the GUI
 
-## Phase 3 — Automated Model Discovery
-- [ ] Formula grammar spec (`docs/formula-grammar.md`): terms, hierarchy, canonical ordering, dedup key
-- [ ] Search-space calculator (exact counts incl. design-matrix parameter counts; shown before run; warns at ≥1M)
-- [ ] Deterministic enumerator (resumable by index)
-- [ ] Pre-fit screening (rank, params, residual df, empty cells, separation risk, event counts, sparse groups) with reasons
-- [ ] Worker pool (N = cores−1), batching, caching, cancel, memory cap, structured error log
-- [ ] Search modes A/B/C/D, profiles Fast/Balanced/Thorough, budgets; partial/exhaustive labeling
-- [ ] Results store in SQLite (every attempt, incl. failures); raw + BH + Holm adjusted, provisional flag for incomplete runs
-- [ ] Discovery Significance Ranking & Statistical Support Ranking (within-family, transparent criteria)
-- [ ] Results table: sort/filter/search, model detail drill-down
-- [ ] Tests C, K, L, M + enumeration/dedup unit tests, planted-interaction fixtures
+## Phase 3 — Automated Model Discovery  ✅ **complete (2026-11-21)**
+
+### Design
+- **Candidate grammar** (`docs/formula-grammar.md`): a candidate = (focal interaction, covariate set).
+  Full model = focal variables' complete hierarchy (all lower-order terms) + covariates as main effects + required covariates.
+  Reduced model = full model minus the focal term only. Focal test = nested comparison (F for linear, LR chi² for logistic) — D9.
+  - *Focal mode* (default, D7): covariates = required covariates only. Count = C(p,2) [+ C(p,3)].
+  - *Subset mode* (opt-in): for every subset S of candidates with |S| ≤ max predictors, every focal pair/triple inside S, other S members as covariates. Count = Σ_s C(p,s)·[C(s,2) + C(s,3)]. Each (focal, covariate set) is a distinct candidate analysis (§10.3).
+  - Required covariates count toward the max-predictor limit. Unique by construction; canonical key = sorted term set (tested).
+- **Deterministic order**: lexicographic over candidate-predictor index (subset, then focal). Recorded with the run.
+- **Sample**: shared complete-case sample on outcome + all candidates + required (D8, default; n shown before run) or per-model complete cases (flagged).
+- **Screening (R, per candidate)**: parameter count vs limit, residual df, design rank, empty focal cells (invalid); sparse cells < 5, |r| > .9 between continuous predictors, logistic separation / non-convergence / fitted 0-1 warnings (flags).
+- **Execution**: pool of persistent R workers (each loads data once), batches of candidates; R function `sx_discover_one()` lives in the load-script helpers, so a candidate's View Code is exactly what ran.
+- **Modes**: A first significant, B target count, C exhaustive, D budget (models / minutes / Cancel). A/B stop deterministically at the first qualifying index in enumeration order; results computed speculatively past it are kept but marked and excluded from the testing family.
+- **Profiles**: Fast (1 worker, 2,000 models, 2 min), Balanced (default; up to 4 workers, 50,000 models, 30 min), Thorough (cores-1 workers, no model cap, no time cap).
+- **Multiplicity**: family = all candidates actually tested (valid) in the run. BH (FDR) and Holm reported; provisional when the run is incomplete.
+- **Rankings**: Discovery = by raw or adjusted p (never labelled "best"). Support = transparent tiers within the run's model family: A clean + adjusted-significant, B clean + raw-significant only, C flagged, D not significant; within tier by effect size (ΔR² or |log OR|), then fewer parameters.
+- **Storage/resume**: results kept as a DataFrame per run, saved in the project; a stopped run can be resumed (same settings + data signature) and continues from the indices not yet done.
+
+### Tasks
+- [x] `discovery/space.py`: settings, enumeration, exact counts, keys, formulas, shared-sample size
+- [x] R `sx_discover_one` + batch runner; worker pool (threads, one persistent R process each)
+- [x] `discovery/engine.py`: modes, budgets, cancel, progress, resume, adjustments, rankings
+- [x] Detail view: re-run candidate as full Phase 2 analysis on the same sample (p and n match exactly)
+- [x] Discovery workspace UI (config, search-size estimate, progress/ETA, summary + 3 tables, drill-down, candidate code)
+- [x] Project persistence of search runs (`searches` table; older projects still open)
+- [x] Tests (24): M enumeration/count/uniqueness/hierarchy/resume-tail, spec §10.3 example, 39C6 count, BH/Holm vs statsmodels, planted interaction (linear + logistic, subset mode), K null data, invalid models recorded with reasons, partial budget + resume == full, mode A deterministic with 2 workers, 1 vs 2 workers identical, cancel, detail p/n == search, project round-trip, dependence warning, GUI end-to-end
+- [x] HRS end-to-end
+- [x] Added: dependence (repeated-ID) warning for searches
+
+### Review (Phase 3)
+- 101/101 tests pass; no orphan R processes.
+- HRS wave 10 (one row per person), CES-D 8 ~ 14 candidates, focal two-way: 91 candidates in 6.8 s (4 workers); 41 invalid (8-level marital status → empty cells; years of education stored as a 16-level nominal → > 40 parameters); 50 tested; 3 raw p < .05 vs ≈ 2.5 expected by chance; 0 after FDR. An honest null.
+- Deferred: "teaching interpretation" column and interaction graphs → Phase 4; validation status → Phase 6; mixed-model discovery → Phase 5; "all two-way terms in one model" variant not included (documented in grammar).
+- Teaching note for the user: set `RAEDYRS` to continuous before searching; declared nominal it adds 15 dummy parameters.
 
 ## Phase 4 — Interaction Visualization & Teaching Studio
 - [ ] emmeans / emtrends / marginaleffects / interactions (sim_slopes, johnson_neyman) / ggeffects

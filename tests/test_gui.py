@@ -95,3 +95,36 @@ def test_analysis_builder_runs_regression(window, qtbot, sav_labelled, r_worker)
     assert "Coefficients" in html and "sex=Female" in html
     assert len(result.plots) == 2
     window.state.shutdown_r()
+
+
+@pytest.mark.r
+def test_discovery_page_end_to_end(window, qtbot, tmp_path, r_worker):
+    import numpy as np
+    import pandas as pd
+    from PySide6.QtCore import Qt
+
+    rng = np.random.default_rng(4)
+    df = pd.DataFrame(rng.normal(size=(300, 4)), columns=["a", "b", "c", "d"])
+    df["y"] = df["a"] * df["b"] + rng.normal(size=300)
+    p = tmp_path / "disc.csv"
+    df.to_csv(p, index=False)
+    from statexplore.core.importers import import_file
+    from statexplore.core.project import Project
+
+    window.state.set_project(Project(import_file(p)))
+    page = window.pages["Automated Model Discovery"]
+    page.outcome.setCurrentIndex(page.outcome.findData("y"))
+    for i in range(page.cands.count()):
+        page.cands.item(i).setCheckState(Qt.Checked)
+    page.workers.setValue(1)
+    info = page._estimate()
+    assert info["total"] == 6 and "<b>6</b>" in page.estimate.text()
+    page._start()
+    qtbot.waitUntil(lambda: page.run is not None and page.run.status == "complete", timeout=120000)
+    qtbot.waitUntil(lambda: page.discovery_table.model.rowCount() == 6, timeout=10000)
+    assert page.discovery_table.model.frame.iloc[0]["Interaction"] == "a × b"
+    assert "Complete" in page.summary_view.toPlainText()
+    assert window.state.project.searches == [page.run]
+    page.tabs.setCurrentWidget(page.discovery_table)
+    page.discovery_table.view.selectRow(0)
+    assert page._selected_row()["interaction"] == "a × b"

@@ -4,7 +4,7 @@ Offline Windows desktop app for exploratory statistical model discovery and teac
 (Python/PySide6 front end, R statistical engine). Build plan: `tasks/todo.md`.
 Architecture: `docs/architecture.md`.
 
-**Status: Phases 1–2 complete (foundation + core statistical engine).**
+**Status: Phases 1–3 complete (foundation, core statistical engine, automated model discovery).**
 
 ## Requirements
 - Windows 10/11
@@ -58,6 +58,16 @@ R tests skip automatically if R or the Phase 1 packages are missing. The HRS fix
 - Derived variables (item mean/sum, recode, log, sqrt, z-score, center, square, binarize) and row filters —
   computed again in R, so View Code reproduces them from the source file.
 - Warnings when a participant-ID variable shows repeated rows (non-independent observations).
+
+## Phase 3 features
+- Automated Model Discovery: bounded exhaustive search for two- and three-way interactions over up to 39
+  candidates (≤ 6 predictors per model), focal or all-subset covariate adjustment, shared or per-model
+  complete cases. Exact search-size estimate before running; modes A/B/C/D, Fast/Balanced/Thorough profiles,
+  parallel R workers, progress + ETA, cancel and resume.
+- Every attempt is recorded (invalid models with reasons). Raw, BH and Holm p-values, provisional when
+  incomplete. Discovery-significance and statistical-support rankings (transparent tiers).
+- Any candidate opens as a full regression analysis on the same rows; View Code shows the exact R call.
+- Candidate grammar: `docs/formula-grammar.md`.
 
 ## Known limitations
 - Wide-to-long reshaping arrives in Phase 5. Welch ANOVA has no post hoc test yet (Games-Howell planned).

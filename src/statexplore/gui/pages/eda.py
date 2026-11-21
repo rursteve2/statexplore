@@ -23,14 +23,18 @@ from ..state import AppState
 class CodeDialog(QDialog):
     """Shows the exact script the R worker executed for a result (§18)."""
 
-    def __init__(self, result: AnalysisResult, parent: QWidget | None = None):
+    def __init__(self, result: AnalysisResult | None, parent: QWidget | None = None, *,
+                 title: str = "", script: str = "", header: str = ""):
         super().__init__(parent)
-        self.setWindowTitle(f"Code — {result.title}")
+        if result is not None:
+            title, script = result.title, result.script
+            pk = ", ".join(f"{k} {v}" for k, v in result.engine.packages.items())
+            header = f"Engine: {result.engine.version}\nPackages: {pk}"
+        self.setWindowTitle(f"Code — {title}")
         self.resize(900, 650)
         lay = QVBoxLayout(self)
-        pk = ", ".join(f"{k} {v}" for k, v in result.engine.packages.items())
-        lay.addWidget(QLabel(f"Engine: {result.engine.version}\nPackages: {pk}"))
-        text = QPlainTextEdit(result.script)
+        lay.addWidget(QLabel(header))
+        text = QPlainTextEdit(script)
         text.setReadOnly(True)
         text.setLineWrapMode(QPlainTextEdit.NoWrap)
         text.setStyleSheet("font-family: Consolas, monospace;")

@@ -62,6 +62,11 @@ class RSession:
         self._signature, self._load_script = sig, script
         self._generation = self.worker.generation
 
+    @property
+    def load_script(self) -> str:
+        """The data-load script currently executed in the worker (call ensure_data first)."""
+        return self._load_script
+
     def invalidate(self) -> None:
         self._signature = None
 

@@ -31,6 +31,7 @@ CREATE TABLE changes (seq INTEGER PRIMARY KEY, change TEXT NOT NULL);
 CREATE TABLE data (id INTEGER PRIMARY KEY CHECK (id = 1), parquet BLOB NOT NULL);
 CREATE TABLE results (seq INTEGER PRIMARY KEY, id TEXT NOT NULL UNIQUE, result TEXT NOT NULL);
 CREATE TABLE artifacts (key TEXT PRIMARY KEY, content BLOB NOT NULL);
+CREATE TABLE searches (seq INTEGER PRIMARY KEY, id TEXT NOT NULL UNIQUE, meta TEXT NOT NULL, rows BLOB NOT NULL);
 """
 
 
@@ -45,6 +46,7 @@ class Project:
         self.dataset = dataset
         self.results: list[AnalysisResult] = []
         self.artifacts: dict[str, bytes] = {}
+        self.searches: list = []  # discovery.engine.DiscoveryRun
         self.path: Path | None = None
 
     def add_result(self, result: AnalysisResult, artifacts: dict[str, bytes] | None = None) -> None:
@@ -99,6 +101,11 @@ class Project:
             [(i, r.id, json.dumps(r.to_dict())) for i, r in enumerate(self.results)],
         )
         con.executemany("INSERT INTO artifacts VALUES (?, ?)", list(self.artifacts.items()))
+        for i, run in enumerate(self.searches):
+            buf = io.BytesIO()
+            pd.DataFrame(run.rows).to_parquet(buf, engine="pyarrow", index=False)
+            con.execute("INSERT INTO searches VALUES (?, ?, ?, ?)",
+                        (i, run.id, json.dumps(run.meta_dict()), buf.getvalue()))
 
     # ---- load -------------------------------------------------------
     @classmethod
@@ -132,12 +139,31 @@ class Project:
             project.results = [AnalysisResult.from_dict(json.loads(r)) for (r,) in
                                con.execute("SELECT result FROM results ORDER BY seq")]
             project.artifacts = dict(con.execute("SELECT key, content FROM artifacts"))
+            project.searches = _load_searches(con)
         except sqlite3.DatabaseError as e:
             raise ProjectError(f"Project file is damaged or unreadable: {e}") from e
         finally:
             con.close()
         project.path = path
         return project
+
+
+def _load_searches(con: sqlite3.Connection) -> list:
+    from ..discovery.engine import DiscoveryRun
+
+    has = con.execute("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'searches'").fetchone()
+    if not has:
+        return []
+    runs = []
+    for meta, blob in con.execute("SELECT meta, rows FROM searches ORDER BY seq"):
+        frame = pd.read_parquet(io.BytesIO(blob), engine="pyarrow")
+        rows = []
+        for rec in frame.to_dict("records"):
+            rec["focal"] = list(rec.get("focal", []))
+            rec["covariates"] = list(rec.get("covariates", []))
+            rows.append({k: (None if isinstance(v, float) and v != v else v) for k, v in rec.items()})
+        runs.append(DiscoveryRun.from_meta(json.loads(meta), rows))
+    return runs
 
 
 def source_status(ds: Dataset) -> dict[str, Any]:
