@@ -569,6 +569,61 @@ def _logistic(ctx: Ctx) -> str:
     return "\n".join(L) + "\n"
 
 
+# ========================================================================= mediation
+
+def _mediation(ctx: Ctx) -> str:
+    x, m, y = ctx.one("x"), ctx.one("mediator"), ctx.one("dependent")
+    covs = ctx.aliases("covariates")
+    cv = "".join(f" + {c}" for c in covs)
+    B, seed, conf = int(ctx.opts["boot"]), int(ctx.opts["seed"]), ctx.num("conf")
+    L = _prologue(ctx, "dependent", "x", "mediator", "covariates") + [
+        f"sx_fa <- function(d) stats::lm({m} ~ {x}{cv}, data = d)          # path a: X -> M",
+        f"sx_fb <- function(d) stats::lm({y} ~ {x} + {m}{cv}, data = d)     # paths b and c': M -> Y, X -> Y given M",
+        f"sx_fc <- function(d) stats::lm({y} ~ {x}{cv}, data = d)          # total effect c",
+        "sx_row <- function(fit, term, label) { co <- stats::coef(summary(fit))",
+        f"  ci <- stats::confint(fit, term, level = {conf})",
+        "  data.frame(path = label, estimate = co[term, 1], se = co[term, 2], p = co[term, 4], ci_low = ci[1], ci_high = ci[2]) }",
+        "sx_a <- sx_fa(sx_d); sx_b <- sx_fb(sx_d); sx_c <- sx_fc(sx_d)",
+        f"sx_ab <- unname(stats::coef(sx_a)[\"{x}\"] * stats::coef(sx_b)[\"{m}\"])",
+        f"set.seed({seed})",
+        f"sx_boot <- replicate({B}, {{ i <- sample.int(nrow(sx_d), replace = TRUE); d <- sx_d[i, , drop = FALSE]",
+        f"  unname(stats::coef(sx_fa(d))[\"{x}\"] * stats::coef(sx_fb(d))[\"{m}\"]) }})",
+        f"sx_q <- stats::quantile(sx_boot, c((1 - {conf}) / 2, 1 - (1 - {conf}) / 2), names = FALSE, na.rm = TRUE)",
+        "sx_paths <- rbind(",
+        f"  sx_row(sx_a, \"{x}\", \"a: X -> M\"), sx_row(sx_b, \"{m}\", \"b: M -> Y (given X)\"),",
+        f"  sx_row(sx_b, \"{x}\", \"c': direct effect X -> Y\"), sx_row(sx_c, \"{x}\", \"c: total effect X -> Y\"),",
+        "  data.frame(path = \"a*b: indirect effect\", estimate = sx_ab, se = stats::sd(sx_boot), p = NA_real_,",
+        "    ci_low = sx_q[1], ci_high = sx_q[2]))",
+        f"sx_cx <- unname(stats::coef(sx_c)[\"{x}\"])",
+        "sx_result <- list(tables = list(",
+        "  sx_table(\"Mediation paths\", sx_paths, notes = paste0(\"Indirect effect CI: percentile bootstrap, \",",
+        f"    {B}, \" resamples (seed {seed}); its 'se' is the bootstrap SD. Other CIs are ordinary t-based.\")),",
+        f"  sx_table(\"Summary\", data.frame(indirect = sx_ab, direct = unname(stats::coef(sx_b)[\"{x}\"]),",
+        "    total = sx_cx, proportion_mediated = sx_ab / sx_cx, indirect_ci_excludes_zero = sx_q[1] > 0 || sx_q[2] < 0),",
+        "    notes = \"Proportion mediated is unstable when the total effect is near zero.\")),",
+        "  notes = paste0(\"Mediation is a statistical decomposition, not proof of a causal pathway: it assumes the \",",
+        "    \"causal order X -> M -> Y and no unmeasured confounding of any path, which observational data cannot show.\"),",
+        f"  {COMMON_TAIL})",
+    ]
+    return "\n".join(L) + "\n"
+
+
+def _alpha(ctx: Ctx) -> str:
+    L = _prologue(ctx, "items") + [
+        "sx_al <- psych::alpha(sx_d, check.keys = FALSE, warnings = FALSE)",
+        "sx_tot <- sx_al$total",
+        "sx_drop <- sx_al$alpha.drop",
+        "sx_result <- list(tables = list(",
+        "  sx_table(\"Reliability\", data.frame(items = ncol(sx_d), n = nrow(sx_d), raw_alpha = sx_tot$raw_alpha,",
+        "    std_alpha = sx_tot$std.alpha, average_r = sx_tot$average_r, mean = sx_tot$mean, sd = sx_tot$sd),",
+        "    notes = \"Cronbach's alpha (psych::alpha). Items are not reverse-keyed automatically: reverse negatively worded items first.\"),",
+        "  sx_table(\"If an item is dropped\", data.frame(item = unname(sx_names[rownames(sx_drop)]), raw_alpha = sx_drop$raw_alpha,",
+        "    std_alpha = sx_drop$std.alpha), notes = \"Alpha of the scale without each item.\")),",
+        f"  {COMMON_TAIL})",
+    ]
+    return "\n".join(L) + "\n"
+
+
 # ============================================================================ specs
 
 DV = Slot("dependent", "Dependent variable", "continuous")
@@ -642,4 +697,18 @@ SPECS: list[AnalysisSpec] = [
                  [Slot("dependent", "Outcome (two values)", "binary"), Slot("predictors", "Predictors", "any", 1, 10)],
                  [INTERACTIONS, CONF], ["detectseparation", "ggplot2"], _logistic, n_plots=1),
 ]
+SPECS.append(AnalysisSpec(
+    "mediation", "Mediation (optional)", "Simple mediation (X -> M -> Y)",
+    "Indirect effect of X on Y through one mediator M, with a bootstrap confidence interval. Separate from "
+    "discovery; does not establish causation.",
+    [Slot("x", "Predictor X", "continuous"), Slot("mediator", "Mediator M", "continuous"), DV,
+     Slot("covariates", "Covariates (optional)", "any", 0, 5)],
+    [Option("boot", "Bootstrap resamples", "int", 2000, min=200, max=20000),
+     Option("seed", "Random seed", "int", 1, min=1, max=10**9), CONF],
+    ["stats"], _mediation, missing_data="Complete cases on X, M, Y and covariates (bootstrap resamples these rows)."))
+SPECS.append(AnalysisSpec(
+    "alpha", "Psychometrics (optional)", "Scale reliability (Cronbach's alpha)",
+    "Internal consistency of a set of items (psych::alpha). Runs only when you choose it.",
+    [Slot("items", "Items", "any", 2, 40)], [], ["psych"], _alpha,
+    missing_data="Complete cases on all items."))
 BY_KEY = {s.key: s for s in SPECS}

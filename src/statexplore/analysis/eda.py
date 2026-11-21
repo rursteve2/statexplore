@@ -25,6 +25,7 @@ PLOT_KINDS = {
     "bar": "Bar chart",
     "pairs": "Scatterplot matrix (psych::pairs.panels)",
     "correlation": "Correlation heatmap",
+    "missing": "Missing data (% per variable)",
 }
 MAX_MATRIX_VARS = 10
 
@@ -134,6 +135,10 @@ def _validate_plot(ds: Dataset, req: PlotRequest) -> None:
         if len(vs) != 1:
             raise AnalysisInputError("Choose one categorical variable.")
         _check_categorical(ds, vs[0])
+    elif k == "missing":
+        if not 1 <= len(vs) <= 60:
+            raise AnalysisInputError("Choose 1 to 60 variables.")
+        return
     elif k in ("pairs", "correlation"):
         if not 2 <= len(vs) <= MAX_MATRIX_VARS:
             raise AnalysisInputError(f"Choose 2 to {MAX_MATRIX_VARS} continuous variables.")
@@ -151,7 +156,19 @@ def plot_body(ds: Dataset, req: PlotRequest, png_path: str) -> tuple[str, list[s
         f"sx_plot_file <- {r_str(png_path)}",
         f"sx_used <- {r_vec(used)}",
     ]
-    if req.kind in ("pairs", "correlation"):
+    if req.kind == "missing":
+        L += [
+            "sx_df <- dat[, sx_used, drop = FALSE]",
+            "sx_n <- nrow(sx_df)",
+            "sx_mis <- data.frame(variable = unname(sx_names[sx_used]), percent = 100 * colMeans(is.na(sx_df)))",
+            "sx_mis$variable <- factor(sx_mis$variable, levels = sx_mis$variable[order(sx_mis$percent)])",
+            "sx_plot <- ggplot2::ggplot(sx_mis, ggplot2::aes(x = variable, y = percent)) +",
+            "  ggplot2::geom_col(fill = \"#b2182b\") + ggplot2::coord_flip() +",
+            "  ggplot2::geom_text(ggplot2::aes(label = sprintf(\"%.1f%%\", percent)), hjust = -0.1, size = 3) +",
+            "  ggplot2::scale_y_continuous(limits = c(0, 105)) +",
+            "  ggplot2::labs(x = NULL, y = \"% missing\")",
+        ]
+    elif req.kind in ("pairs", "correlation"):
         L.append("sx_df <- dat[, sx_used, drop = FALSE]  # pairwise deletion")
         L.append("sx_n <- sum(stats::complete.cases(sx_df))")
     else:
@@ -214,6 +231,8 @@ def plot_body(ds: Dataset, req: PlotRequest, png_path: str) -> tuple[str, list[s
         if req.kind == "correlation":
             subtitle = ('paste0("Each r uses all rows complete on that pair; ", sx_n, '
                         '" rows are complete on every variable")')
+        elif req.kind == "missing":
+            subtitle = 'paste0(sx_n, " rows (after filters); missing = system-missing or declared user-missing")'
         else:
             subtitle = 'paste0("n = ", sx_n, " complete cases")'
         L.append(f"sx_plot <- sx_plot + {gg}labs(title = {r_str(title)}, subtitle = {subtitle})")
@@ -251,7 +270,8 @@ def plot(session: RSession, ds: Dataset, req: PlotRequest) -> tuple[AnalysisResu
             artifacts[key] = png.read_bytes()
             result.plots.append(key)
             result.n_used = int(raw["n"])
-            result.missing_data = ("Pairwise deletion; n used = rows complete on every variable"
+            result.missing_data = ("All rows" if req.kind == "missing" else
+                                   "Pairwise deletion; n used = rows complete on every variable"
                                    if req.kind in ("pairs", "correlation")
                                    else "Complete cases on the plotted variables")
     return result, artifacts

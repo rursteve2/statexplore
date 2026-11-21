@@ -120,7 +120,17 @@ def _matches(ds: Dataset, name: str, kind: str) -> bool:
 
 
 def eligible(ds: Dataset, slot: Slot) -> list[str]:
-    return [n for n in ds.names() if _matches(ds, n, slot.kind)]
+    """Variables offered for a slot: right kind, not constant, and not the ID (except in ID slots)."""
+    from ..core.variables import Role
+
+    out = []
+    for n in ds.names():
+        v = ds.var(n)
+        if v.role is Role.ID and slot.key != "id":
+            continue
+        if _matches(ds, n, slot.kind) and ds.analysis_frame([n])[n].dropna().nunique() > 1:
+            out.append(n)
+    return out
 
 
 def validate(spec: AnalysisSpec, ds: Dataset, vars_: dict[str, list[str]], opts: dict[str, Any]) -> dict[str, Any]:
@@ -140,6 +150,16 @@ def validate(spec: AnalysisSpec, ds: Dataset, vars_: dict[str, list[str]], opts:
             if not _matches(ds, n, slot.kind):
                 raise AnalysisInputError(f"{slot.label}: {ds.var(n).display_name} must be "
                                          f"{KIND_LABELS[slot.kind]}.")
+    from .models import variable_problem
+
+    chosen_all = [n for names in vars_.values() for n in names]
+    if chosen_all:
+        frame = ds.analysis_frame(list(dict.fromkeys(chosen_all))).dropna()
+        for slot in spec.slots:
+            for n in vars_.get(slot.key, []):
+                why = variable_problem(ds, n, frame, allow_many_levels=slot.key in ("id", "variables"))
+                if why:
+                    raise AnalysisInputError(why)
     clean: dict[str, Any] = {}
     for o in spec.options:
         val = opts.get(o.key, o.default)

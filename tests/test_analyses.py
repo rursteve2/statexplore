@@ -427,3 +427,38 @@ def test_repeated_ids_flagged(r_session, tmp_path, rng):
     one_per.set_variable_field("pid", "role", "id")
     res, _ = run(r_session, one_per, "lm", dependent="y", predictors=["x"])
     assert res.status is Status.OK
+
+
+def test_mediation(r_session, tmp_path, rng):
+    import statsmodels.formula.api as smf
+
+    n = 300
+    x = rng.normal(size=n)
+    m = 0.6 * x + rng.normal(size=n)
+    y = 0.5 * m + 0.2 * x + rng.normal(size=n)
+    df = pd.DataFrame({"x": x, "m": m, "y": y})
+    ds = load(tmp_path, df)
+    res, _ = run(r_session, ds, "mediation", {"boot": 500, "seed": 7}, x="x", mediator="m", dependent="y")
+    paths = tab(res, "Mediation paths").set_index("path")
+    a = smf.ols("m ~ x", df).fit().params["x"]
+    fb = smf.ols("y ~ x + m", df).fit()
+    assert paths.loc["a: X -> M", "estimate"] == pytest.approx(a, rel=REL)
+    assert paths.loc["c': direct effect X -> Y", "estimate"] == pytest.approx(fb.params["x"], rel=REL)
+    ab = paths.loc["a*b: indirect effect"]
+    assert ab["estimate"] == pytest.approx(a * fb.params["m"], rel=REL)
+    assert ab["ci_low"] < ab["estimate"] < ab["ci_high"] and ab["ci_low"] > 0
+    again, _ = run(r_session, ds, "mediation", {"boot": 500, "seed": 7}, x="x", mediator="m", dependent="y")
+    assert tab(again, "Mediation paths").loc[4, "ci_low"] == ab["ci_low"]  # seeded: reproducible
+    assert "not proof of a causal pathway" in res.values["notes"][0]
+
+
+def test_cronbach_alpha(r_session, tmp_path, rng):
+    true = rng.normal(size=200)
+    df = pd.DataFrame({f"i{k}": true + rng.normal(size=200) for k in range(5)})
+    ds = load(tmp_path, df)
+    res, _ = run(r_session, ds, "alpha", items=list(df.columns))
+    X = df.to_numpy()
+    k = X.shape[1]
+    alpha = k / (k - 1) * (1 - X.var(axis=0, ddof=1).sum() / X.sum(axis=1).var(ddof=1))
+    assert tab(res, "Reliability").iloc[0]["raw_alpha"] == pytest.approx(alpha, rel=1e-9)
+    assert len(tab(res, "If an item is dropped")) == 5

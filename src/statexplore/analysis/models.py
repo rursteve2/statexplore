@@ -97,8 +97,65 @@ def from_candidate(run: Any, row: dict[str, Any]) -> ModelSpec:
     """ModelSpec for a discovery candidate (same terms and same shared sample)."""
     s = run.settings
     focal = tuple(row["focal"])
-    terms: list[Term] = [focal] + [(v,) for v in list(row["covariates"]) + list(s.required)]
+    if row.get("kind") == "all_two_way":
+        terms: list[Term] = list(combinations(focal, 2)) + [(v,) for v in s.required]
+        focal = None
+    else:
+        terms = [focal] + [(v,) for v in list(row["covariates"]) + list(s.required)]
     sample = [s.outcome] + s.candidates + s.required if s.sample == "shared" else []
     return ModelSpec(outcome=s.outcome, terms=terms, family=run.family, label=f"Candidate #{row['idx']}",
                      source=f"discovery {run.id} #{row['idx']}", sample_vars=sample, focal=focal,
                      selected_from=run.total)
+
+
+# ---- pre-fit checks (§7.2: reject unidentifiable models with a reason) ---------------------
+
+MAX_CATEGORIES = 50
+
+
+class ModelCheckError(ValueError):
+    """User-facing reason why a model cannot be fitted."""
+
+
+def variable_problem(ds: Dataset, name: str, frame=None, allow_many_levels: bool = False) -> str:
+    """Why a variable cannot be used as a predictor/outcome in the analysed rows ('' if fine)."""
+    from ..core.variables import Role
+
+    v = ds.var(name)
+    col = (frame[name] if frame is not None else ds.analysis_frame([name])[name]).dropna()
+    k = col.nunique()
+    if k == 0:
+        return f"{v.display_name} has no non-missing values in the rows analysed."
+    if k == 1:
+        return (f"{v.display_name} has the same value in every row analysed ({col.iloc[0]!r}), so it cannot "
+                f"explain anything. Remove it from the model.")
+    if v.role is Role.ID and not allow_many_levels:
+        return (f"{v.display_name} is the participant ID. IDs identify people; they are not predictors or "
+                f"outcomes. Use the Mixed & Longitudinal workspace (or Repeated measures in Discovery).")
+    if v.is_categorical and k > MAX_CATEGORIES and not allow_many_levels:
+        return (f"{v.display_name} has {k:,} categories: it looks like an identifier, not a predictor (each "
+                f"category adds a parameter). Set its role to id/cluster, recode it into fewer groups, or treat "
+                f"it as continuous if it is a number.")
+    return ""
+
+
+def check_model(ds: Dataset, m: ModelSpec) -> int:
+    """Raise ModelCheckError if the model cannot be fitted; return the complete-case n."""
+    names = list(dict.fromkeys([m.outcome] + m.variables + m.sample_vars))
+    frame = ds.analysis_frame(names).dropna()
+    if len(frame) < 5:
+        raise ModelCheckError(f"Only {len(frame)} rows have no missing values on the model's variables.")
+    for n in [m.outcome] + m.variables:
+        why = variable_problem(ds, n, frame)
+        if why:
+            raise ModelCheckError(why)
+    params = 1
+    for t in m.terms:
+        p = 1
+        for v in t:
+            p *= (frame[v].nunique() - 1) if ds.var(v).is_categorical else 1
+        params += p
+    if params >= len(frame) - 1:
+        raise ModelCheckError(f"The model needs about {params} parameters but only {len(frame)} rows are "
+                              "complete: it cannot be estimated. Use fewer variables or interactions.")
+    return len(frame)

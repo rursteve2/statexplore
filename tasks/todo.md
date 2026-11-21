@@ -171,6 +171,20 @@ Test dataset: `E:\Downloads\hrs_least_missing_1000.sav` (HRS, long format, 1000 
 - Packaging bugs found by running the build: relative imports in the frozen entry point (→ launcher.py); `r/library` merged into R's own `R/library` on case-insensitive Windows (→ `rlib/`); a crashed windowed exe held the file and blocked the rebuild (→ self-test timeout).
 - Deviation: R package versions are pinned by `r/packages.lock.json` (exact versions from the bundled library) instead of renv — the bundled library itself is the reproducible environment.
 
+## Spec compliance pass (2026-11-21, after user report)
+User hit: `Interaction plot: HHIDPN ~ HHID * PN + HHID * ADVTR_MATCHED * …` → raw R error (constant factor; ID variables used as predictors).
+- [x] A. Pre-fit model checks everywhere (constant variables, one-category factors, >50-category "identifier-like" factors, ID-role variables as outcome/predictor, too few rows) + friendly translation of R errors; hide constant variables from predictor lists
+- [x] B. §9.8 Mediation workflow (single mediator, bootstrap CI of indirect effect, non-causal note)
+- [x] C. §8/§17 Missing-data visualization (EDA plot)
+- [x] D. §10.8 Discovery table: teaching interpretation + validation status columns (validation status filled by stability runs)
+- [x] E. §16.3 Teaching Studio: user-set values for held predictors
+- [x] F. §15.5/§16.1 Random-effect (caterpillar) plot, residual autocorrelation plot, model-comparison plot
+- [x] G. §10.3 "all eligible two-way terms" candidate model; §21 caching of already-fitted candidates
+- [x] H. §25 Test C: planted three-way interaction found by discovery
+- [x] I. `docs/spec-compliance.md`: every PDF section → status / evidence / deviation
+- [x] Also: Cronbach's alpha (§5 optional psychometrics); README corrected (no installer exists yet; how to build/publish it)
+- Result: 152/152 tests pass. Remaining open items are listed at the end of docs/spec-compliance.md.
+
 ## Remaining from earlier phases
 - [x] Mixed models inside the discovery engine: random intercept per participant, ML likelihood-ratio focal test, Δ marginal R², singular/convergence flags; LR statistic verified against statsmodels MixedLM (2026-11-21)
 - [ ] Binary (logistic) mixed models (glmer) — not started

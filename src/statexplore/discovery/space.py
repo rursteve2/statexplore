@@ -51,6 +51,7 @@ class SearchSettings:
     conf: float = 0.95
     batch_size: int = 40
     participant: str | None = None     # set: linear mixed models with a random intercept per participant
+    all_two_way: bool = False          # subset mode: also test each subset's model with ALL two-way terms (§10.3)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -71,6 +72,7 @@ class Candidate:
     focal: tuple[str, ...]          # variable names, in candidate order
     covariates: tuple[str, ...]     # other subset members (subset mode)
     required: tuple[str, ...]
+    kind: str = "focal"             # "focal" | "all_two_way" (focal = every pair among `focal`, tested jointly)
 
     @property
     def order(self) -> int:
@@ -130,10 +132,15 @@ def validate_settings(ds: Dataset, s: SearchSettings) -> str:
         raise SearchSpaceError("Invalid search option.")
     if not 0 < s.alpha < 1:
         raise SearchSpaceError("The significance threshold must be between 0 and 1.")
-    for n in s.candidates + s.required:
+    from ..analysis.models import variable_problem
+
+    for n in [s.outcome] + s.candidates + s.required:
         v = ds.var(n)
-        if v.storage is Storage.DATETIME or (not v.is_categorical and v.storage is not Storage.NUMERIC):
+        if n != s.outcome and (v.storage is Storage.DATETIME or (not v.is_categorical and v.storage is not Storage.NUMERIC)):
             raise SearchSpaceError(f"{v.display_name} cannot be used as a predictor.")
+        why = variable_problem(ds, n)
+        if why:
+            raise SearchSpaceError(why)
     return family
 
 
@@ -149,7 +156,8 @@ def count_candidates(s: SearchSettings) -> int:
     orders = _orders(s)
     if s.covariate_mode == "focal":
         return sum(comb(p, o) for o in orders)
-    return sum(comb(p, size) * sum(comb(size, o) for o in orders)
+    extra = lambda size: 1 if s.all_two_way and size >= 3 else 0  # noqa: E731
+    return sum(comb(p, size) * (sum(comb(size, o) for o in orders) + extra(size))
                for size in range(2, s.max_predictors - r + 1))
 
 
@@ -178,6 +186,10 @@ def enumerate_candidates(s: SearchSettings, start: int = 0) -> Iterator[Candidat
                     if idx >= start:
                         yield emit(f, subset)
                     idx += 1
+            if s.all_two_way and size >= 3:
+                if idx >= start:
+                    yield Candidate(idx, tuple(names[i] for i in subset), (), req, "all_two_way")
+                idx += 1
 
 
 # ---- formulas ---------------------------------------------------------------------
@@ -189,6 +201,10 @@ def hierarchy(focal: tuple[str, ...]) -> list[tuple[str, ...]]:
 
 def model_terms(c: Candidate) -> tuple[list[tuple[str, ...]], list[tuple[str, ...]]]:
     """(full terms, reduced terms) as tuples of variable names."""
+    if c.kind == "all_two_way":
+        mains = [(v,) for v in c.focal]
+        req = [(v,) for v in c.required]
+        return mains + list(combinations(c.focal, 2)) + req, mains + req
     full = hierarchy(c.focal) + [(v,) for v in c.covariates + c.required]
     reduced = [t for t in full if t != c.focal]
     return full, reduced
@@ -197,16 +213,22 @@ def model_terms(c: Candidate) -> tuple[list[tuple[str, ...]], list[tuple[str, ..
 def candidate_key(c: Candidate) -> str:
     full, _ = model_terms(c)
     terms = sorted(":".join(sorted(t)) for t in full)
-    return f"{':'.join(sorted(c.focal))}|{'+'.join(terms)}"
+    prefix = "ALL2|" if c.kind == "all_two_way" else ""
+    return f"{prefix}{':'.join(sorted(c.focal))}|{'+'.join(terms)}"
 
 
 def display_formula(ds: Dataset, outcome: str, c: Candidate) -> str:
     dn = lambda n: ds.var(n).display_name  # noqa: E731
+    if c.kind == "all_two_way":
+        parts = ["(" + " + ".join(dn(v) for v in c.focal) + ")^2"] + [dn(v) for v in c.required]
+        return f"{dn(outcome)} ~ {' + '.join(parts)}"
     parts = [" * ".join(dn(v) for v in c.focal)] + [dn(v) for v in c.covariates + c.required]
     return f"{dn(outcome)} ~ {' + '.join(parts)}"
 
 
 def focal_label(ds: Dataset, c: Candidate) -> str:
+    if c.kind == "all_two_way":
+        return "all two-way: " + ", ".join(ds.var(v).display_name for v in c.focal)
     return " × ".join(ds.var(v).display_name for v in c.focal)
 
 

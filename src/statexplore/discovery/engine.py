@@ -73,6 +73,7 @@ class DiscoveryRun:
     n_sample: int | None = None
     engine: dict[str, Any] = field(default_factory=dict)
     warnings: list[str] = field(default_factory=list)
+    validation: dict[int, str] = field(default_factory=dict)   # candidate index -> stability summary
 
     @property
     def is_complete(self) -> bool:
@@ -85,7 +86,8 @@ class DiscoveryRun:
     def meta_dict(self) -> dict[str, Any]:
         return {k: getattr(self, k) for k in ("id", "family", "total", "signature", "created_at", "status",
                                                "stop_reason", "n_done", "stop_index", "elapsed_s",
-                                               "n_sample", "engine", "warnings")} | {"settings": self.settings.to_dict()}
+                                               "n_sample", "engine", "warnings")} | {
+            "settings": self.settings.to_dict(), "validation": {str(k): v for k, v in self.validation.items()}}
 
     @classmethod
     def from_meta(cls, meta: dict[str, Any], rows: list[dict[str, Any]]) -> "DiscoveryRun":
@@ -96,6 +98,7 @@ class DiscoveryRun:
                   "n_sample", "engine"):
             setattr(run, k, meta[k])
         run.warnings = list(meta.get("warnings", []))
+        run.validation = {int(k): v for k, v in (meta.get("validation") or {}).items()}
         run.rows = rows
         return run
 
@@ -138,9 +141,32 @@ def create_run(ds: Dataset, s: SearchSettings) -> DiscoveryRun:
     return run
 
 
+CACHE_FIELDS = ("outcome", "sample", "max_params", "conf", "participant")
+
+
+def cache_from(run: DiscoveryRun, previous: list[DiscoveryRun]) -> dict[str, dict[str, Any]]:
+    """Rows already fitted by earlier searches that used exactly the same data, sample and model
+    settings (§21 caching). The shared complete-case sample depends on the whole variable pool,
+    so the pool must match too."""
+    s = run.settings
+    pool = sorted(s.candidates + s.required)
+    out: dict[str, dict[str, Any]] = {}
+    for prev in previous:
+        ps = prev.settings
+        if prev is run or prev.signature != run.signature or prev.family != run.family:
+            continue
+        if any(getattr(ps, f) != getattr(s, f) for f in CACHE_FIELDS) or sorted(ps.candidates + ps.required) != pool:
+            continue
+        for r in prev.rows:
+            if r["status"] != "failed" and not r.get("speculative"):
+                out.setdefault(r["key"], r)
+    return out
+
+
 def execute(run: DiscoveryRun, ds: Dataset, *, rscript: str | None = None,
             progress: Callable[[DiscoveryRun], None] | None = None,
-            cancel: threading.Event | None = None, workdir: str | Path | None = None) -> DiscoveryRun:
+            cancel: threading.Event | None = None, workdir: str | Path | None = None,
+            cache: dict[str, dict[str, Any]] | None = None) -> DiscoveryRun:
     """Run (or resume) a search. Blocks; call from a background thread."""
     s = run.settings
     if run.signature != data_signature(ds):
@@ -168,7 +194,7 @@ def execute(run: DiscoveryRun, ds: Dataset, *, rscript: str | None = None,
             for f in starts:
                 f.result()
             run.n_sample = pooled[0].n_sample if s.sample == "shared" else None
-            _dispatch(run, ds, pooled, ex, cancel, progress, t_start, elapsed_before)
+            _dispatch(run, ds, pooled, ex, cancel, progress, t_start, elapsed_before, cache or {})
     except Exception as e:
         run.status, run.stop_reason = "failed", str(e)
         raise
@@ -180,7 +206,8 @@ def execute(run: DiscoveryRun, ds: Dataset, *, rscript: str | None = None,
 
 
 def _dispatch(run: DiscoveryRun, ds: Dataset, pooled: list[_PooledSession], ex: ThreadPoolExecutor,
-              cancel: threading.Event, progress, t_start: float, elapsed_before: float) -> None:
+              cancel: threading.Event, progress, t_start: float, elapsed_before: float,
+              cache: dict[str, dict[str, Any]]) -> None:
     s = run.settings
     it = enumerate_candidates(s, start=run.n_done)
     # Budgets apply per execution, so resuming a budget-limited search continues it.
@@ -207,6 +234,14 @@ def _dispatch(run: DiscoveryRun, ds: Dataset, pooled: list[_PooledSession], ex: 
             if budget is not None:
                 budget -= len(batch)
             dispatched_to = batch[-1].index + 1
+            cached = [c for c in batch if candidate_key(c) in cache]
+            for c in cached:  # identical model already fitted on identical data: reuse its result
+                row = dict(cache[candidate_key(c)], idx=c.index, cached=True, speculative=False)
+                run.rows.append(row)
+                n_sig += _qualifies(row, s.alpha)
+            batch = [c for c in batch if candidate_key(c) not in cache]
+            if not batch:
+                continue
             ps = idle.pop()
             fut = ex.submit(ps.run_batch, ds, batch_script(ds, batch), len(batch))
             in_flight[fut] = (ps, batch)
@@ -286,9 +321,11 @@ def _row(ds: Dataset, run: DiscoveryRun, c: Candidate, r: dict[str, Any]) -> dic
         "key": candidate_key(c),
         "focal": list(c.focal),
         "covariates": list(c.covariates),
+        "kind": c.kind,
         "order": c.order,
         "interaction": focal_label(ds, c),
         "formula": display_formula(ds, run.settings.outcome, c),
+        "cached": False,
         "status": str(r.get("status", "failed")),
         "reason": str(r.get("reason") or ""),
         "flags": str(flags),
@@ -343,7 +380,41 @@ def results_frame(run: DiscoveryRun) -> pd.DataFrame:
     df["tier"] = np.select(
         [~in_family, df["sig_adj"] & clean, df["sig_raw"] & clean, df["sig_raw"]],
         ["", "A", "B", "C"], default="D")
+    df["validation"] = [run.validation.get(int(i), "not validated" if f else "") for i, f in zip(df["idx"], in_family)]
+    df["interpretation"] = [interpret_row(r, s) for r in df.to_dict("records")]
     return df
+
+
+def _p(p: float) -> str:
+    return "< .001" if p < 0.001 else f"{p:.3f}".lstrip("0")
+
+
+def interpret_row(r: dict[str, Any], s: SearchSettings) -> str:
+    """One-sentence teaching interpretation for a results row (§10.8)."""
+    if r["status"] in ("invalid", "failed"):
+        return f"Not tested: {r['reason']}"
+    if r.get("speculative"):
+        return "Evaluated after the stop point; not part of this search's results."
+    outcome = r["formula"].split(" ~ ")[0]
+    parts = r["interaction"].split(" × ")
+    if r.get("kind") == "all_two_way":
+        what = f"the two-way interactions among {r['interaction'].split(': ', 1)[1]} jointly improve the model of {outcome}"
+    elif len(parts) == 2:
+        what = f"the {parts[0]}–{outcome} relationship differs across {parts[1]}"
+    else:
+        what = f"the {parts[0]} × {parts[1]} interaction on {outcome} differs across {parts[2]}"
+    p, pa = r["p"], r.get("p_adj")
+    eff = f"; it explains {100 * r['effect']:.1f}% of the outcome's variation" if r.get("effect") is not None else ""
+    if r.get("sig_adj"):
+        text = f"Evidence that {what} (p {_p(p)}, adjusted p {_p(pa)}{eff}). Still exploratory: check stability and new data."
+    elif r.get("sig_raw"):
+        text = (f"Possible sign that {what} (p {_p(p)}), but not after adjusting for the number of tests "
+                f"(adjusted p {_p(pa)}): plausibly a chance finding.")
+    else:
+        text = f"No clear evidence that {what} (p {_p(p)}); this is not proof that there is no difference."
+    if r.get("flags"):
+        text += f" Screening flags: {r['flags']}."
+    return text
 
 
 def discovery_ranking(df: pd.DataFrame, by: str = "p") -> pd.DataFrame:

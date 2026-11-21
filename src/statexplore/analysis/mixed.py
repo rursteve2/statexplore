@@ -65,6 +65,15 @@ def validate(ds: Dataset, s: MixedSpec) -> None:
     names = [s.outcome, s.id] + ([s.time] if s.time else []) + ([s.cluster] if s.cluster else []) + s.predictors
     if len(set(names)) != len(names):
         raise MixedInputError("Each variable can have only one role.")
+    from .models import variable_problem
+
+    frame = ds.analysis_frame(list(dict.fromkeys(names))).dropna()
+    if len(frame) < 10:
+        raise MixedInputError(f"Only {len(frame)} rows have no missing values on these variables.")
+    for n in [s.outcome] + s.predictors:
+        why = variable_problem(ds, n, frame)
+        if why:
+            raise MixedInputError(why)
     for n in s.predictors:
         pv = ds.var(n)
         if not (pv.is_categorical or (pv.measure is Measure.CONTINUOUS and pv.storage is Storage.NUMERIC)):
@@ -267,11 +276,45 @@ def build(ds: Dataset, s: MixedSpec, plot_paths: list[str]) -> str:
         "  notes = paste0(\"Correlation of within-participant residuals k occasions apart (normalized residuals for \",",
         "  \"nlme/mmrm). Large values suggest an AR(1) residual structure.\"))",
     ]
-    L += _trajectory(ds, s, plot_paths)
+    L += _trajectory(ds, s, plot_paths[:3] if s.time else [])
+    L += _extra_plots(s, plot_paths[3:])
     L.append("sx_result <- list(tables = sx_tabs, checks = sx_checks, n_used = nrow(sx_d), n_excluded = nrow(dat) - nrow(sx_d),")
     L.append("  notes = c(\"Mixed and marginal models use every available observation: participants with missing \",")
     L.append("    \"occasions still contribute. Estimates are unbiased if data are missing at random given the model (MAR).\"))")
     return "\n".join(L) + "\n"
+
+
+def _extra_plots(s: MixedSpec, paths: list[str]) -> list[str]:
+    """Random-effect (caterpillar) plot and residual autocorrelation plot (§15.5, §16.1)."""
+    L: list[str] = []
+    if len(paths) >= 1 and s.engine != "mmrm":
+        L += [
+            "# random intercepts with approximate 95% intervals (lme4: conditional SDs)",
+            "sx_re <- if (inherits(sx_fit, \"merMod\")) {",
+            "  r <- lme4::ranef(sx_fit, condVar = TRUE)$sx_id; sdv <- sqrt(attr(r, \"postVar\")[1, 1, ])",
+            "  data.frame(id = rownames(r), value = r[[1]], lo = r[[1]] - 1.96 * sdv, hi = r[[1]] + 1.96 * sdv)",
+            "} else { r <- nlme::ranef(sx_fit); r <- if (is.list(r) && !is.data.frame(r)) r[[length(r)]] else r",
+            "  data.frame(id = rownames(r), value = r[[1]], lo = NA_real_, hi = NA_real_) }",
+            "sx_re <- sx_re[order(sx_re$value), ]; sx_re$rank <- seq_len(nrow(sx_re))",
+            "sx_p4 <- ggplot2::ggplot(sx_re, ggplot2::aes(x = rank, y = value)) +",
+            "  ggplot2::geom_hline(yintercept = 0, linetype = 2) +",
+            "  (if (all(is.na(sx_re$lo))) NULL else ggplot2::geom_errorbar(ggplot2::aes(ymin = lo, ymax = hi), colour = \"grey70\", width = 0)) +",
+            "  ggplot2::geom_point(size = 0.8, colour = \"#2166ac\") +",
+            "  ggplot2::labs(title = \"Random intercepts (participant deviations from the average)\",",
+            "    subtitle = \"Sorted; bars = approximate 95% intervals\", x = \"Participants (sorted)\", y = \"Deviation\") +",
+            "  ggplot2::theme_minimal()",
+            f"ggplot2::ggsave({r_str(paths[0])}, sx_p4, width = 7, height = 4.5, dpi = 120)",
+        ]
+    if len(paths) >= 2:
+        L += [
+            "sx_p5 <- ggplot2::ggplot(data.frame(lag = 1:3, correlation = sx_lagcor), ggplot2::aes(x = factor(lag), y = correlation)) +",
+            "  ggplot2::geom_col(fill = \"#b2182b\", width = 0.5) + ggplot2::geom_hline(yintercept = 0) +",
+            "  ggplot2::coord_cartesian(ylim = c(-1, 1)) +",
+            "  ggplot2::labs(title = \"Residual autocorrelation within participants\", x = \"Lag (occasions apart)\",",
+            "    y = \"Correlation\") + ggplot2::theme_minimal()",
+            f"ggplot2::ggsave({r_str(paths[1])}, sx_p5, width = 6, height = 4, dpi = 120)",
+        ]
+    return L
 
 
 def _trajectory(ds: Dataset, s: MixedSpec, paths: list[str]) -> list[str]:
@@ -374,7 +417,7 @@ def _internal_names(ds: Dataset, s: MixedSpec) -> dict[str, str]:
 def run(session: RSession, ds: Dataset, s: MixedSpec) -> tuple[AnalysisResult, dict[str, bytes]]:
     from .framework import _alias_map, _as_list, _parse_table
 
-    paths = [session.new_plot_path() for _ in range(3 if s.time else 0)]
+    paths = [session.new_plot_path() for _ in range(5)]  # 3 trajectory/diagnostic + random effects + ACF
     body = build(ds, s, [p.as_posix() for p in paths])
     pk = {"lme4": ["lme4", "lmerTest", "performance"], "nlme": ["nlme", "performance"], "mmrm": ["mmrm", "car"]}[s.engine]
     title = {"lme4": "Linear mixed model", "nlme": "Linear mixed model with residual autocorrelation",

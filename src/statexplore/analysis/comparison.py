@@ -4,7 +4,7 @@ from __future__ import annotations
 from ..core.dataset import Dataset
 from ..core.schema import AnalysisResult
 from ..rbridge.codegen import alias, r_str, r_vec
-from .models import ModelSpec
+from .models import ModelCheckError, ModelSpec, check_model
 from .session import RSession
 
 
@@ -17,9 +17,14 @@ def nested_pairs(models: list[ModelSpec]) -> list[tuple[int, int]]:
     return [(i, j) for i, a in enumerate(models) for j, b in enumerate(models) if i != j and a.nested_in(b)]
 
 
-def build(ds: Dataset, models: list[ModelSpec], common_sample: bool) -> str:
+def build(ds: Dataset, models: list[ModelSpec], common_sample: bool, plot_path: str | None = None) -> str:
     if len(models) < 2:
         raise ComparisonError("Select at least two models.")
+    for m in models:
+        try:
+            check_model(ds, m)
+        except ModelCheckError as e:
+            raise ComparisonError(f"{m.label or m.display(ds)}: {e}") from None
     outcomes = {(m.outcome, m.family) for m in models}
     if len(outcomes) != 1:
         raise ComparisonError("All models must have the same outcome (and model family) to be compared.")
@@ -96,6 +101,18 @@ def build(ds: Dataset, models: list[ModelSpec], common_sample: bool) -> str:
             "  notes = " + r_str("F-test of the added terms (same observations)." if gauss
                                  else "Likelihood-ratio test of the added terms (same observations).") + ")",
         ]
+    if plot_path:
+        L += [
+            "sx_pl <- data.frame(model = factor(sx_labels, levels = rev(sx_labels)), delta_AIC = sx_fit_tab$delta_AIC,",
+            "  delta_BIC = sx_fit_tab$delta_BIC)",
+            "sx_pl <- rbind(data.frame(model = sx_pl$model, criterion = \"AIC\", delta = sx_pl$delta_AIC),",
+            "  data.frame(model = sx_pl$model, criterion = \"BIC\", delta = sx_pl$delta_BIC))",
+            "sx_p <- ggplot2::ggplot(sx_pl, ggplot2::aes(x = delta, y = model, colour = criterion)) +",
+            "  ggplot2::geom_point(size = 3) + ggplot2::geom_vline(xintercept = 2, linetype = 2, colour = \"grey60\") +",
+            "  ggplot2::labs(title = \"Model comparison\", subtitle = \"Difference from the best model (0 = best; dashed line = 2)\",",
+            "    x = \"Difference in information criterion\", y = NULL) + ggplot2::theme_minimal()",
+            f"ggplot2::ggsave({r_str(plot_path)}, sx_p, width = 7, height = 1.5 + 0.5 * length(sx_labels), dpi = 120)",
+        ]
     non_nested = len(models) * (len(models) - 1) // 2 - len(pairs)
     L += [
         "sx_result <- list(tables = sx_tabs, checks = sx_checks, n_used = max(sx_n), n_excluded = nrow(dat) - max(sx_n),",
@@ -109,9 +126,10 @@ def compare(session: RSession, ds: Dataset, models: list[ModelSpec],
     from .framework import _alias_map, _as_list, _parse_table
     from ..core.schema import Status
 
-    body = build(ds, models, common_sample)
+    plot = session.new_plot_path()
+    body = build(ds, models, common_sample, plot.as_posix())
     result, raw = session.run(ds, kind="model_comparison", title="Model comparison", body=body,
-                              packages=["stats"], inputs={"models": [m.to_dict() for m in models],
+                              packages=["stats", "ggplot2"], inputs={"models": [m.to_dict() for m in models],
                                                           "common_sample": common_sample})
     result.missing_data = ("Rows complete on every model's variables (common sample)" if common_sample
                            else "Each model uses its own complete cases")
@@ -125,4 +143,9 @@ def compare(session: RSession, ds: Dataset, models: list[ModelSpec],
     for c in _as_list(raw.get("checks")):
         result.messages.append(f"Check: {c}")
         result.status = Status.WARNING
-    return result, {}
+    artifacts: dict[str, bytes] = {}
+    if plot.is_file():
+        key = f"plots/{plot.name}"
+        artifacts[key] = plot.read_bytes()
+        result.plots.append(key)
+    return result, artifacts

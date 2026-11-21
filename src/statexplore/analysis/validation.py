@@ -10,7 +10,7 @@ from ..core.dataset import Dataset
 from ..core.schema import AnalysisResult, Status
 from ..core.variables import Role
 from ..rbridge.codegen import alias, r_num, r_str, r_vec
-from .models import ModelSpec
+from .models import ModelCheckError, ModelSpec, check_model
 from .session import RSession
 
 R_VALIDATION_HELPERS = r"""# ---- StatExplore: validation helpers ----
@@ -47,6 +47,11 @@ def _time_var(ds: Dataset) -> str | None:
 
 
 def _model_lines(ds: Dataset, m: ModelSpec, data_expr: str, extra: list[str], reuse_levels: bool = False) -> list[str]:
+    if data_expr == "dat":
+        try:
+            check_model(ds, m)
+        except ModelCheckError as e:
+            raise ValidationInputError(str(e)) from None
     """Complete-case data `sx_d` (model vars + extra columns) and the response column `sx_y`."""
     a = lambda n: alias(ds.var(n).alias)  # noqa: E731
     used = list(dict.fromkeys([a(m.outcome)] + [a(v) for v in m.variables] + [a(v) for v in m.sample_vars]))
@@ -261,20 +266,27 @@ def stability(session: RSession, ds: Dataset, run: Any, rs: ResampleSpec) -> tup
         "sx_dd <- sx_full",
         "sx_p_full <- sx_pvals()",
         "sx_top <- apply(sx_P, 1, function(p) if (all(is.na(p))) NA_integer_ else which.min(p))",
-        "sx_freq <- data.frame(model = sx_labels, p_full_data = sx_p_full,",
+        f"sx_idx <- {r_vec([float(c.index) for c in cands])}",
+        "sx_freq <- data.frame(candidate = sx_idx, model = sx_labels, p_full_data = sx_p_full,",
         f"  selected_significant = colMeans(sx_P < {r_num(run.settings.alpha)}, na.rm = TRUE),",
         "  ranked_first = vapply(seq_along(sx_cands), function(j) mean(sx_top == j, na.rm = TRUE), 0))",
         "sx_freq <- sx_freq[order(-sx_freq$selected_significant, sx_freq$p_full_data), ]",
-        "sx_result <- list(tables = list(sx_table(\"Discovery stability\", head(sx_freq, 50), notes = paste0(\"Share of \",",
+        "sx_result <- list(tables = list(sx_table(\"Discovery stability\", sx_freq, notes = paste0(\"Share of \",",
         f"  {int(rs.resamples)}, \" subsamples (\", {int(round(rs.fraction * 100))}, \"% of \", "
         + ("\"participants\"" if idv else "\"rows\"") + ", \") in which each model's interaction had p < \", "
         + r_num(run.settings.alpha) + ", \", and how often it ranked first. A frequency is not a p-value: \",",
         "  \"it shows how much the discovery depends on which observations happened to be sampled.\"))),",
         "  n_used = nrow(sx_full))",
     ]) + "\n"
-    res, art, _ = _finish(session, ds, "discovery_stability", "Discovery stability (resampling)", body,
-                          {"run": run.id, "resample": vars(rs)}, ["detectseparation"])
+    res, art, raw = _finish(session, ds, "discovery_stability", "Discovery stability (resampling)", body,
+                            {"run": run.id, "resample": vars(rs)}, ["detectseparation"])
     res.seed = rs.seed
+    if raw is not None and res.tables:
+        t = res.tables[0]
+        ci, si, fi = t.columns.index("candidate"), t.columns.index("selected_significant"), t.columns.index("ranked_first")
+        for row in t.rows:
+            run.validation[int(row[ci])] = (f"stability: p < {run.settings.alpha:g} in {row[si]:.0%} of "
+                                            f"{rs.resamples} resamples, ranked first in {row[fi]:.0%}")
     return res, art
 
 

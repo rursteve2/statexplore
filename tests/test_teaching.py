@@ -188,6 +188,7 @@ def test_comparison_nested_tests_and_warnings(lin, r_session, tmp_path):
     f, p, _ = r2.compare_f_test(r1)
     assert nest.loc[0, "statistic"] == pytest.approx(f, rel=1e-9) and nest.loc[0, "p"] == pytest.approx(p, rel=1e-8)
     assert "2 non-nested pair(s)" in res.values["notes"][0]
+    assert len(res.plots) == 1  # model comparison plot
 
     # different observations: warned and nested tests skipped
     df2 = df.copy()
@@ -206,3 +207,46 @@ def test_comparison_rejects_mixed_outcomes(lin):
     _, ds = lin
     with pytest.raises(comparison.ComparisonError):
         comparison.build(ds, [ModelSpec("y", [("x",)], "gaussian"), ModelSpec("m", [("x",)], "gaussian")], True)
+
+
+def test_user_reported_bad_model_is_rejected_with_reason(hrs_path):
+    """Reported: HHIDPN ~ HHID * PN + HHID * ADVTR_MATCHED * WAVE ... gave a raw R contrasts error."""
+    from statexplore.analysis.models import ModelCheckError, check_model
+
+    ds = import_file(hrs_path)
+    bad = ModelSpec("HHIDPN", [("HHID", "PN"), ("HHID", "ADVTR_MATCHED", "WAVE")], "gaussian")
+    with pytest.raises(ModelCheckError) as e:
+        check_model(ds, bad)
+    assert "ADVTR_MATCHED" in str(e.value) or "HHID" in str(e.value)
+    with pytest.raises(ModelCheckError, match="same value in every row"):
+        check_model(ds, ModelSpec("R_BMI", [("ADVTR_MATCHED",)], "gaussian"))
+    with pytest.raises(ModelCheckError, match="categories: it looks like an identifier"):
+        check_model(ds, ModelSpec("R_BMI", [("HHID",)], "gaussian"))
+    ds.set_variable_field("HHIDPN", "role", "id")
+    with pytest.raises(ModelCheckError, match="participant ID"):
+        check_model(ds, ModelSpec("R_BMI", [("HHIDPN",)], "gaussian"))
+    with pytest.raises(teaching.TeachingInputError):
+        teaching.validate(ds, bad, teaching.PlotSpec(x="HHID"))
+    assert check_model(ds, ModelSpec("R_BMI", [("RAGENDER", "R_LBNEUR")], "gaussian")) > 1000
+
+
+def test_r_errors_are_explained():
+    from statexplore.analysis.session import explain_r_error
+
+    assert explain_r_error("contrasts can be applied only to factors with 2 or more levels")[0].startswith("What this means")
+    assert explain_r_error("something else") == []
+
+
+@pytest.mark.r
+def test_user_held_values(lin, r_session):
+    import statsmodels.formula.api as smf
+
+    df, ds = lin
+    m = ModelSpec("y", [("x", "m"), ("c",), ("h",)], "gaussian")
+    res, _ = teaching.run(r_session, ds, m, teaching.PlotSpec(x="x", group="m", held={"c": 1.5, "h": "q"}))
+    pred = tab(res, "Plotted predictions")
+    assert set(pred["c"]) == {1.5} and set(pred["h"]) == {"q"}
+    ref = smf.ols("y ~ x * m + c + C(h)", df).fit()
+    np.testing.assert_allclose(pred["predicted"], ref.predict(pred[["x", "m", "c", "h"]]), rtol=1e-9)
+    with pytest.raises(teaching.TeachingInputError):
+        teaching.validate(ds, m, teaching.PlotSpec(x="x", held={"h": "zzz"}))

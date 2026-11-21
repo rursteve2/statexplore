@@ -149,7 +149,7 @@ def candidate_args(ds: Dataset, c: Candidate) -> str:
     full, reduced = model_terms(c)
     return (f"full = {r_vec([_term(ds, t) for t in full])}, "
             f"reduced = {r_vec([_term(ds, t) for t in reduced])}, "
-            f"focal = {r_str(_term(ds, c.focal))}, "
+            f"focal = {r_str(_term(ds, c.focal) if c.kind == 'focal' else '')}, "
             f"vars = {r_vec([alias(ds.var(v).alias) for v in c.variables])}, "
             f"focal_vars = {r_vec([alias(ds.var(v).alias) for v in c.focal])}")
 

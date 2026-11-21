@@ -72,8 +72,12 @@ class ModelEditor(QWidget):
                 numeric_cont = v.measure is Measure.CONTINUOUS and v.storage is Storage.NUMERIC
                 if numeric_cont or ds.analysis_frame([v.name])[v.name].dropna().nunique() == 2:
                     self.outcome.addItem(v.display_name, v.name)
+                k = ds.analysis_frame([v.name])[v.name].dropna().nunique()
+                if k <= 1:
+                    continue  # constant: can't be a predictor
                 if v.is_categorical or numeric_cont:
-                    it = QListWidgetItem(f"{v.display_name}  ·  {v.measure.value}")
+                    many = f"  ·  {k} categories!" if v.is_categorical and k > 50 else ""
+                    it = QListWidgetItem(f"{v.display_name}  ·  {v.measure.value}{many}")
                     it.setData(Qt.UserRole, v.name)
                     it.setToolTip(v.label or v.name)
                     it.setFlags(it.flags() | Qt.ItemIsUserCheckable)

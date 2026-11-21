@@ -28,14 +28,15 @@ P_COLS = ("p", "p (adjusted)", "p (BH)", "p (Holm)")
 DISCOVERY_COLS = {"idx": "#", "interaction": "Interaction", "formula": "Model", "statistic": "Statistic",
                   "df1": "df1", "df2": "df2", "p": "p", "p_adj": "p (adjusted)", "effect": "Effect",
                   "estimate": "Estimate", "ci_low": "CI low", "ci_high": "CI high", "n": "n",
-                  "n_params": "Parameters", "status": "Status", "flags": "Flags"}
+                  "n_params": "Parameters", "status": "Status", "flags": "Flags",
+                  "validation": "Validation status", "interpretation": "Teaching interpretation"}
 SUPPORT_COLS = {"tier": "Tier", "idx": "#", "interaction": "Interaction", "formula": "Model", "effect": "Effect",
                 "p": "p", "p_adj": "p (adjusted)", "estimate": "Estimate", "ci_low": "CI low",
                 "ci_high": "CI high", "n_params": "Parameters", "aic": "AIC", "r2": "R² (full model)",
-                "flags": "Flags"}
+                "flags": "Flags", "validation": "Validation status", "interpretation": "Teaching interpretation"}
 ALL_COLS = {"idx": "#", "interaction": "Interaction", "formula": "Model", "status": "Status", "reason": "Reason",
             "flags": "Flags", "n": "n", "n_params": "Parameters", "p": "p", "p_bh": "p (BH)",
-            "p_holm": "p (Holm)", "speculative": "After stop point"}
+            "p_holm": "p (Holm)", "speculative": "After stop point", "interpretation": "Teaching interpretation"}
 
 
 class _Bridge(QObject):
@@ -148,6 +149,9 @@ class DiscoveryPage(QWidget):
         self.cov_mode = QComboBox()
         self.cov_mode.addItem("Focal: required covariates only (recommended)", "focal")
         self.cov_mode.addItem("Subsets: every covariate combination (exhaustive)", "subsets")
+        self.all2 = QComboBox()
+        self.all2.addItem("No", False)
+        self.all2.addItem("Yes: also test each subset's model with all two-way terms jointly", True)
         self.sample = QComboBox()
         self.sample.addItem("Shared complete-case sample (recommended)", "shared")
         self.sample.addItem("Complete cases per model (sample sizes differ)", "per_model")
@@ -184,7 +188,8 @@ class DiscoveryPage(QWidget):
         self.max_params.setRange(2, 500)
         self.max_params.setValue(40)
         for label, w in [("Max predictors per model", self.max_pred), ("Interaction order", self.order),
-                         ("Covariate adjustment", self.cov_mode), ("Missing data", self.sample),
+                         ("Covariate adjustment", self.cov_mode),
+                         ("All-two-way models (subset mode)", self.all2), ("Missing data", self.sample),
                          ("Significance threshold (α)", self.alpha), ("Multiple-testing adjustment", self.correction),
                          ("Search mode", self.mode), ("Target significant models (mode B)", self.target),
                          ("Search profile", self.profile), ("Model budget", self.max_models),
@@ -276,6 +281,7 @@ class DiscoveryPage(QWidget):
 
         state.project_changed.connect(self._reload)
         state.metadata_changed.connect(self._reload_lists)
+        state.result_added.connect(lambda r: self._show_run() if r.kind == "discovery_stability" and self.run else None)
         self._reload()
 
     # ---------- variable lists ----------
@@ -309,6 +315,8 @@ class DiscoveryPage(QWidget):
                     self.participant.addItem(f"Random intercept per {v.display_name}", v.name)
                 if v.role.value in ("id",) or (not v.is_categorical and v.storage is not Storage.NUMERIC):
                     continue
+                if ds.analysis_frame([v.name])[v.name].dropna().nunique() <= 1:
+                    continue  # constant in the analysed rows
                 for lst, keep in ((self.cands, keep_c), (self.reqs, keep_r)):
                     it = QListWidgetItem(f"{v.display_name}  ·  {v.measure.value}")
                     it.setToolTip(v.label or v.name)
@@ -389,6 +397,7 @@ class DiscoveryPage(QWidget):
             max_minutes=self.max_minutes.value() or None, workers=self.workers.value(),
             sample=self.sample.currentData(), max_params=self.max_params.value(),
             participant=self.participant.currentData(),
+            all_two_way=bool(self.all2.currentData()) and self.cov_mode.currentData() == "subsets",
         )
 
     def _estimate(self) -> dict[str, Any] | None:
@@ -438,10 +447,12 @@ class DiscoveryPage(QWidget):
         self.cancel_event = threading.Event()
         cancel = self.cancel_event
         rscript = self.state.rscript_setting() or None
+        previous = list(self.state.project.searches) if self.state.project else []
+        cache = engine.cache_from(run, previous)
         self._set_running(True)
         self.progress.setRange(0, max(1, run.total))
         self.state.run_io(
-            lambda: engine.execute(run, ds, rscript=rscript, cancel=cancel,
+            lambda: engine.execute(run, ds, rscript=rscript, cancel=cancel, cache=cache,
                                    progress=lambda r: self.bridge.progress.emit(r)),
             self._finished, self._failed)
 

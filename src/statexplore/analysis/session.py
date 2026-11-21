@@ -81,7 +81,7 @@ class RSession:
             versions = self.worker.request("versions", {"packages": packages}).result
             return AnalysisResult(
                 kind=kind, title=title, engine=_engine(versions), script=script, inputs=inputs,
-                status=Status.FAILED, messages=[f"R error: {e}"],
+                status=Status.FAILED, messages=[f"R error: {e}"] + explain_r_error(str(e)),
                 elapsed_s=time.perf_counter() - t0,
             ), None
         result = AnalysisResult(
@@ -108,6 +108,23 @@ def export_data(ds: Dataset, path: Path) -> None:
     if labels is not None:
         frame["sx_split"] = labels  # train/holdout assignment computed in Python (seeded)
     frame.to_csv(path, index=False, na_rep="", encoding="utf-8", lineterminator="\n")
+
+
+R_ERROR_HINTS = [
+    ("contrasts can be applied only to factors with 2 or more levels",
+     "A categorical variable has only one category in the rows analysed (after removing missing values). "
+     "Remove it, or check filters and missing data."),
+    ("0 (non-NA) cases", "No rows are complete on all the variables used. Check missing data and filters."),
+    ("not identifiable", "Some coefficients cannot be estimated: variables are redundant (perfectly related) "
+     "or a combination of categories has no data."),
+    ("cannot allocate vector", "Not enough memory: the model is too large (often a categorical variable with "
+     "very many categories)."),
+    ("new levels", "A category appears in the evaluation data but not in the data used to fit the model."),
+]
+
+
+def explain_r_error(message: str) -> list[str]:
+    return [f"What this means: {hint}" for pattern, hint in R_ERROR_HINTS if pattern in message]
 
 
 def _engine(versions: dict[str, Any]) -> EngineInfo:

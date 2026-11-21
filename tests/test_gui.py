@@ -212,7 +212,8 @@ def test_mixed_page(window, qtbot, tmp_path, r_worker):
             page.preds.item(i).setCheckState(Qt.Checked)
     page._fit()
     qtbot.waitUntil(lambda: page.current is not None, timeout=60000)
-    assert "Random effects" in page.output.toPlainText() and len(page.current.plots) == 3
+    assert "Random effects" in page.output.toPlainText() and len(page.current.plots) == 5, \
+        (page.current.status, page.current.messages)
     page.residual.setCurrentIndex(page.residual.findData("unstructured"))
     assert page.random.currentData() == "none" and "mmrm" in page.engine_label.text()
 

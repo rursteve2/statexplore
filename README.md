@@ -44,29 +44,50 @@ collected repeatedly from the same people (for example yearly surveys), StatExpl
 with one row per person per occasion. Section 4 explains how to convert data that has one row per
 person with columns like `score_2010`, `score_2012`.
 
-StatExplore uses a free statistics program called **R** behind the scenes. The installer includes
-R, so you don't have to install it separately (see 2A).
+StatExplore uses a free statistics program called **R** behind the scenes. The stand-alone program
+folder and the (future) installer include R; when running from the source code you install R once
+yourself (see 2B).
 
 ---
 
 ## 2. Installing and starting StatExplore
 
-### 2A. Using the installer (recommended for most people)
+> **Current status:** there is **no ready-made installer yet**. `StatExplore-Setup.exe` does not exist
+> until someone builds it (2C). Large program files are never stored in the code repository itself;
+> when the installer exists it will be attached to the repository's **Releases** page on GitHub. Until
+> then, use 2A or 2B.
 
-1. Double-click **`StatExplore-Setup.exe`**.
-2. Click through the installer. You can choose to create a desktop shortcut.
-3. Start **StatExplore** from the Start menu or the desktop shortcut.
+### 2A. On the computer where StatExplore was developed (easiest)
+Open the `statexplore` folder and double-click **`run.bat`**. Everything it needs (Python environment,
+R and the R packages) is already set up on that computer.
 
-That's all: R and every statistical package come with the installer.
+### 2B. From the GitHub repository, on another Windows computer
+This takes about 20 minutes, once.
+1. Install **Python 3.11** from python.org (tick *"Add python.exe to PATH"* during setup).
+2. Install **R for Windows** (version 4.4 or newer) from cloud.r-project.org.
+3. Download the repository: on GitHub click **Code ▸ Download ZIP**, then unzip it (or `git clone` it).
+4. Open the unzipped `statexplore` folder, click the address bar, type `cmd` and press Enter.
+   In the black window, paste these lines one at a time:
+   ```bat
+   py -3.11 -m venv .venv
+   .venv\Scripts\python -m pip install -e .
+   "C:\Program Files\R\R-4.6.2\bin\x64\Rscript.exe" r\install_packages.R
+   ```
+   (Change `R-4.6.2` to the R version you installed. The last step downloads the R packages once.)
+5. From then on, double-click **`run.bat`**.
 
-> The installer file is created by running two build steps (see [For developers](#11-for-developers)).
-> If someone gave you the folder `dist\StatExplore` instead, just double-click
-> **`StatExplore.exe`** inside it. It contains everything it needs.
+### 2C. Building the installer (one-time, for whoever distributes the program)
+1. Do 2B, plus `.venv\Scripts\python -m pip install pyinstaller python-docx`.
+2. Install **Inno Setup 6** (free, jrsoftware.org).
+3. Run `.venv\Scripts\python packaging\build.py`. This creates `dist\StatExplore\`, a folder that
+   already works on its own: `StatExplore.exe` with R and all packages inside. You can zip and share
+   that folder directly.
+4. Run `"C:\Program Files (x86)\Inno Setup 6\ISCC.exe" packaging\statexplore.iss`. This creates
+   `dist\installer\StatExplore-Setup.exe`.
+5. Upload that file to GitHub under **Releases ▸ Draft a new release**, so users can download it.
 
-### 2B. Running it from the project folder (this computer)
-
-On the computer where StatExplore was developed, open the `statexplore` folder and double-click
-**`run.bat`**.
+Once an installer exists, using it is simple: double-click `StatExplore-Setup.exe`, click through,
+then start StatExplore from the Start menu. R and all statistical packages are included.
 
 ### What you should see
 
@@ -152,7 +173,8 @@ Select a row to **Open full analysis**, **Plot in Teaching Studio**, or **Add to
 ### Step 7: Understand an interaction
 **Teaching Studio** draws the interaction from the fitted model, with lines for each group or
 level and shaded confidence bands. Underneath is a short **Interpretation** in plain English.
-Change the x-axis, grouping, panels, labels and format (PNG, SVG, PDF) on the left.
+Change the x-axis, grouping, panels, labels and format (PNG, SVG, PDF) on the left, and choose the
+values at which the other predictors are held (by default their average, or the reference category).
 
 ### Step 8: Check whether a finding holds up
 In **Validation & Uncertainty**:
@@ -176,7 +198,7 @@ In **Validation & Uncertainty**:
 | **Dashboard** | Overview of the open project and recent analyses. |
 | **Dataset Explorer** | **Overview** of every variable; **Data** spreadsheet view (tick *Show value labels* to see "Male" instead of 1; red = a declared missing code); **Variables** to set measurement level, role, reference group and display name; **Derived & Filters**; **Missing data** (how much is missing, common patterns, how many rows each model can use). |
 | **Exploratory Data Analysis** | Descriptive statistics, plots, correlation tests. |
-| **Analysis Builder** | Standard tests and regressions with effect sizes, confidence intervals, assumption checks and diagnostic plots. |
+| **Analysis Builder** | Standard tests and regressions with effect sizes, confidence intervals, assumption checks and diagnostic plots. Also **Mediation** (does X affect Y *through* M? with a bootstrap confidence interval) and **Scale reliability** (Cronbach's alpha). |
 | **Automated Model Discovery** | Systematic search for interaction effects (see Step 6). Modes: *Exhaustive* tests everything in the defined space; *First significant* / *Target number* stop early (labelled incomplete); *Budget-limited* stops after a set number of models or minutes. Profiles Fast / Balanced / Thorough set sensible budgets. You can **Cancel** and later **Resume**. |
 | **Model Comparison** | Put models side by side (AIC, BIC, R²). Models that contain one another get a formal test. **Edit a copy** changes a model without losing the original. |
 | **Validation & Uncertainty** | Holdout, cross-validation, stability, full-procedure CV, prediction intervals (see Step 8). |
@@ -261,6 +283,11 @@ Models**, or choose **Repeated measures** in Discovery.
 Reduce the number of candidate predictors, keep *Max predictors per model* at 3, use the default
 *Focal* covariate setting, or choose the *Fast* profile. You can always Cancel and Resume.
 
+**"… has the same value in every row" / "… looks like an identifier" / "… is the participant ID".**
+StatExplore stops models that cannot work before running them. Remove the variable named in the
+message: a constant variable can't explain anything, and ID numbers (or variables with hundreds of
+categories) aren't predictors.
+
 **Many models are "invalid".**
 Usually a categorical variable has many categories (each one adds parameters), or some groups are
 empty. Check measurement levels: a number stored as *nominal* (like years of education in HRS)
@@ -303,20 +330,23 @@ undoable setting.
 
 ## 10. What is not finished yet
 
-- **Installer:** the build is ready and tested, but the final `StatExplore-Setup.exe` still has to
-  be compiled with the free tool Inno Setup, then tested on a fresh Windows 10 and 11 computer.
+- **Installer:** not built yet. The stand-alone program folder (`dist\StatExplore`) has been built and
+  checked on the development computer, but `StatExplore-Setup.exe` still has to be compiled with Inno Setup
+  (section 2C), published on GitHub Releases, and tested on a fresh Windows 10 and 11 computer.
 - **flexplot** plotting add-on: optional, needs a separate install (developer guide).
+- Games-Howell post hoc for Welch ANOVA, omega / factor analysis, robust standard errors.
 - **Binary-outcome mixed models** (for example yes/no outcomes measured repeatedly) aren't
   available yet.
 - Mixed-model discovery results can't yet be opened directly in the Teaching Studio; refit them in
   **Mixed & Longitudinal Models**.
-- Welch ANOVA has no post hoc test yet.
 - Multiple imputation of missing values isn't included. Missing data is handled by complete cases,
   or by all available occasions in mixed models.
 
 ---
 
 ## 11. For developers
+
+How each requirement of the original specification is met: **[docs/spec-compliance.md](docs/spec-compliance.md)**.
 
 Building, testing, packaging and the architecture are described in
 **[docs/DEVELOPER.md](docs/DEVELOPER.md)**. The development plan and per-phase reviews are in

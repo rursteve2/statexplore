@@ -65,6 +65,12 @@ class TeachingPage(QWidget):
                          ("X label", self.xlab), ("Y label", self.ylab)]:
             pf.addRow(label, w)
         ll.addWidget(pbox)
+        self.held_box = QGroupBox("Hold the other predictors at")
+        self.held_form = QFormLayout(self.held_box)
+        self.held_widgets: dict[str, QComboBox] = {}
+        ll.addWidget(self.held_box)
+        for w in (self.x, self.group, self.panel):
+            w.currentIndexChanged.connect(self._rebuild_held)
         row = QHBoxLayout()
         self.draw_btn = QPushButton("Draw")
         self.draw_btn.clicked.connect(self._draw)
@@ -160,6 +166,7 @@ class TeachingPage(QWidget):
             combo.blockSignals(False)
         if self.group.currentData() is None and len(vs) > 1:
             self.group.setCurrentIndex(2 if self.x.currentIndex() == 0 else 1)
+        self._rebuild_held()
 
     def _backend_changed(self) -> None:
         """flexplot is optional (GitHub-only): check once, and disable it with a reason if missing."""
@@ -184,8 +191,41 @@ class TeachingPage(QWidget):
         self.state.run_r(lambda s: s.worker.run("sx_result <- requireNamespace('flexplot', quietly = TRUE)").result,
                          checked, lambda m: checked(False))
 
+    def _rebuild_held(self) -> None:
+        """One control per non-plotted predictor: default = mean / reference level (blank)."""
+        ds = self.state.dataset
+        keep = {n: w.currentText() for n, w in self.held_widgets.items()}
+        while self.held_form.rowCount():
+            self.held_form.removeRow(0)
+        self.held_widgets = {}
+        if ds is None:
+            return
+        shown = {self.x.currentData(), self.group.currentData(), self.panel.currentData()}
+        for n in self.editor.chosen():
+            if n in shown:
+                continue
+            v = ds.var(n)
+            c = QComboBox()
+            c.setEditable(not v.is_categorical)
+            if v.is_categorical:
+                c.addItem("(reference level)")
+                c.addItems([ds.level_label(n, code) for code in ds.levels(n)])
+            else:
+                c.addItem("(mean)")
+                c.setToolTip("Type a number to hold this predictor at that value.")
+            if keep.get(n):
+                c.setCurrentText(keep[n])
+            self.held_widgets[n] = c
+            self.held_form.addRow(v.display_name, c)
+        self.held_box.setVisible(bool(self.held_widgets))
+
+    def _held_values(self) -> dict:
+        return {n: w.currentText() for n, w in self.held_widgets.items()
+                if w.currentText() and not w.currentText().startswith("(")}
+
     def _plotspec(self) -> teaching.PlotSpec:
         return teaching.PlotSpec(
+            held=self._held_values(),
             x=self.x.currentData(), group=self.group.currentData(), panel=self.panel.currentData(),
             ci=self.ci.isChecked(), show_data=self.data_pts.isChecked(), backend=self.backend.currentData(),
             fmt=self.fmt.currentData(), title=self.title.text().strip(), xlab=self.xlab.text().strip(),

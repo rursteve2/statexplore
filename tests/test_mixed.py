@@ -63,7 +63,7 @@ def test_F_random_intercept_matches_statsmodels(tmp_path, rng, r_session):
     assert vc.loc[vc["term"] == "(residual)", "variance_or_cov"].iloc[0] == pytest.approx(ref.scale, rel=1e-3)
     fit = tab(res, "Model fit").iloc[0]
     assert fit["participants"] == 60 and fit["observations"] == 300
-    assert len(res.plots) == 3 and all(art[k][:4] == b"\x89PNG" for k in res.plots)
+    assert len(res.plots) == 5 and all(art[k][:4] == b"\x89PNG" for k in res.plots)  # incl. random effects + ACF
 
 
 @pytest.mark.r

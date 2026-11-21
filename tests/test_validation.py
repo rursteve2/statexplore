@@ -73,10 +73,10 @@ def test_holdout_rows_never_used_by_analyses_or_discovery(repeated, r_session):
     ds.set_holdout(HoldoutSpec(fraction=0.25, seed=7, group="pid"))
     n_train = len(ds.analysis_frame(["y"]))
     res, _ = run_analysis(r_session, ds, BY_KEY["lm"], {"dependent": ["y"], "predictors": ["x"]}, {})
-    assert res.n_used == n_train == 240
+    assert res.n_used == n_train == 240, (res.status, res.n_used, n_train, res.messages)
     run = execute(create_run(ds, SearchSettings(outcome="y", candidates=["x", "g", "wave"], workers=1,
                                                 max_models=None, max_minutes=None)), ds)
-    assert run.n_sample == 240
+    assert run.n_sample == 240, (run.status, run.stop_reason, run.n_sample)
 
 
 @pytest.mark.r
@@ -149,6 +149,11 @@ def test_stability_and_procedure_cv(tmp_path, r_session):
     top = st.iloc[0]
     assert top["model"] == "a × b" and top["selected_significant"] == 1.0 and top["ranked_first"] == 1.0
     assert st["selected_significant"].between(0, 1).all()
+    from statexplore.discovery.engine import results_frame as rf
+
+    frame = rf(run).set_index("interaction")
+    assert frame.loc["a × b", "validation"].startswith("stability: p < 0.05 in 100%")
+    assert frame.loc["a × b", "interpretation"].startswith("Evidence that the a–y relationship differs across b")
     res, _ = validation.procedure_cv(r_session, ds, run, rs)
     cvp = tab(res, "Full-procedure cross-validation")
     assert len(cvp) == 4 and cvp["n_test"].sum() == n

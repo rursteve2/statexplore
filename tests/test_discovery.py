@@ -121,6 +121,14 @@ def test_planted_interaction_found_and_p_matches_analysis(planted, r_session):
     p_lm = dict(zip([r[0] for r in term.rows], [r[3] for r in term.rows]))["x1:x2"]
     assert top["p"] == pytest.approx(p_lm, rel=1e-9)
     assert top["df1"] == 1 and top["estimate"] == pytest.approx(0.6, abs=0.15)
+    assert top["validation"] == "not validated"
+    for _, r in df.iterrows():  # interpretation wording follows the significance status
+        if r["sig_adj"]:
+            assert r["interpretation"].startswith("Evidence")
+        elif r["sig_raw"]:
+            assert "plausibly a chance finding" in r["interpretation"]
+        else:
+            assert r["interpretation"].startswith("No clear evidence")
 
 
 @pytest.mark.r
@@ -315,3 +323,66 @@ def test_mixed_model_discovery(tmp_path):
     assert top["statistic"] == pytest.approx(2 * (full.llf - red.llf), rel=1e-3)
     with pytest.raises(SearchSpaceError):
         validate_settings(ds, settings(candidates=["a", "pid"], participant="pid"))
+
+
+def test_all_two_way_enumeration():
+    s = SearchSettings(outcome="y", candidates=names(5), max_predictors=4, covariate_mode="subsets", all_two_way=True)
+    cands = list(enumerate_candidates(s))
+    assert len(cands) == count_candidates(s)
+    all2 = [c for c in cands if c.kind == "all_two_way"]
+    assert len(all2) == comb(5, 3) + comb(5, 4)
+    full, reduced = model_terms(all2[0])
+    assert reduced == [(v,) for v in all2[0].focal] and len(full) == 3 + 3
+    assert len({candidate_key(c) for c in cands}) == len(cands)
+
+
+@pytest.mark.r
+def test_all_two_way_joint_test_and_cache(tmp_path):
+    import statsmodels.formula.api as smf
+
+    from statexplore.discovery.engine import cache_from
+
+    rng = np.random.default_rng(17)
+    df = pd.DataFrame(rng.normal(size=(250, 3)), columns=["a", "b", "c"])
+    df["y"] = df["a"] * df["b"] * 0.5 + df["b"] * df["c"] * 0.4 + rng.normal(size=250)
+    ds = make_ds(tmp_path, df)
+    s = settings(candidates=["a", "b", "c"], max_predictors=3, covariate_mode="subsets", all_two_way=True)
+    run = execute(create_run(ds, s), ds)
+    df_r = results_frame(run)
+    row = df_r[df_r["kind"] == "all_two_way"].iloc[0]
+    f, p, df1 = smf.ols("y ~ (a + b + c)**2", df).fit().compare_f_test(smf.ols("y ~ a + b + c", df).fit())
+    assert row["df1"] == 3 and row["statistic"] == pytest.approx(f, rel=1e-9) and row["p"] == pytest.approx(p, rel=1e-6)
+    # caching: same data/sample/settings except alpha -> nothing refitted, identical results
+    s2 = settings(candidates=["a", "b", "c"], max_predictors=3, covariate_mode="subsets", all_two_way=True, alpha=0.01)
+    run2 = create_run(ds, s2)
+    cache = cache_from(run2, [run])
+    assert len(cache) == run.total
+    execute(run2, ds, cache=cache)
+    df2 = results_frame(run2)
+    assert df2["cached"].all() and run2.status == "complete"
+    np.testing.assert_allclose(df2["p"], df_r["p"])
+    # a different candidate pool changes the shared sample: no reuse
+    assert cache_from(create_run(ds, settings(candidates=["a", "b"])), [run]) == {}
+
+
+@pytest.mark.r
+def test_C_known_three_way_interaction(tmp_path):
+    """§25 Test C: a planted three-way interaction is detected and interpreted."""
+    import statsmodels.formula.api as smf
+
+    rng = np.random.default_rng(23)
+    n = 600
+    df = pd.DataFrame(rng.normal(size=(n, 4)), columns=["a", "b", "c", "d"])
+    df["y"] = 0.3 * df["a"] + 0.6 * df["a"] * df["b"] * df["c"] + rng.normal(size=n)
+    ds = make_ds(tmp_path, df)
+    run = execute(create_run(ds, settings(candidates=["a", "b", "c", "d"], max_order=3)), ds)
+    df_r = results_frame(run)
+    three = df_r[df_r["order"] == 3]
+    top = three.sort_values("p").iloc[0]
+    assert top["interaction"] == "a × b × c" and top["sig_adj"]
+    full = smf.ols("y ~ a * b * c", df).fit()
+    assert top["p"] == pytest.approx(full.pvalues["a:b:c"], rel=1e-6)
+    assert top["estimate"] == pytest.approx(full.params["a:b:c"], rel=1e-9)
+    assert "the a × b interaction on y differs across c" in top["interpretation"]
+    others = three[three["interaction"] != "a × b × c"]
+    assert not others["sig_adj"].any()

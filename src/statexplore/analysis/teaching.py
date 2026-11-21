@@ -13,7 +13,7 @@ from typing import Any
 from ..core.dataset import Dataset
 from ..core.schema import AnalysisResult, Status
 from ..rbridge.codegen import alias, r_num, r_str, r_vec
-from .models import ModelSpec
+from .models import ModelCheckError, ModelSpec, check_model
 from .session import RSession
 
 BACKENDS = {"ggplot2": "ggplot2 (default)", "base": "Base R graphics", "flexplot": "flexplot (raw data + its own fit)"}
@@ -38,9 +38,14 @@ class PlotSpec:
     ylab: str = ""
     moderator_values: str = "sd"        # continuous group/panel: "sd" (mean ± 1 SD) or "quantiles" (10/50/90%)
     conf: float = 0.95
+    held: dict[str, Any] | None = None  # user-chosen values for other predictors (default: mean / reference)
 
 
 def validate(ds: Dataset, m: ModelSpec, p: PlotSpec) -> None:
+    try:
+        check_model(ds, m)
+    except ModelCheckError as e:
+        raise TeachingInputError(str(e)) from None
     vs = m.variables
     for v in (p.x, p.group, p.panel):
         if v is not None and v not in vs:
@@ -50,6 +55,18 @@ def validate(ds: Dataset, m: ModelSpec, p: PlotSpec) -> None:
         raise TeachingInputError("x, group and panel must be different variables.")
     if p.backend not in BACKENDS or p.fmt not in FORMATS:
         raise TeachingInputError("Unknown backend or format.")
+    for name, value in (p.held or {}).items():
+        if name not in vs or name in chosen:
+            raise TeachingInputError(f"{ds.var(name).display_name} is not a held predictor of this model.")
+        if ds.var(name).is_categorical:
+            labels = [ds.level_label(name, c) for c in ds.levels(name)]
+            if str(value) not in labels:
+                raise TeachingInputError(f"{value!r} is not a category of {ds.var(name).display_name}.")
+        else:
+            try:
+                float(value)
+            except (TypeError, ValueError):
+                raise TeachingInputError(f"{ds.var(name).display_name}: enter a number.") from None
 
 
 def _continuous_values_r(v: str, how: str) -> str:
@@ -141,6 +158,11 @@ def build(ds: Dataset, m: ModelSpec, p: PlotSpec, plot_path: str) -> str:
     L += [
         f"sx_held <- lapply(sx_d[, {r_vec(others) if others else 'character(0)'}, drop = FALSE],",
         "  function(v) if (is.factor(v)) factor(levels(v)[1], levels = levels(v)) else mean(v))",
+    ] + [
+        (f"sx_held${a(n)} <- factor({r_str(v)}, levels = levels(sx_d${a(n)}))  # chosen by the user"
+         if ds.var(n).is_categorical else f"sx_held${a(n)} <- {r_num(float(v))}  # chosen by the user")
+        for n, v in (p.held or {}).items()
+    ] + [
         "sx_nd <- do.call(expand.grid, c(sx_grid, sx_held, list(KEEP.OUT.ATTRS = FALSE, stringsAsFactors = FALSE)))",
         "sx_pr <- stats::predict(sx_fit, newdata = sx_nd, se.fit = TRUE)",
     ]

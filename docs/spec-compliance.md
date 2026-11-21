@@ -1,0 +1,61 @@
+# Spec compliance — StatExplore Master Prompt v1.0
+
+Every section of `StatExplore_Final_Master_Prompt.pdf`, with its status in this build.
+**Met** = implemented and covered by automated tests (see `tests/`). **Partial** / **Deviation** /
+**Open** are explained. Last reviewed 2026-11-21.
+
+| § | Requirement | Status | Evidence / notes |
+|---|---|---|---|
+| 1 | Functional app, real statistics, phased with validation | Met | 7 phases, each with a review in `tasks/todo.md`; no placeholder buttons (every sidebar section works). |
+| 2 | EDA + teaching; distinguish significance from reliable evidence; never conceal failed analyses | Met | Raw vs adjusted p everywhere; support tiers; stability / holdout / full-procedure CV; every attempt recorded incl. invalid/failed. |
+| 3.1 | Windows 10/11 native, offline, local only | Met / **Open: clean-machine test** | PySide6 desktop app; no network use. Frozen build verified on this machine (`--selftest`, GUI launch); clean Windows 10/11 VM test is a user step. |
+| 3.2 | Stack: PySide6, pandas, NumPy, pyreadstat, openpyxl, SciPy, statsmodels, scikit-learn, R via subprocess + JSON, ggplot2/flexplot/base R, SQLite, Excel/PDF/Word/R/Python reports, PyInstaller | Met / Deviation | statsmodels & scipy are used as independent test references (D1: R is the single engine); scikit-learn not needed (CV implemented in R, seeded). matplotlib/Plotly optional ("when suitable") — not used; plots are ggplot2/base R. |
+| 3.3 | Hybrid engine, one default per analysis, no silent switching, engine + versions recorded | Met | Engine table in `docs/architecture.md`; every result stores R version + package versions; nlme optimizer fallback is recorded when used. |
+| 4 | R package ecosystem, loaded as needed, namespace-qualified, versions recorded, renv, offline bundle | Partial / Deviation | All code uses `pkg::fun`. Packages are loaded on demand. Used: jsonlite, psych, ggplot2, car, afex, emmeans, effectsize, ppcor, lmtest, detectseparation, lme4, lmerTest, nlme, mmrm, performance (+ dependencies). **Not used** (not needed for the implemented features): haven/readr/readxl (import is done in Python), dplyr/tidyr/forcats/datawizard, skimr, GGally, naniar, rstatix, correlation, sandwich, clubSandwich, DHARMa, interactions (J-N is computed exactly), marginaleffects, ggeffects, patchwork, broom/broom.mixed, modelsummary, gt, flextable, officer (Word via python-docx), see, parameters/insight (indirect deps). **flexplot**: optional backend, disabled with an explanation when absent (GitHub-only; install blocked in this environment). **renv → deviation**: exact versions are pinned by the bundled library + `r/packages.lock.json`. |
+| 5 | psych::describe (n, mean, SD, median, min, max, range, skew, kurtosis, SE), describeBy, pairs.panels (subset of variables), corr.test (raw + adjusted); optional psychometrics planned | Met | EDA page; tests against independent formulas. Psychometrics: **Cronbach's alpha** implemented (Analysis Builder, runs only on request); omega / fa / fa.parallel planned. |
+| 6.1 | CSV, SAV, XLSX; drag-drop; sheet selection; delimiter/encoding options | Met | `tests/test_import.py`. |
+| 6.2 | SPSS names, variable labels, value labels, missing definitions, coding; labels shown without destroying codes | Met | User-missing preserved and applied as NA; value-label toggle in Data tab. |
+| 6.3 | Overview: rows, columns, missing, names, types, measurement levels, unique values, descriptives, potential outliers; spreadsheet preview | Met | Dataset Explorer Overview + Data tabs. |
+| 6.4 | Rename, measurement level, reference group, ID/time/cluster roles, derived variables, filters, exclude; original preserved; recorded & reversible | Met | Change log + undo; derived variables recomputed in R (View Code reproduces). |
+| 7 | ≤ 40 variables, one DV, ≤ 39 predictors, ≤ 6 predictors/model, interaction params counted, design-matrix parameter count, grouping vars not counted, time counted when fixed | Met | `discovery/space.py`; parameter count from the actual model matrix. |
+| 7.2 | Pre-fit assessment (n, effective n, rank, params, residual df, sparse groups, correlations, events, clusters, RE complexity); reject unidentifiable; flag unstable; no universal rule | Met | Discovery screening; repeated-ID dependence warnings; model pre-checks in every workspace (constant variables, one-category factors, identifier-like factors, ID variables as predictors, too few rows) — added after a user report; R errors translated into plain language. |
+| 8 | EDA plots (histogram, density, box, violin, scatter, SPLOM, heatmap, by-group stats, missing-data visualization, outliers, longitudinal trajectories, outcome by time); suggestions; no causal claims | Met | EDA page incl. **missing-data plot**; trajectories in Mixed workspace; outcome by time = boxplot grouped by the time variable. |
+| 9.1 | t-tests with estimates, CI, p, effect sizes, assumptions | Met | vs scipy. |
+| 9.2 | One-way, Welch, 2-/3-way factorial, RM, mixed design, ANCOVA; contrasts, post hoc, EMMs; afex; SS type + contrasts stated | Met / Partial | vs statsmodels. Welch ANOVA has no post hoc test yet (Games-Howell). |
+| 9.3 | Pearson, Spearman, partial; estimates, CI, p, n | Met | |
+| 9.4 | Simple, multiple, hierarchical, interaction, ANCOVA-style, polynomial, splines; coefficients, fit, effect sizes, diagnostics | Met | |
+| 9.5 | Binary/multivariable logistic, interactions, predicted probabilities, ORs; separation, sparse cells, convergence | Met | Sparse cells are screened in discovery; separation via detectseparation. |
+| 9.6 | Random intercept / slope / both; cross-level and time-by-predictor interactions; lme4/lmerTest/nlme | Met | Binary (logistic) mixed models not implemented (not required by §9.6; glmmTMB listed as optional). |
+| 9.7 | Linear / categorical / nonlinear time, time × group, random time slopes, AR(1), CAR(1), unstructured, marginal models (not confused with random effects) | Met | nlme / mmrm; likelihoods verified independently in numpy. |
+| 9.8 | Separate optional mediation workflow, indirect-effect uncertainty, not causal, not in discovery | Met | Analysis Builder ▸ Mediation: bootstrap CI of a×b (seeded), causal caveat. |
+| 10.1–10.2 | Discovery workflow; main effects, 2-way default, 3-way and higher only on request | Met | Order ≤ 3 (higher orders not offered: max 6 predictors makes 4-way models rarely estimable — deviation). |
+| 10.3 | Hierarchical candidates per subset; formula grammar defined first; dedup; covariate specifications distinct; no silent exclusion; **all-two-way model when applicable** | Met | `docs/formula-grammar.md`; all-two-way joint test option (subset mode). |
+| 10.4 | Exhaustive within defined space; projected size; boundaries (predictors, order, families, max params, required/excluded, subset restrictions, model & time budgets); partial labelled | Met | "Model families" are chosen by the outcome type (linear/logistic) or Repeated measures (mixed). |
+| 10.5 | Modes A–D; incomplete runs labelled; deterministic recorded order; adjusted criteria provisional | Met | Mode A determinism tested with 2 workers. |
+| 10.6 | α presets/custom, raw + adjusted (BH, Holm), family defined, all results retained, provisional when interrupted, post-selection caveat | Met | |
+| 10.7 | Screening checks, invalid explained | Met | |
+| 10.8 | Results: ID, family, formula, term, statistic, df, raw/adj p, effect, CI, n, params, fit, diagnostics, convergence, **validation status**, execution status, **teaching interpretation**; sort/filter/search; failed models kept | Met | Validation status filled by stability runs ("not validated" otherwise). |
+| 11 | Discovery ranking (raw/adjusted, never "best"); support ranking (precision, diagnostics, convergence, complexity, validation…) without an opaque score, within categories, transparent | Met / Partial | Support ranking uses transparent tiers + effect + parameters; predictive performance/validation results are shown alongside (validation column, Validation workspace) rather than folded into the tiers. |
+| 12 | Uncertainty: CIs (coefficients, differences, interactions, ORs, EMMs, predictions), significance details, effect sizes, model-specific diagnostics, prediction uncertainty (CI vs PI, CV, predicted vs observed) | Met | DHARMa/clubSandwich/sandwich not used (see §4). |
+| 13 | Holdout before searching, never used for selection, cluster-level; CV (standard, grouped, temporal); selection inside folds; stability frequencies (not p-values) | Met | Test N + leakage tests. |
+| 14 | Model comparison workspace; LRT only when nested; ML vs REML; different observation sets warned; manual modification preserving original | Met | Mixed comparisons enforce ML (fixed effects) / REML (random/residual). Comparison plot added. |
+| 15 | Structure detection with confirmation; wide→long; random-effects options; variance components; convergence/singularity; time options; covariance structures; trajectories (population, individual, group, CI, conditional vs marginal), random-effects results, residual autocorrelation plots | Met | Random-effects (caterpillar) and residual-ACF plots added. |
+| 16 | Teaching Studio: ggplot2 default, flexplot, base R; required plots; interaction tools; controls (x, group, panel, **predictor values**, labels, title, CI, format); fixed values displayed; 3–6 sentence interpretation | Met / Partial | flexplot optional (see §4). User-set held values added. EMMs via emmeans; conditional slopes via emtrends; J-N computed exactly (interactions/marginaleffects not needed). |
+| 17 | Missing-data panel (by variable, %, patterns, usable n per model, differences); complete-case; MAR note for mixed models; no automatic imputation; mice later | Met / Open | mice (multiple imputation) not implemented — the spec defers it to a later phase. |
+| 18 | View Code for every model; actual executed code; records formula, engine, versions, missing approach, reference categories, contrasts, seed, estimation, n | Met | Generated script = executed script; exported scripts reproduce results in a fresh R process (Test O). |
+| 19 | Exports: xlsx, pdf, docx, .R, .py; all result types; save/reopen projects | Met | |
+| 20 | Sidebar sections, Dataset Explorer, Analysis Builder, discovery controls, results interface, background workers, progress/ETA/cancel/partial results/resume | Met | An 11th section, Validation & Uncertainty, was added. |
+| 21 | Fast/Balanced/Thorough; size estimate; large-search warning; dedup; **caching**; background; parallel; memory controls; cancel; history; error logging | Met / Partial | Caching reuses identical candidates from earlier compatible searches. Memory is controlled through budgets and batch size (no explicit RAM cap). |
+| 22 | 20 statistical safeguards | Met | Each is enforced or displayed (see rows above). |
+| 23 | Local only; no API keys; template interpretations; safe subprocess; no user text to a shell; validated formula construction; untrusted input; failures can't corrupt data | Met | Aliases + escaped literals (`rbridge/codegen.py`); injection tests. |
+| 24 | Seven phases with acceptance tests | Met / Open | Phase 7 "runs on a clean Windows system" pending (user step). |
+| 25 | pytest + testthat; deterministic datasets; Tests A–O; numerical verification | Met / Deviation | Tests A–O all present (C added in the compliance pass). R components are tested through pytest integration tests rather than testthat. |
+| 26 | Standards: typing, exceptions, logging, tests, versioned deps, result schema, background workers, package APIs (no console parsing), documented methods, unsupported analyses disabled with reasons | Met | |
+| 27 | Per-phase deliverables | Met | `tasks/todo.md`, README, docs. |
+| 28 | End-to-end workflow (20 steps) | Met | Exercised in GUI tests and on the HRS data. |
+| 29 | Start-up instructions (Phase 1 first, architecture, schema, …) | Met | |
+
+## Open items
+1. Compile the installer with Inno Setup and test it on clean Windows 10 and 11 machines without network.
+2. Optional flexplot backend (GitHub install).
+3. Not in scope of this build: Games-Howell post hoc for Welch ANOVA; multiple imputation (mice); omega / factor analysis; logistic mixed models; robust (sandwich) standard errors; DHARMa residual diagnostics for GLMs.

@@ -141,3 +141,10 @@ def test_hrs_describe(r_session, hrs_path):
         assert row["n"] == ref["n"]
         assert row["mean"] == pytest.approx(ref["mean"], rel=1e-10)
         assert row["skew"] == pytest.approx(ref["skew"], rel=1e-8)
+
+
+def test_missing_data_plot(r_session, sav_labelled):
+    ds = import_file(sav_labelled)
+    res, art = eda.plot(r_session, ds, eda.PlotRequest("missing", ["score", "mood", "income", "sex"]))
+    assert res.status is Status.OK, res.messages
+    assert res.n_used == 60 and art[res.plots[0]][:4] == b"\x89PNG"

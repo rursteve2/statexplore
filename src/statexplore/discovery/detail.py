@@ -15,15 +15,20 @@ from .space import Candidate
 
 
 def candidate_from_row(run: DiscoveryRun, row: dict[str, Any]) -> Candidate:
-    return Candidate(int(row["idx"]), tuple(row["focal"]), tuple(row["covariates"]), tuple(run.settings.required))
+    return Candidate(int(row["idx"]), tuple(row["focal"]), tuple(row["covariates"]), tuple(run.settings.required),
+                     str(row.get("kind") or "focal"))
 
 
 def full_analysis(session: RSession, ds: Dataset, run: DiscoveryRun,
                   c: Candidate) -> tuple[AnalysisResult, dict[str, bytes]]:
     s = run.settings
     a = lambda n: alias(ds.var(n).alias)  # noqa: E731
-    rhs = " * ".join(a(v) for v in c.focal) + "".join(f" + {a(v)}" for v in c.covariates + c.required)
-    internal: dict[str, Any] = {"rhs": rhs, "focal": [a(v) for v in c.focal]}
+    if c.kind == "all_two_way":
+        rhs = "(" + " + ".join(a(v) for v in c.focal) + ")^2" + "".join(f" + {a(v)}" for v in c.required)
+        internal: dict[str, Any] = {"rhs": rhs}
+    else:
+        rhs = " * ".join(a(v) for v in c.focal) + "".join(f" + {a(v)}" for v in c.covariates + c.required)
+        internal = {"rhs": rhs, "focal": [a(v) for v in c.focal]}
     if s.sample == "shared":
         internal["complete_on"] = [a(n) for n in [s.outcome] + s.candidates + s.required]
     spec = BY_KEY["lm" if run.family == "gaussian" else "logistic"]
