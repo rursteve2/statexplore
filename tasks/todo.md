@@ -165,6 +165,10 @@ Test dataset: `E:\Downloads\hrs_least_missing_1000.sav` (HRS, long format, 1000 
 - [x] Packaging: PyInstaller spec + `packaging/build.py` (bundles R + r/library, writes r/packages.lock.json), Inno Setup script, frozen-mode R lookup, `--selftest`
 - [x] Tests: Test O (exported R scripts reproduce lm / Teaching Studio / mixed results to 1e-9 in a fresh Rscript), xlsx values, docx/pdf content, full project round-trip
 - [ ] User: compile `packaging/statexplore.iss` with Inno Setup; install on a clean Windows 10 and 11 machine with networking off; run the app and `StatExplore.exe --selftest`
+### Review (Phase 7)
+- 143/143 tests pass (+1 mixed-discovery test). Test O: exported R scripts reproduce lm / Teaching Studio / mixed results to 1e-9 in a fresh Rscript. One Test O failure occurred once while a PyInstaller build saturated the machine; not reproduced in 3 reruns (likely subprocess timing).
+- Frozen build verified: `dist\StatExplore\StatExplore.exe --selftest` passes using ONLY the bundled `R\` and `rlib\`; the GUI launches (window "StatExplore"). Bundle 637 MB.
+- Packaging bugs found by running the build: relative imports in the frozen entry point (→ launcher.py); `r/library` merged into R's own `R/library` on case-insensitive Windows (→ `rlib/`); a crashed windowed exe held the file and blocked the rebuild (→ self-test timeout).
 - Deviation: R package versions are pinned by `r/packages.lock.json` (exact versions from the bundled library) instead of renv — the bundled library itself is the reproducible environment.
 
 ## Remaining from earlier phases
