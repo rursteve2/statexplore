@@ -45,11 +45,14 @@ def fmt_cell(value: Any, p_col: bool = False) -> str:
     return html.escape(str(value))
 
 
+MAX_DISPLAY_ROWS = 30
+
+
 def table_html(t: Table) -> str:
     p_cols = [is_p_column(c) for c in t.columns]
     head = "".join(f"<th>{html.escape(c)}</th>" for c in ([""] if t.row_names else []) + t.columns)
     body = []
-    for i, row in enumerate(t.rows):
+    for i, row in enumerate(t.rows[:MAX_DISPLAY_ROWS]):
         cells = []
         if t.row_names:
             cells.append(f"<td><b>{html.escape(t.row_names[i] if i < len(t.row_names) else '')}</b></td>")
@@ -57,12 +60,18 @@ def table_html(t: Table) -> str:
             align = "right" if isinstance(v, (int, float)) and not isinstance(v, bool) else "left"
             cells.append(f"<td align='{align}'>{fmt_cell(v, pc)}</td>")
         body.append("<tr>" + "".join(cells) + "</tr>")
-    notes = f"<p class='note'>{html.escape(t.notes)}</p>" if t.notes else ""
+    more = (f"<p class='note'>Showing {MAX_DISPLAY_ROWS} of {len(t.rows):,} rows; the full table is kept "
+            "with the result (View Code reproduces it).</p>" if len(t.rows) > MAX_DISPLAY_ROWS else "")
+    notes = more + (f"<p class='note'>{html.escape(t.notes)}</p>" if t.notes else "")
     return (f"<h3>{html.escape(t.name)}</h3><table cellspacing='0' cellpadding='4' border='1'>"
             f"<tr>{head}</tr>{''.join(body)}</table>{notes}")
 
 
-def render(view: QTextBrowser, result: AnalysisResult, artifacts: dict[str, bytes]) -> None:
+def render(view: QTextBrowser, result: AnalysisResult, artifacts: dict[str, bytes],
+           plots_first: bool | None = None) -> None:
+    """plots_first defaults to True for Teaching Studio graphs (the graph is the point)."""
+    if plots_first is None:
+        plots_first = result.kind == "teaching_plot"
     doc = view.document()
     parts = [
         "<style>h2{color:#12263f;margin-bottom:2px} h3{color:#2b5d8c;margin:14px 0 4px 0}"
@@ -76,6 +85,9 @@ def render(view: QTextBrowser, result: AnalysisResult, artifacts: dict[str, byte
         parts.append(f" &nbsp;·&nbsp; n used = {result.n_used:,}"
                      + (f" ({excl:,} excluded)" if excl else ""))
     parts.append("</p>")
+    if result.values.get("interpretation"):
+        parts.append("<table width='100%' cellpadding='8' style='background:#eef4fb;border:1px solid #b9cde4'>"
+                     f"<tr><td><b>Interpretation.</b> {html.escape(result.values['interpretation'])}</td></tr></table>")
     if result.missing_data:
         parts.append(f"<p class='note'>Missing data: {html.escape(result.missing_data)}</p>")
     filters = result.inputs.get("filters") or []
@@ -86,9 +98,8 @@ def render(view: QTextBrowser, result: AnalysisResult, artifacts: dict[str, byte
         parts.append(f"<p style='color:{color}'>{html.escape(m)}</p>")
     for n in result.values.get("notes") or []:
         parts.append(f"<p class='note'>{html.escape(n)}</p>")
-    for t in result.tables:
-        parts.append(table_html(t))
     width = max(300, min(760, view.viewport().width() - 40))
+    images = []
     for i, key in enumerate(result.plots):
         data = artifacts.get(key)
         if not data:
@@ -96,6 +107,7 @@ def render(view: QTextBrowser, result: AnalysisResult, artifacts: dict[str, byte
         img = QImage.fromData(data)
         url = QUrl(f"sxplot://{result.id}/{i}")
         doc.addResource(QTextDocument.ImageResource, url, img)
-        w = min(width, img.width())
-        parts.append(f"<p><img src='{url.toString()}' width='{w}'></p>")
+        images.append(f"<p><img src='{url.toString()}' width='{min(width, img.width())}'></p>")
+    tables = [table_html(t) for t in result.tables]
+    parts.extend(images + tables if plots_first else tables + images)
     view.setHtml("".join(parts))

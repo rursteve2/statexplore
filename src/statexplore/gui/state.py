@@ -45,6 +45,8 @@ class AppState(QObject):
     result_added = Signal(object)        # AnalysisResult
     busy_changed = Signal(bool)
     r_status_changed = Signal(str)
+    models_changed = Signal()
+    show_in_teaching = Signal(object)    # ModelSpec
 
     def __init__(self) -> None:
         super().__init__()
@@ -77,6 +79,20 @@ class AppState(QObject):
     def notify_metadata_changed(self) -> None:
         self.dirty = True
         self.metadata_changed.emit()
+
+    def add_model(self, model) -> None:
+        if self.project is None:
+            return
+        self.project.models.append(model)
+        self.dirty = True
+        self.models_changed.emit()
+
+    def remove_model(self, model_id: str) -> None:
+        if self.project is None:
+            return
+        self.project.models = [m for m in self.project.models if m.id != model_id]
+        self.dirty = True
+        self.models_changed.emit()
 
     def add_result(self, result: AnalysisResult, artifacts: dict[str, bytes]) -> None:
         if self.project is None:

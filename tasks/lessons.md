@@ -18,3 +18,9 @@
 ## Tests
 - pytest-qt closes `qtbot.addWidget` widgets BEFORE fixture teardown; a dirty MainWindow then blocks on a modal dialog. Own the window's lifetime in the fixture.
 - Count overlapping missing rows as a set when writing expected n.
+
+## Model identity
+- Interactions are sets, not tuples: compare `frozenset(term)` whenever terms come from different sources (UI order vs stored order).
+
+## UI defaults
+- When a list refreshes, keep the user's check states AND default newly added items to checked; otherwise "add then compare" silently compares fewer items.

@@ -47,6 +47,7 @@ class Project:
         self.results: list[AnalysisResult] = []
         self.artifacts: dict[str, bytes] = {}
         self.searches: list = []  # discovery.engine.DiscoveryRun
+        self.models: list = []    # analysis.models.ModelSpec (comparison set)
         self.path: Path | None = None
 
     def add_result(self, result: AnalysisResult, artifacts: dict[str, bytes] | None = None) -> None:
@@ -83,6 +84,7 @@ class Project:
             "source": ds.source.to_dict(),
             "derived": [d.to_dict() for d in ds.derived.values()],
             "filters": [f.to_dict() for f in ds.filters],
+            "models": [m.to_dict() for m in self.models],
         }
         con.executemany("INSERT INTO meta VALUES (?, ?)", [(k, json.dumps(v)) for k, v in meta.items()])
         con.executemany(
@@ -140,6 +142,9 @@ class Project:
                                con.execute("SELECT result FROM results ORDER BY seq")]
             project.artifacts = dict(con.execute("SELECT key, content FROM artifacts"))
             project.searches = _load_searches(con)
+            from ..analysis.models import ModelSpec
+
+            project.models = [ModelSpec.from_dict(m) for m in meta.get("models", [])]
         except sqlite3.DatabaseError as e:
             raise ProjectError(f"Project file is damaged or unreadable: {e}") from e
         finally:

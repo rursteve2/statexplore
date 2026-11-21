@@ -4,7 +4,7 @@ Offline Windows desktop app for exploratory statistical model discovery and teac
 (Python/PySide6 front end, R statistical engine). Build plan: `tasks/todo.md`.
 Architecture: `docs/architecture.md`.
 
-**Status: Phases 1–3 complete (foundation, core statistical engine, automated model discovery).**
+**Status: Phases 1–4 complete (foundation, statistical engine, model discovery, Teaching Studio & Model Comparison).**
 
 ## Requirements
 - Windows 10/11
@@ -68,6 +68,16 @@ R tests skip automatically if R or the Phase 1 packages are missing. The HRS fix
   incomplete. Discovery-significance and statistical-support rankings (transparent tiers).
 - Any candidate opens as a full regression analysis on the same rows; View Code shows the exact R call.
 - Candidate grammar: `docs/formula-grammar.md`.
+
+## Phase 4 features
+- Teaching Studio: interaction plots computed from the fitted model (two- and three-way, categorical and
+  continuous, logistic probability curves) with CI bands, raw data, panels, labels; PNG/SVG/PDF; ggplot2 or
+  base R. Conditional slopes / simple effects, exact Johnson-Neyman interval, and a 3–6 sentence
+  template interpretation under every graph.
+- Model Comparison: build a model set (from discovery, the Teaching Studio or by hand), edit copies,
+  compare AIC/BIC/R² on a common sample, with nested F / likelihood-ratio tests only where valid.
+- Optional flexplot backend: `remotes::install_github("dustinfife/flexplot", lib = "r/library")`
+  (GitHub-only package; the option is disabled with an explanation when it is not installed).
 
 ## Known limitations
 - Wide-to-long reshaping arrives in Phase 5. Welch ANOVA has no post hoc test yet (Games-Howell planned).

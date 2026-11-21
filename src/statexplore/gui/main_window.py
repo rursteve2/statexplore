@@ -17,10 +17,12 @@ from ..core.importers import (
 )
 from ..core.project import Project, ProjectError
 from .pages.analysis_builder import AnalysisBuilderPage
+from .pages.comparison import ComparisonPage
 from .pages.dataset_explorer import DatasetExplorerPage
 from .pages.discovery import DiscoveryPage
 from .pages.eda import EdaPage
 from .pages.simple import DashboardPage, PlannedPage, SettingsPage
+from .pages.teaching import TeachingPage
 from .state import AppState
 
 SECTIONS = [
@@ -29,11 +31,8 @@ SECTIONS = [
     "Teaching Studio", "Reports", "Settings",
 ]
 PLANNED = {
-    "Model Comparison": (4, "Side-by-side comparison of fitted models (AIC/BIC, R², valid nested tests)."),
     "Mixed & Longitudinal Models": (5, "Random-intercept/slope models, AR(1) and unstructured covariance, "
                                        "longitudinal trajectories."),
-    "Teaching Studio": (4, "Interaction plots, estimated marginal means, conditional slopes and brief "
-                           "template-based interpretations."),
     "Reports": (7, "Excel, Word, PDF and script exports."),
 }
 FILE_FILTER = "Datasets (*.csv *.sav *.xlsx);;CSV (*.csv);;SPSS (*.sav);;Excel (*.xlsx)"
@@ -102,6 +101,8 @@ class MainWindow(QMainWindow):
             "Exploratory Data Analysis": EdaPage(self.state),
             "Analysis Builder": AnalysisBuilderPage(self.state),
             "Automated Model Discovery": DiscoveryPage(self.state),
+            "Model Comparison": ComparisonPage(self.state),
+            "Teaching Studio": TeachingPage(self.state),
             "Settings": SettingsPage(self.state),
         }
         for name in SECTIONS:
@@ -128,6 +129,8 @@ class MainWindow(QMainWindow):
         self.state.r_status_changed.connect(self.r_label.setText)
         self.state.busy_changed.connect(
             lambda b: self.statusBar().showMessage("Working…" if b else "Ready", 0 if b else 3000))
+        self.state.show_in_teaching.connect(
+            lambda _m: self.sidebar.setCurrentRow(SECTIONS.index("Teaching Studio")))
         self.state.project_changed.connect(self._update_title)
         self.state.metadata_changed.connect(self._update_title)
         self.state.result_added.connect(lambda _r: self._update_title())

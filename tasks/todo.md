@@ -107,13 +107,22 @@ Test dataset: `E:\Downloads\hrs_least_missing_1000.sav` (HRS, long format, 1000 
 - Deferred: "teaching interpretation" column and interaction graphs → Phase 4; validation status → Phase 6; mixed-model discovery → Phase 5; "all two-way terms in one model" variant not included (documented in grammar).
 - Teaching note for the user: set `RAEDYRS` to continuous before searching; declared nominal it adds 15 dummy parameters.
 
-## Phase 4 — Interaction Visualization & Teaching Studio
-- [ ] emmeans / emtrends / marginaleffects / interactions (sim_slopes, johnson_neyman) / ggeffects
-- [ ] 2-way & 3-way interaction plots, conditional slopes, EMMs, logistic probability curves; flexplot + base R options
-- [ ] Graph controls (x, group, panel, fixed values shown explicitly, labels, CI toggle, format)
-- [ ] Template-based 3–6 sentence interpretations (no AI)
-- [ ] Model Comparison workspace (AIC/BIC, R², LRT only when nested + same sample, warnings), manual model edits preserving original
-- [ ] Tests: plotted values == model predictions, CI bands correct, reference levels, code reproduces results
+## Phase 4 — Interaction Visualization & Teaching Studio  ✅ **complete (2026-11-21)**
+- [x] `ModelSpec` (hierarchically closed terms, focal interaction, shared-sample variables, provenance)
+- [x] Interaction plots from model predictions on an explicit grid (x varies; group/panel at displayed values; others held at mean / reference level and printed); 2-way, 3-way (panels), categorical × categorical (points + error bars), logistic probability curves
+- [x] Conditional slopes (emtrends) / simple effects (emmeans), exact Johnson-Neyman interval
+- [x] Graph controls: x, lines, panels, moderator values (±1 SD / percentiles), CI, raw data, labels, title, format (PNG/SVG/PDF; PNG preview always)
+- [x] Backends: ggplot2 (default), base R; flexplot optional → disabled with explanation when not installed (GitHub-only; install blocked here — user action)
+- [x] Template interpretations (3–6 sentences: what, whether, direction with CIs, J-N, limitation; selection-from-search caveat)
+- [x] Model Comparison workspace: model set (from discovery, Teaching Studio, or new), edit-a-copy (original preserved), common-sample option, AIC/BIC/R², nested F/LR tests only for nested pairs on the same rows, different-n warning
+- [x] Persisted model set in projects
+- [x] Tests (13): predictions & CI bands == statsmodels get_prediction (1e-9), held values, moderator values, interaction p, slopes, J-N bounds hit t-crit exactly, reference levels for held/x factors, logistic curves, SVG/PDF/PNG for both backends, flexplot graceful failure, code reproduces predictions; comparison AIC/R²/nested F vs statsmodels, non-nested not tested, different-n warning, mixed outcomes rejected; GUI teaching + comparison + save/reopen; editor interaction-order bug
+
+### Review (Phase 4)
+- 115/115 tests pass; no orphan R processes.
+- Bugs found and fixed: (1) a model's interaction was dropped when loaded into the editor if its variable order differed from the list order → matched as sets (+ test); (2) new models in the comparison set came in unchecked → default checked (found by GUI test); (3) display: plots buried under 240-row prediction tables → teaching graphs first, long tables truncated in view; internal columns hidden; "held at: none" subtitle removed.
+- Convention noted: linear-model AIC/BIC count the residual variance (R convention; statsmodels differs by 2).
+- HRS demo (wave 10): CES-D 8 ~ neuroticism × gender, F(1, 666) = 5.97, p = .015; slopes 0.73 (men) vs 1.27 (women). Interpretation flags it was selected from 91 candidates.
 
 ## Phase 5 — Mixed & Longitudinal Models
 - [ ] Assisted ID/time/cluster detection (HRS: HHIDPN/WAVE) with confirmation; wide→long restructuring

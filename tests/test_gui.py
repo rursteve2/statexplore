@@ -128,3 +128,55 @@ def test_discovery_page_end_to_end(window, qtbot, tmp_path, r_worker):
     page.tabs.setCurrentWidget(page.discovery_table)
     page.discovery_table.view.selectRow(0)
     assert page._selected_row()["interaction"] == "a × b"
+
+
+@pytest.mark.r
+def test_teaching_and_comparison_pages(window, qtbot, tmp_path, r_worker):
+    import numpy as np
+    import pandas as pd
+
+    from statexplore.analysis.models import ModelSpec
+    from statexplore.core.importers import import_file
+    from statexplore.core.project import Project
+
+    rng = np.random.default_rng(6)
+    df = pd.DataFrame({"x": rng.normal(size=200), "g": rng.choice(["a", "b"], 200)})
+    df["y"] = df["x"] * (df["g"] == "b") + rng.normal(size=200)
+    p = tmp_path / "t.csv"
+    df.to_csv(p, index=False)
+    window.state.set_project(Project(import_file(p)))
+    m_int = ModelSpec("y", [("x", "g")], "gaussian", label="int")
+    window.state.show_in_teaching.emit(m_int)
+    assert window.stack.currentIndex() == window.sidebar.currentRow()
+    page = window.pages["Teaching Studio"]
+    assert page.x.currentData() == "x" and page.group.currentData() == "g"
+    page._draw()
+    qtbot.waitUntil(lambda: page.current is not None, timeout=60000)
+    assert "Interpretation." in page.output.toPlainText()
+    window.state.add_model(page.editor.model())          # what "Add to comparison set" does
+    window.state.add_model(ModelSpec("y", [("x",), ("g",)], "gaussian", label="main"))
+    comp = window.pages["Model Comparison"]
+    assert comp.list.count() == 2
+    comp._compare()
+    qtbot.waitUntil(lambda: comp.current is not None, timeout=60000)
+    assert "Nested model tests" in comp.output.toPlainText()
+    out = tmp_path / "m.sxp"
+    assert window._save_to(out)
+    window.open_project(str(out))
+    assert [m.label for m in window.state.project.models] == ["int", "main"]
+    assert window.state.project.models[0].terms == [("x",), ("g",), ("x", "g")]
+
+
+def test_model_editor_keeps_interaction_in_any_order(window, tmp_path):
+    import pandas as pd
+
+    from statexplore.analysis.models import ModelSpec
+    from statexplore.core.importers import import_file
+    from statexplore.gui.model_editor import ModelEditor
+
+    p = tmp_path / "e.csv"
+    pd.DataFrame({"y": [1.0, 2, 3, 4], "a": [1.0, 2, 3, 5], "b": [2.0, 1, 4, 3]}).to_csv(p, index=False)
+    ds = import_file(p)
+    ed = ModelEditor(ds)
+    ed.set_model(ModelSpec("y", [("b", "a")], "gaussian"))  # reverse of the widget's variable order
+    assert set(map(frozenset, ed.model().terms)) == {frozenset({"a"}), frozenset({"b"}), frozenset({"a", "b"})}

@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
 )
 
 from ...core.variables import Measure, Storage
+from ...analysis.models import from_candidate
 from ...discovery import engine
 from ...discovery.detail import candidate_from_row, full_analysis
 from ...discovery.rcode import candidate_script
@@ -247,8 +248,12 @@ class DiscoveryPage(QWidget):
         self.open_btn.clicked.connect(self._open_detail)
         self.code_btn = QPushButton("View candidate code")
         self.code_btn.clicked.connect(self._view_code)
-        sort_row.addWidget(self.open_btn)
-        sort_row.addWidget(self.code_btn)
+        self.teach_btn = QPushButton("Plot in Teaching Studio")
+        self.teach_btn.clicked.connect(self._to_teaching)
+        self.set_btn = QPushButton("Add to comparison")
+        self.set_btn.clicked.connect(self._to_set)
+        for b in (self.open_btn, self.code_btn, self.teach_btn, self.set_btn):
+            sort_row.addWidget(b)
         rl.addLayout(sort_row)
 
         split = QSplitter()
@@ -595,6 +600,26 @@ class DiscoveryPage(QWidget):
         lay.addWidget(code)
         dlg.show()
         render(view, result, artifacts)
+
+    def _candidate_model(self):
+        row = self._selected_row()
+        if row is None:
+            return None
+        if row["status"] in ("invalid", "failed"):
+            QMessageBox.information(self, "Discovery", f"This candidate was not fitted: {row['reason']}")
+            return None
+        return from_candidate(self.run, row)
+
+    def _to_teaching(self) -> None:
+        m = self._candidate_model()
+        if m is not None:
+            self.state.show_in_teaching.emit(m)
+
+    def _to_set(self) -> None:
+        m = self._candidate_model()
+        if m is not None:
+            self.state.add_model(m)
+            QMessageBox.information(self, "Discovery", f"{m.label} added to the Model Comparison set.")
 
     def _view_code(self) -> None:
         row = self._selected_row()
