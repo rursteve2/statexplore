@@ -286,3 +286,32 @@ def test_dependence_warning(tmp_path):
     run = create_run(ds, s)
     assert "60 rows come from only 30 participants" in run.warnings[0]
     assert any("not independent" in w for w in describe_space(ds, s)["warnings"])
+
+
+@pytest.mark.r
+def test_mixed_model_discovery(tmp_path):
+    """Repeated measures: a random-intercept search recovers the planted interaction, and its focal
+    likelihood-ratio statistic equals an independent statsmodels MixedLM (ML) comparison."""
+    import statsmodels.formula.api as smf
+
+    rng = np.random.default_rng(13)
+    n_id, k = 60, 4
+    df = pd.DataFrame({"pid": np.repeat(np.arange(1, n_id + 1), k)})
+    df["a"] = rng.normal(size=len(df))
+    df["b"] = rng.normal(size=len(df))
+    df["c"] = rng.normal(size=len(df))
+    df["y"] = rng.normal(0, 1.2, n_id).repeat(k) + 0.4 * df["a"] + 0.5 * df["a"] * df["b"] + rng.normal(size=len(df))
+    ds = make_ds(tmp_path, df)
+    ds.set_variable_field("pid", "role", "id")
+    s = settings(candidates=["a", "b", "c"], participant="pid")
+    assert create_run(ds, s).warnings == []  # repeated measures are modelled: no dependence warning
+    run = execute(create_run(ds, s), ds)
+    assert run.family == "lmm" and run.status == "complete"
+    df_r = results_frame(run)
+    top = discovery_ranking(df_r).iloc[0]
+    assert top["interaction"] == "a × b" and top["sig_adj"] and top["df2"] == n_id
+    full = smf.mixedlm("y ~ a * b", df, groups=df["pid"]).fit(reml=False)
+    red = smf.mixedlm("y ~ a + b", df, groups=df["pid"]).fit(reml=False)
+    assert top["statistic"] == pytest.approx(2 * (full.llf - red.llf), rel=1e-3)
+    with pytest.raises(SearchSpaceError):
+        validate_settings(ds, settings(candidates=["a", "pid"], participant="pid"))

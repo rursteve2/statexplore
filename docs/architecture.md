@@ -6,10 +6,16 @@
 │   state.py      AppState: project, signals, background pools             │
 │                   ├─ io pool (2 threads): file import                    │
 │                   └─ R pool (1 thread): every R request, serialised      │
-│ analysis/       eda.py (describe, plots) → session.py (RSession)         │
+│ analysis/       session (RSession) · framework/builders (Phase 2 specs) · │
+│                 models (ModelSpec) · teaching · comparison · mixed ·      │
+│                 validation · eda                                          │
+│ discovery/      space (grammar, counts) · rcode · engine (pool, modes,    │
+│                 adjustments, rankings) · detail                           │
+│ export/         exporters (xlsx, docx, pdf, R, py, history)               │
 │ rbridge/        codegen.py (only place R text is built) · worker.py      │
-│ core/           importers · dataset · variables · overview · schema ·    │
-│                 project (.sxp SQLite)                                     │
+│ core/           importers · dataset (derived, filters, holdout) · derive  │
+│                 · variables · overview · missing · structure · schema ·   │
+│                 project (.sxp SQLite: data, results, searches, models)    │
 └───────────────┬───────────────────────────────────────────────────────────┘
                 │ stdin: JSON lines  {"id","cmd","args"}
                 │ stdout: "@@SX@@ {json}" lines; other output = log
@@ -52,3 +58,31 @@ adding family-specific numbers in `values`.
 R is the single statistical engine (decision D1 in `tasks/todo.md`). Python computes only
 overview counts (missingness, uniques, Tukey outlier counts) and is used in tests as an
 independent reference implementation.
+
+## Engine selection (one default per analysis; recorded in every result)
+| Analysis | Engine |
+|---|---|
+| Descriptives, EDA plots | psych, ggplot2 |
+| t-tests, correlations | stats, effectsize, ppcor, psych |
+| ANOVA / ANCOVA | afex (Type III), emmeans, car |
+| Linear / logistic regression | stats, effectsize, emmeans, lmtest, car, detectseparation |
+| Discovery | stats::lm / glm (nested F / LR), lme4 (random intercept, ML LR) |
+| Interaction plots | model predictions on an explicit grid; emmeans for slopes / simple effects |
+| Mixed models | lme4/lmerTest (independent residuals), nlme (AR1 / CAR1), mmrm (unstructured, marginal) |
+| Validation | stats (refits), seeded splits |
+
+## Discovery pool
+`discovery.engine.execute` starts N persistent R workers (threads in Python, one Rscript each), loads
+the data and the discovery helpers once per worker, and dispatches batches in enumeration order. All
+dispatched batches finish before the run ends, so evaluated candidates always form a contiguous
+prefix; that keeps modes A/B deterministic and makes resuming exact.
+
+## Holdout
+The train/holdout assignment is computed in Python (numpy Generator(seed); whole participants when
+split by ID), exported as the `sx_split` column, and applied explicitly by the R load script
+(`dat` = training rows, `sx_holdout_dat` = reserved rows).
+
+## Packaging
+`packaging/build.py`: PyInstaller one-folder build (`packaging/launcher.py` entry), plus a copy of the
+R installation (`R/`) and the package library (`rlib/`, with `packages.lock.json`). In a frozen build
+`rbridge.locate` prefers the bundled `R/bin/x64/Rscript.exe` and `rlib/`.

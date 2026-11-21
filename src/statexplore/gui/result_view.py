@@ -70,9 +70,15 @@ def table_html(t: Table) -> str:
 def render(view: QTextBrowser, result: AnalysisResult, artifacts: dict[str, bytes],
            plots_first: bool | None = None) -> None:
     """plots_first defaults to True for Teaching Studio graphs (the graph is the point)."""
+    width = max(300, min(760, view.viewport().width() - 40))
+    view.setHtml(build_html(view.document(), result, artifacts, width, plots_first))
+
+
+def build_html(doc: QTextDocument, result: AnalysisResult, artifacts: dict[str, bytes], width: int = 760,
+               plots_first: bool | None = None) -> str:
+    """HTML for a result; images are registered as resources on `doc` (shared by screen and PDF)."""
     if plots_first is None:
         plots_first = result.kind == "teaching_plot"
-    doc = view.document()
     parts = [
         "<style>h2{color:#12263f;margin-bottom:2px} h3{color:#2b5d8c;margin:14px 0 4px 0}"
         "th{background:#e8eef5} table{border-color:#c5d0dc} .note{color:#555;font-size:small}</style>",
@@ -98,7 +104,6 @@ def render(view: QTextBrowser, result: AnalysisResult, artifacts: dict[str, byte
         parts.append(f"<p style='color:{color}'>{html.escape(m)}</p>")
     for n in result.values.get("notes") or []:
         parts.append(f"<p class='note'>{html.escape(n)}</p>")
-    width = max(300, min(760, view.viewport().width() - 40))
     images = []
     for i, key in enumerate(result.plots):
         data = artifacts.get(key)
@@ -110,4 +115,4 @@ def render(view: QTextBrowser, result: AnalysisResult, artifacts: dict[str, byte
         images.append(f"<p><img src='{url.toString()}' width='{min(width, img.width())}'></p>")
     tables = [table_html(t) for t in result.tables]
     parts.extend(images + tables if plots_first else tables + images)
-    view.setHtml("".join(parts))
+    return "".join(parts)

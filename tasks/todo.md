@@ -157,16 +157,20 @@ Test dataset: `E:\Downloads\hrs_least_missing_1000.sav` (HRS, long format, 1000 
 - Bugs found and fixed: helper names failed alias validation (good: the guard works) → explicit split column; complete-case helper dropped the ID/time columns CV needs.
 - HRS wave-10 lead (light activity × education, p = .005, q = .31): significant in 80% of subsamples but ranked first in 40%; full-procedure CV picks different interactions across folds and out-of-sample R² ≈ 0 — a clear "significant but unstable" teaching example.
 
-## Phase 7 — Export & Packaging
-- [ ] Excel (openpyxl), Word (python-docx or officer), PDF exports; R/Python script export; analysis history & search settings export
-- [ ] renv lockfile; bundled portable R + pre-installed library (incl. vendored flexplot)
-- [ ] PyInstaller build + Inno Setup offline installer
-- [ ] Clean-VM test (Windows 10 & 11, no network)
-- [ ] Test O (exported code reproduces results), export-value equality tests
+## Phase 7 — Export & Packaging  ✅ **complete (2026-11-21)** — clean-VM install test is a user step
+- [x] Excel (index, per-result summary/tables/code sheets, discovery attempts + settings), Word (python-docx: interpretation, plots, tables, code), PDF (Qt, same HTML as screen)
+- [x] R script export: self-contained (reads exported data.csv, relative plot paths, writes result JSON); Python launcher scripts (re-run R, load result — all statistics are R by design, D1)
+- [x] Search settings JSON, analysis history CSV, variable change log CSV
+- [x] Reports page (all 11 sidebar sections now implemented)
+- [x] Packaging: PyInstaller spec + `packaging/build.py` (bundles R + r/library, writes r/packages.lock.json), Inno Setup script, frozen-mode R lookup, `--selftest`
+- [x] Tests: Test O (exported R scripts reproduce lm / Teaching Studio / mixed results to 1e-9 in a fresh Rscript), xlsx values, docx/pdf content, full project round-trip
+- [ ] User: compile `packaging/statexplore.iss` with Inno Setup; install on a clean Windows 10 and 11 machine with networking off; run the app and `StatExplore.exe --selftest`
+- Deviation: R package versions are pinned by `r/packages.lock.json` (exact versions from the bundled library) instead of renv — the bundled library itself is the reproducible environment.
 
 ## Remaining from earlier phases
-- Mixed models inside the discovery engine (random-intercept, ML LRT focal test).
-- Binary (logistic) mixed models.
+- [x] Mixed models inside the discovery engine: random intercept per participant, ML likelihood-ratio focal test, Δ marginal R², singular/convergence flags; LR statistic verified against statsmodels MixedLM (2026-11-21)
+- [ ] Binary (logistic) mixed models (glmer) — not started
+- [ ] Drill-down / Teaching Studio / stability for mixed-model discovery candidates (currently: View candidate code + refit in the Mixed workspace)
 
 ## Later
 - Synthetic teaching dataset generator; mice; mediation workflow (lavaan); count/ordinal outcomes; psychometrics module (alpha/omega/fa).

@@ -223,6 +223,8 @@ def _discovery_setup(ds: Dataset, run: Any) -> tuple[str, list[Any], str | None]
     from ..discovery.space import enumerate_candidates
 
     s = run.settings
+    if run.family == "lmm":
+        raise ValidationInputError("Resampling stability is available for single-level (non-mixed) searches.")
     if run.total > 2000:
         raise ValidationInputError("Resampling repeats the whole search many times: limit it to searches with at "
                                    "most 2,000 candidates.")

@@ -4,7 +4,7 @@ Offline Windows desktop app for exploratory statistical model discovery and teac
 (Python/PySide6 front end, R statistical engine). Build plan: `tasks/todo.md`.
 Architecture: `docs/architecture.md`.
 
-**Status: Phases 1–6 complete; Phase 7 (export & packaging) in progress.**
+**Status: all seven phases built and tested (see `tasks/todo.md`).**
 
 ## Requirements
 - Windows 10/11
@@ -18,7 +18,7 @@ py -3.11 -m venv .venv
 .venv\Scripts\python -m pip install -e ".[dev]"
 "C:\Program Files\R\R-4.6.2\bin\Rscript.exe" r\install_packages.R
 ```
-`install_packages.R` puts the required R packages (jsonlite, psych, ggplot2, car, afex, emmeans,
+`install_packages.R` (in development) puts the required R packages (jsonlite, psych, ggplot2, car, afex, emmeans,
 effectsize, ppcor, lmtest, detectseparation and their dependencies) into `r\library` (project-local).
 StatExplore finds R automatically (PATH, registry, standard install folders). You can also set
 the path under **Settings** or with the `STATEXPLORE_RSCRIPT` environment variable.
@@ -93,10 +93,21 @@ R tests skip automatically if R or the Phase 1 packages are missing. The HRS fix
   training folds), confidence vs prediction intervals, calibration.
 - Missing Data panel: missingness by variable, patterns, usable n per model.
 
+## Phase 7 features
+- Reports: Excel, Word, PDF; self-contained R scripts (+ data.csv) that reproduce each analysis outside the
+  app; Python launcher scripts; discovery settings, analysis history, variable change log.
+
+## Build an offline installer
+```bat
+.venv\Scripts\python packaging\build.py        :: dist\StatExplore\ with R + packages bundled
+"C:\Program Files (x86)\Inno Setup 6\ISCC.exe" packaging\statexplore.iss   :: dist\installer\StatExplore-Setup.exe
+dist\StatExplore\StatExplore.exe --selftest     :: writes %TEMP%\statexplore_selftest.txt; exit code 0 = OK
+```
+
 ## Known limitations
 - Binary mixed models and mixed models inside discovery are not available yet. Welch ANOVA has no post hoc test yet (Games-Howell planned).
 - z-scores / centering of derived variables use all rows (before filters).
 - Date/time columns are imported and shown but excluded from analyses.
 - Empty strings in text columns are treated as missing.
 - Ordinal variables are coded as unordered factors in R (avoids polynomial contrasts by default).
-- The R runtime isn't bundled yet; the offline installer is built in Phase 7.
+- The installer has not yet been tested on a clean Windows 10/11 machine (user step).

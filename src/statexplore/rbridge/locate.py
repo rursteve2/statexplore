@@ -7,9 +7,13 @@ import shutil
 import sys
 from pathlib import Path
 
-# Project-local package library (populated by r/install_packages.R).
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
-DEFAULT_R_LIB = PROJECT_ROOT / "r" / "library"
+FROZEN = bool(getattr(sys, "frozen", False))
+# In an installed (PyInstaller) build, R and its library are bundled next to the executable.
+APP_DIR = Path(sys.executable).resolve().parent if FROZEN else Path(__file__).resolve().parents[3]
+PROJECT_ROOT = APP_DIR
+# Windows paths are case-insensitive: the bundled library must not be "r/library", which is R's own "R/library".
+DEFAULT_R_LIB = APP_DIR / ("rlib" if FROZEN else "r/library")
+BUNDLED_RSCRIPT = APP_DIR / "R" / "bin" / "x64" / "Rscript.exe"
 WORKER_SCRIPT = Path(__file__).resolve().parents[1] / "r" / "worker.R"
 
 PHASE1_PACKAGES = ["jsonlite", "psych", "ggplot2"]
@@ -55,7 +59,7 @@ def _directory_candidates() -> list[Path]:
 
 def find_rscript(configured: str | None = None) -> Path | None:
     """Resolution order: explicit setting, STATEXPLORE_RSCRIPT, PATH, registry, standard dirs."""
-    candidates: list[Path] = []
+    candidates: list[Path] = [BUNDLED_RSCRIPT] if FROZEN else []
     for explicit in (configured, os.environ.get("STATEXPLORE_RSCRIPT")):
         if explicit:
             candidates.append(Path(explicit))

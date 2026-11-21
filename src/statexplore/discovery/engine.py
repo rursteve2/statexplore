@@ -118,7 +118,7 @@ class _PooledSession:
 
     def run_batch(self, ds: Dataset, script: str, n: int) -> tuple[list[dict[str, Any]], dict[str, Any]]:
         self.ensure(ds)
-        resp = self.session.worker.run(script, packages=["detectseparation", "stats"], timeout=120 + 20 * n)
+        resp = self.session.worker.run(script, packages=["detectseparation", "lme4", "stats"], timeout=120 + 20 * n)
         out = resp.result if isinstance(resp.result, list) else [resp.result]
         return out, resp.versions
 

@@ -104,6 +104,10 @@ class DiscoveryPage(QWidget):
         self.outcome = QComboBox()
         self.outcome.currentIndexChanged.connect(self._outcome_changed)
         form.addRow("Dependent variable", self.outcome)
+        self.participant = QComboBox()
+        self.participant.setToolTip("Long data with several rows per participant: fit linear mixed models with a "
+                                    "random intercept per participant (continuous outcomes).")
+        form.addRow("Repeated measures", self.participant)
         cl.addLayout(form)
         self.var_filter = QLineEdit()
         self.var_filter.setPlaceholderText("Filter variables…")
@@ -288,6 +292,9 @@ class DiscoveryPage(QWidget):
         for w in (self.cands, self.reqs):
             w.blockSignals(True)
             w.clear()
+        keep_part = self.participant.currentData()
+        self.participant.clear()
+        self.participant.addItem("None (one row per participant)", None)
         self.outcome.blockSignals(True)
         self.outcome.clear()
         self.outcome.addItem("— choose —", None)
@@ -298,6 +305,8 @@ class DiscoveryPage(QWidget):
                 n_values = ds.analysis_frame([v.name])[v.name].dropna().nunique()
                 if n_values == 2 or (v.measure is Measure.CONTINUOUS and v.storage is Storage.NUMERIC):
                     self.outcome.addItem(v.display_name, v.name)
+                if v.role.value == "id":
+                    self.participant.addItem(f"Random intercept per {v.display_name}", v.name)
                 if v.role.value in ("id",) or (not v.is_categorical and v.storage is not Storage.NUMERIC):
                     continue
                 for lst, keep in ((self.cands, keep_c), (self.reqs, keep_r)):
@@ -307,6 +316,7 @@ class DiscoveryPage(QWidget):
                     it.setFlags(it.flags() | Qt.ItemIsUserCheckable)
                     it.setCheckState(Qt.Checked if v.name in keep else Qt.Unchecked)
                     lst.addItem(it)
+        self.participant.setCurrentIndex(max(0, self.participant.findData(keep_part)))
         idx = self.outcome.findData(keep_outcome)
         self.outcome.setCurrentIndex(max(0, idx))
         self.outcome.blockSignals(False)
@@ -378,6 +388,7 @@ class DiscoveryPage(QWidget):
             profile=self.profile.currentData(), max_models=self.max_models.value() or None,
             max_minutes=self.max_minutes.value() or None, workers=self.workers.value(),
             sample=self.sample.currentData(), max_params=self.max_params.value(),
+            participant=self.participant.currentData(),
         )
 
     def _estimate(self) -> dict[str, Any] | None:
@@ -389,7 +400,8 @@ class DiscoveryPage(QWidget):
         except SearchSpaceError as e:
             self.estimate.setText(f"<span style='color:#c62828'>{html.escape(str(e))}</span>")
             return None
-        fam = "linear regression (F-tests)" if info["family"] == "gaussian" else "logistic regression (LR tests)"
+        fam = {"gaussian": "linear regression (F-tests)", "binomial": "logistic regression (LR tests)",
+               "lmm": "linear mixed models, random intercept (LR tests, ML)"}[info["family"]]
         warn = "".join(f"<br><span style='color:#8d6e00'>⚠ {html.escape(w)}</span>" for w in info["warnings"])
         self.estimate.setText(f"<b>{info['total']:,}</b> candidate models · {fam} · shared complete-case "
                               f"sample: <b>{info['n_shared']:,}</b> of {info['n_rows']:,} rows{warn}")
@@ -538,10 +550,13 @@ class DiscoveryPage(QWidget):
             "<p class='note'>Multiple-testing adjustment controls false discoveries among the tests run; it does "
             "not remove post-selection bias. Effect sizes and confidence intervals of the top-ranked models are "
             "optimistic. Confirm promising interactions on new data or a holdout sample (Phase 6).</p>")
-        fam = "Linear models, focal F-test (nested comparison)" if run.family == "gaussian" else \
-            "Logistic models, focal likelihood-ratio test"
-        effect = "ΔR² (variance uniquely explained by the interaction)" if run.family == "gaussian" else \
-            "ΔMcFadden R² (deviance reduction / null deviance)"
+        fam = {"gaussian": "Linear models, focal F-test (nested comparison)",
+               "binomial": "Logistic models, focal likelihood-ratio test",
+               "lmm": "Linear mixed models with a random intercept per participant; focal likelihood-ratio "
+                      "test on ML fits (df2 column = participants)"}[run.family]
+        effect = {"gaussian": "ΔR² (variance uniquely explained by the interaction)",
+                  "binomial": "ΔMcFadden R² (deviance reduction / null deviance)",
+                  "lmm": "Δ marginal R² (variance explained by fixed effects)"}[run.family]
         name = lambda n: e(ds.var(n).display_name) if ds and n in ds.variables else e(n)  # noqa: E731
         parts.append("<h3>Settings</h3><table cellpadding='3'>" + "".join(
             f"<tr><td><b>{k}</b></td><td>{v}</td></tr>" for k, v in [
@@ -582,6 +597,10 @@ class DiscoveryPage(QWidget):
             QMessageBox.information(self, "Discovery", f"This candidate was not fitted: {row['reason']}")
             return
         ds, run = self.state.dataset, self.run
+        if run.family == "lmm":
+            QMessageBox.information(self, "Discovery", "For mixed-model candidates use the Mixed & Longitudinal "
+                                    "Models workspace with the same predictors; View candidate code shows the exact fit.")
+            return
         cand = candidate_from_row(run, row)
         self.state.run_r(lambda s: full_analysis(s, ds, run, cand), self._detail_done,
                          lambda m: QMessageBox.warning(self, "Analysis failed", m))
@@ -604,6 +623,10 @@ class DiscoveryPage(QWidget):
     def _candidate_model(self):
         row = self._selected_row()
         if row is None:
+            return None
+        if self.run.family == "lmm":
+            QMessageBox.information(self, "Discovery", "Mixed-model candidates are refitted in the Mixed & "
+                                    "Longitudinal Models workspace (same outcome, participant ID and predictors).")
             return None
         if row["status"] in ("invalid", "failed"):
             QMessageBox.information(self, "Discovery", f"This candidate was not fitted: {row['reason']}")

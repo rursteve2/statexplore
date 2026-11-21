@@ -40,20 +40,7 @@ class RSession:
         return hashlib.sha256(payload.encode()).hexdigest()
 
     def export_csv(self, ds: Dataset, path: Path) -> None:
-        """Source variables only, unfiltered: derived variables and filters are applied by
-        the R load script itself so the recorded code reproduces them."""
-        base = [n for n in ds.variables if not ds.is_derived(n)]
-        frame = ds.analysis_frame(base, filtered=False)
-        frame.columns = [ds.var(n).alias for n in frame.columns]
-        for n in ds.variables.values():
-            if n.storage is Storage.DATETIME and n.alias in frame.columns:
-                col = frame[n.alias]
-                frame[n.alias] = col.map(lambda x: "" if pd.isna(x) else pd.Timestamp(x).isoformat())
-        # Default float formatting is repr(), so values round-trip exactly.
-        labels = ds.holdout_labels()
-        if labels is not None:
-            frame["sx_split"] = labels  # train/holdout assignment computed in Python (seeded)
-        frame.to_csv(path, index=False, na_rep="", encoding="utf-8", lineterminator="\n")
+        export_data(ds, path)
 
     def ensure_data(self, ds: Dataset) -> None:
         sig = self._metadata_signature(ds)
@@ -104,6 +91,23 @@ class RSession:
             elapsed_s=resp.elapsed,
         )
         return result, resp.result
+
+
+def export_data(ds: Dataset, path: Path) -> None:
+    """Source variables only, unfiltered: derived variables and filters are applied by
+    the R load script itself so the recorded code reproduces them."""
+    base = [n for n in ds.variables if not ds.is_derived(n)]
+    frame = ds.analysis_frame(base, filtered=False)
+    frame.columns = [ds.var(n).alias for n in frame.columns]
+    for n in ds.variables.values():
+        if n.storage is Storage.DATETIME and n.alias in frame.columns:
+            col = frame[n.alias]
+            frame[n.alias] = col.map(lambda x: "" if pd.isna(x) else pd.Timestamp(x).isoformat())
+    # Default float formatting is repr(), so values round-trip exactly.
+    labels = ds.holdout_labels()
+    if labels is not None:
+        frame["sx_split"] = labels  # train/holdout assignment computed in Python (seeded)
+    frame.to_csv(path, index=False, na_rep="", encoding="utf-8", lineterminator="\n")
 
 
 def _engine(versions: dict[str, Any]) -> EngineInfo:

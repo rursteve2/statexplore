@@ -16,7 +16,7 @@ sx_discover_one <- function(full, reduced, focal, vars, focal_vars) {
               partial_eta2 = NA_real_, estimate = NA_real_, se = NA_real_, ci_low = NA_real_,
               ci_high = NA_real_, r2 = NA_real_, aic = NA_real_, bic = NA_real_)
   invalid <- function(why) { res$status <- "invalid"; res$reason <- why; res$flags <- ""; res }
-  d <- sx_complete(sx_dd, c("sx_y", vars))
+  d <- sx_complete(sx_dd, c("sx_y", vars, if (sx_disc_family == "lmm") "sx_gid"))
   n <- nrow(d); res$n <- n
   for (v in vars) if (is.factor(d[[v]]) && nlevels(d[[v]]) < 2)
     return(invalid(paste0(sx_names[[v]], " has fewer than 2 levels in the analysed rows")))
@@ -40,7 +40,25 @@ sx_discover_one <- function(full, reduced, focal, vars, focal_vars) {
     r <- abs(stats::cor(d[cv])); diag(r) <- 0
     if (max(r) > 0.9) res$flags <- c(res$flags, sprintf("|r| = %.2f between continuous predictors", max(r)))
   }
-  if (sx_disc_family == "gaussian") {
+  if (sx_disc_family == "lmm") {
+    # random intercept per participant; ML fits so the likelihood-ratio test of the focal term is valid
+    g1 <- stats::update(f1, . ~ . + (1 | sx_gid)); g0 <- stats::update(f0, . ~ . + (1 | sx_gid))
+    m1 <- lme4::lmer(g1, data = d, REML = FALSE); m0 <- lme4::lmer(g0, data = d, REML = FALSE)
+    if (lme4::isSingular(m1)) res$flags <- c(res$flags, "singular fit (participant variance ~ 0)")
+    conv <- unlist(m1@optinfo$conv$lme4$messages)
+    if (length(conv)) res$flags <- c(res$flags, paste("convergence:", conv[1]))
+    lr <- 2 * (as.numeric(stats::logLik(m1)) - as.numeric(stats::logLik(m0)))
+    res$df1 <- attr(stats::logLik(m1), "df") - attr(stats::logLik(m0), "df")
+    res$statistic <- lr; res$p <- stats::pchisq(lr, res$df1, lower.tail = FALSE)
+    r2m <- function(m) { v <- stats::var(as.vector(lme4::getME(m, "X") %*% lme4::fixef(m)))
+      vc <- as.data.frame(lme4::VarCorr(m)); v / (v + sum(vc$vcov)) }
+    res$effect <- r2m(m1) - r2m(m0)                              # delta marginal R-squared
+    res$r2 <- r2m(m1)
+    res$df2 <- nlevels(droplevels(d$sx_gid))                      # participants
+    crit <- stats::qnorm(1 - (1 - sx_disc_conf) / 2)
+    co_tab <- function(m) { b <- lme4::fixef(m); se <- sqrt(diag(as.matrix(stats::vcov(m))))
+      cbind(Estimate = b, SE = se) }
+  } else if (sx_disc_family == "gaussian") {
     m1 <- stats::lm(f1, d); m0 <- stats::lm(f0, d)
     a <- stats::anova(m0, m1)
     res$statistic <- a$F[2]; res$df1 <- a$Df[2]; res$df2 <- a$Res.Df[2]; res$p <- a[["Pr(>F)"]][2]
@@ -67,8 +85,9 @@ sx_discover_one <- function(full, reduced, focal, vars, focal_vars) {
   res$aic <- stats::AIC(m1); res$bic <- stats::BIC(m1)
   if (isTRUE(res$df1 == 1)) {
     col <- colnames(X)[attr(X, "assign") == match(focal, attr(stats::terms(f1), "term.labels"))]
-    if (length(col) == 1 && col %in% rownames(stats::coef(summary(m1)))) {
-      co <- stats::coef(summary(m1))[col, ]
+    ctab <- if (sx_disc_family == "lmm") co_tab(m1) else stats::coef(summary(m1))
+    if (length(col) == 1 && col %in% rownames(ctab)) {
+      co <- ctab[col, ]
       res$estimate <- co[[1]]; res$se <- co[[2]]
       res$ci_low <- co[[1]] - crit * co[[2]]; res$ci_high <- co[[1]] + crit * co[[2]]
     }
@@ -96,7 +115,7 @@ sx_discover_batch <- function(batch) lapply(batch, function(s) {
 
 def setup_script(ds: Dataset, s: SearchSettings, family: str) -> str:
     a = lambda n: alias(ds.var(n).alias)  # noqa: E731
-    vars_ = [a(n) for n in [s.outcome] + s.candidates + s.required]
+    vars_ = [a(n) for n in [s.outcome] + s.candidates + s.required + ([s.participant] if s.participant else [])]
     y = a(s.outcome)
     lines = [
         DISCOVERY_HELPERS,
@@ -109,7 +128,9 @@ def setup_script(ds: Dataset, s: SearchSettings, family: str) -> str:
          if s.sample == "shared" else
          "sx_dd <- droplevels(dat[, sx_disc_vars, drop = FALSE])  # complete cases are taken per model"),
     ]
-    if family == "gaussian":
+    if s.participant:
+        lines.append(f"sx_dd$sx_gid <- factor(sx_dd${a(s.participant)})  # participant (random intercept)")
+    if family in ("gaussian", "lmm"):
         lines.append(f"sx_dd$sx_y <- sx_dd${y}")
     else:
         lines += [

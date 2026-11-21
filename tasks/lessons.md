@@ -30,3 +30,11 @@
 
 ## Optimizers
 - Prefer the package-default optimizer; add fallbacks explicitly and record when they are used.
+
+## Packaging
+- A PyInstaller entry script runs as top-level `__main__`: relative imports fail. Use a tiny launcher with absolute imports.
+- Windows paths are case-insensitive: `r/library` and `R/library` are the same folder. Never name bundled folders so they differ only by case.
+- Verify the frozen build by running it (`--selftest`), not just by building it.
+
+## Flaky vs real
+- A test that fails once under heavy load must be rerun and investigated; report it even if it doesn't reproduce.

@@ -50,6 +50,7 @@ class SearchSettings:
     max_params: int = 40
     conf: float = 0.95
     batch_size: int = 40
+    participant: str | None = None     # set: linear mixed models with a random intercept per participant
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -82,6 +83,15 @@ class Candidate:
 
 # ---- validation -----------------------------------------------------------------
 
+def search_family(ds: Dataset, s: "SearchSettings") -> str:
+    family = outcome_family(ds, s.outcome)
+    if s.participant:
+        if family != "gaussian":
+            raise SearchSpaceError("Mixed-model discovery needs a continuous outcome.")
+        return "lmm"
+    return family
+
+
 def outcome_family(ds: Dataset, outcome: str) -> str:
     v = ds.var(outcome)
     n_values = ds.analysis_frame([outcome])[outcome].dropna().nunique()
@@ -95,7 +105,9 @@ def outcome_family(ds: Dataset, outcome: str) -> str:
 
 def validate_settings(ds: Dataset, s: SearchSettings) -> str:
     """Raise SearchSpaceError with a user-facing reason; return the model family."""
-    family = outcome_family(ds, s.outcome)
+    if s.participant and s.participant in [s.outcome] + s.candidates + s.required:
+        raise SearchSpaceError("The participant ID cannot also be the outcome or a predictor.")
+    family = search_family(ds, s)
     if s.outcome in s.candidates or s.outcome in s.required:
         raise SearchSpaceError("The outcome cannot also be a predictor.")
     overlap = set(s.candidates) & set(s.required)
@@ -208,8 +220,8 @@ def dependence_warning(ds: Dataset, s: SearchSettings) -> str:
     from ..core.variables import Role
 
     ids = [v.name for v in ds.variables.values() if v.role is Role.ID]
-    if not ids:
-        return ""
+    if not ids or s.participant:
+        return ""  # mixed-model searches model the repeated measurements
     used = [s.outcome] + s.candidates + s.required
     frame = ds.analysis_frame(list(dict.fromkeys(used + ids[:1]))).dropna(subset=used)
     n_rows, n_ids = len(frame), frame[ids[0]].nunique()
@@ -217,8 +229,8 @@ def dependence_warning(ds: Dataset, s: SearchSettings) -> str:
         return ""
     return (f"The {n_rows:,} rows come from only {n_ids:,} participants ({ds.var(ids[0]).display_name}). "
             "Rows are not independent, so every p-value in this search is too small and false discoveries "
-            "will be more common. Filter to one row per participant (e.g. one wave), or wait for mixed "
-            "models in discovery (Phase 5).")
+            "will be more common. Choose the participant ID under 'Repeated measures' to fit mixed models, "
+            "or filter to one row per participant (e.g. one wave).")
 
 
 def describe_space(ds: Dataset, s: SearchSettings) -> dict[str, Any]:
