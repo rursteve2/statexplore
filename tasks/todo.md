@@ -42,14 +42,34 @@ Test dataset: `E:\Downloads\hrs_least_missing_1000.sav` (HRS, long format, 1000 
 - [x] End-to-end GUI drive on HRS (describeBy, violin, correlation heatmap) — results OK, renders checked
 - Moved to Phase 2: derived variables, row filters (§6.4)
 
-## Phase 2 — Core Statistical Engine
-- [ ] Derived variables + row filters (logged, reversible) — carried over from §6.4
-- [ ] psych::corr.test correlation matrices (raw + adjusted p) in EDA
-- [ ] R analysis modules: t-tests (one-sample, independent, Welch, paired), correlations (Pearson, Spearman, partial; psych::corr.test with raw+adjusted p), ANOVA (one-way, Welch, factorial 2/3-way, RM, mixed design via afex, ANCOVA), linear regression (simple, multiple, hierarchical blocks, interaction, polynomial/splines optional), logistic regression (ORs, predicted probs, separation via detectseparation)
-- [ ] Effect sizes (effectsize), CIs, basic diagnostics (performance/see)
-- [ ] Analysis Builder page; results viewer (tables + plots + code + warnings)
-- [ ] Explicit SS type + contrast reporting for ANOVA
-- [ ] Tests A, B, D, E, J vs. reference values with documented tolerances (scipy/statsmodels cross-checks + hand-computed fixtures)
+## Phase 2 — Core Statistical Engine  ✅ **complete (2026-11-21)**
+
+### Design (defaults are recorded in every result)
+- **Analyses are declarative specs** (`analysis/specs.py`): role slots (dependent, factors, covariates, predictors, id, within…) + options. The Analysis Builder form is generated from the spec; each spec has a pure `build(ds, params) -> R body` + `parse(raw) -> tables`. GUI-independent and unit-testable.
+- **Shared R helpers** (`sx_table`, `sx_shapiro`, …) are defined in the data-load script header, so View Code stays self-contained.
+- **Missing data:** complete cases on the analysis variables (shown: n used / n excluded). RM/mixed ANOVA: participants missing any within-cell are dropped by afex (reported).
+- **Derived variables & filters** are specs, not free text: computed in Python (preview/overview) AND rendered to R in the load script (so View Code reproduces from the source file). A test asserts R == Python for every operation.
+  - Ops: row mean/sum of items (with min-valid count), recode/collapse codes, log/sqrt/z-score/center/square, binarize at cutoff.
+  - Filters: `var op value` rows, AND-combined; NA comparisons drop the row (as dplyr::filter).
+- **Engine defaults (one per analysis):**
+  | Analysis | R implementation | Effect size | Assumption checks |
+  |---|---|---|---|
+  | t-tests | `stats::t.test` (Student / Welch / paired / one-sample) | `effectsize::cohens_d`, `hedges_g` (+CI) | Shapiro-Wilk (n≤5000), `car::leveneTest` (median) |
+  | Correlation | `stats::cor.test` (Pearson CI = Fisher z; Spearman no CI), `ppcor::pcor.test`, `psych::corr.test` matrix (raw + Holm) | r | — |
+  | ANOVA/ANCOVA | `afex::aov_car` Type III, sum contrasts; ANCOVA covariates mean-centred; Welch = `stats::oneway.test` | partial η² + generalized η² | Levene; Mauchly + GG correction (RM) |
+  | Post hoc / EMMs | `emmeans` pairwise, Holm (default) or Tukey | — | — |
+  | Linear regression | `stats::lm`, treatment contrasts (reference level shown); hierarchical = nested `anova()` ΔR²/F-change; interactions also tested by nested model comparison (D9) | standardized β (`effectsize::standardize_parameters`, refit), R²/adj R², f² for blocks | residual plots, QQ, BP (`lmtest::bptest`), VIF (`car::vif`), Cook's D > 4/n |
+  | Logistic | `stats::glm(binomial)`, profile-likelihood CIs | OR (+CI), Tjur R² | `detectseparation`, convergence, events/parameter |
+
+### Tasks
+- [x] R helpers in load script; generic result parser (tables/plots/values)
+- [x] Derived variables + row filters (dataset model, Python compute, R codegen, project save, UI dialogs, undo)
+- [x] Specs + R builders: t-tests ×4, correlations (pair, partial, matrix), ANOVA ×6 (one-way, Welch, factorial ≤3 factors, RM, mixed, ANCOVA), linear (simple/multiple/interaction/polynomial/spline), hierarchical, logistic
+- [x] Diagnostics plots (lm: residual vs fitted, QQ; logistic: predicted probability curve)
+- [x] Analysis Builder page: analysis picker, generated form, results viewer (tables, plots, messages, View Code)
+- [x] EDA: `psych::corr.test` matrix (raw + adjusted p)
+- [x] Tests vs independent references (scipy/statsmodels): A (t-test, d), B (2×2 interaction, Type III F), D (continuous interaction + conditional slopes), E (logistic OR, predicted p), J (missing → n), plus Welch, paired, one-way, Welch ANOVA, RM ANOVA, ANCOVA, correlations, partial r, hierarchical ΔR², separation detection, derived/filter parity
+- [x] HRS end-to-end check in the GUI
 
 ## Phase 3 — Automated Model Discovery
 - [ ] Formula grammar spec (`docs/formula-grammar.md`): terms, hierarchy, canonical ordering, dedup key

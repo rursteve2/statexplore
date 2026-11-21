@@ -13,6 +13,8 @@ DEFAULT_R_LIB = PROJECT_ROOT / "r" / "library"
 WORKER_SCRIPT = Path(__file__).resolve().parents[1] / "r" / "worker.R"
 
 PHASE1_PACKAGES = ["jsonlite", "psych", "ggplot2"]
+PHASE2_PACKAGES = ["car", "afex", "emmeans", "effectsize", "ppcor", "lmtest", "detectseparation"]
+REQUIRED_PACKAGES = PHASE1_PACKAGES + PHASE2_PACKAGES
 
 
 def _version_key(path: Path) -> tuple[int, ...]:

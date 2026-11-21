@@ -1,11 +1,12 @@
 # Installs the R packages StatExplore needs into the project-local library (r/library).
 # Usage (from the project root):  Rscript r/install_packages.R [phase]
 args <- commandArgs(trailingOnly = TRUE)
-phase <- if (length(args)) as.integer(args[[1]]) else 1L
+phase <- if (length(args)) as.integer(args[[1]]) else 2L
 
 packages <- list(
-  `1` = c("jsonlite", "psych", "ggplot2")
-  # Later phases add their packages here (car, afex, emmeans, lme4, ...).
+  `1` = c("jsonlite", "psych", "ggplot2"),
+  `2` = c("car", "afex", "emmeans", "effectsize", "ppcor", "lmtest", "detectseparation")
+  # Later phases add their packages here (lme4, nlme, mmrm, marginaleffects, ...).
 )
 wanted <- unique(unlist(packages[as.character(seq_len(phase))]))
 

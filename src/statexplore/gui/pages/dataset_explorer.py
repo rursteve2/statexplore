@@ -3,12 +3,13 @@ from __future__ import annotations
 
 from PySide6.QtCore import QSortFilterProxyModel, Qt
 from PySide6.QtWidgets import (
-    QAbstractItemView, QCheckBox, QComboBox, QFormLayout, QGroupBox, QHBoxLayout, QHeaderView,
-    QLabel, QLineEdit, QListWidget, QMessageBox, QPlainTextEdit, QPushButton, QSplitter, QTableView,
+    QAbstractItemView, QCheckBox, QComboBox, QDialog, QFormLayout, QGroupBox, QHBoxLayout, QHeaderView,
+    QLabel, QLineEdit, QListWidget, QListWidgetItem, QMessageBox, QPlainTextEdit, QPushButton, QSplitter, QTableView,
     QTabWidget, QVBoxLayout, QWidget,
 )
 
 from ...core.dataset import DatasetError
+from ..derive_dialogs import DeriveDialog, FilterDialog
 from ...core.overview import as_frame, summarize
 from ...core.variables import Measure, Role
 from ..models import DataPreviewModel, FrameModel, fmt
@@ -30,6 +31,7 @@ class DatasetExplorerPage(QWidget):
         self.tabs.addTab(self._build_overview(), "Overview")
         self.tabs.addTab(self._build_preview(), "Data")
         self.tabs.addTab(self._build_variables(), "Variables")
+        self.tabs.addTab(self._build_derived(), "Derived && Filters")
         layout = QVBoxLayout(self)
         self.title = QLabel("No dataset loaded")
         self.title.setObjectName("pageTitle")
@@ -128,6 +130,99 @@ class DatasetExplorerPage(QWidget):
         split.setSizes([260, 600])
         return split
 
+    # ---- derived variables & filters ---------------------------------
+    def _build_derived(self) -> QWidget:
+        w = QWidget()
+        lay = QVBoxLayout(w)
+        lay.addWidget(QLabel("<b>Derived variables</b> — computed from source variables; the original data "
+                             "is unchanged. They are recomputed in R (shown in View Code)."))
+        self.derived_list = QListWidget()
+        lay.addWidget(self.derived_list)
+        row = QHBoxLayout()
+        add = QPushButton("New derived variable…")
+        add.clicked.connect(self._new_derived)
+        rem = QPushButton("Remove selected")
+        rem.clicked.connect(self._remove_derived)
+        row.addWidget(add)
+        row.addWidget(rem)
+        row.addStretch()
+        lay.addLayout(row)
+        lay.addWidget(QLabel("<b>Row filters</b> — all filters must hold (AND). Applied after derived "
+                             "variables are computed; filtered rows are greyed in the Data tab."))
+        self.filter_list = QListWidget()
+        lay.addWidget(self.filter_list)
+        row = QHBoxLayout()
+        addf = QPushButton("Add filter…")
+        addf.clicked.connect(self._new_filter)
+        remf = QPushButton("Remove selected")
+        remf.clicked.connect(self._remove_filter)
+        row.addWidget(addf)
+        row.addWidget(remf)
+        row.addStretch()
+        lay.addLayout(row)
+        return w
+
+    def _refresh_derived(self) -> None:
+        ds = self.state.dataset
+        self.derived_list.clear()
+        self.filter_list.clear()
+        if ds is None:
+            return
+        for spec in ds.derived.values():
+            it = QListWidgetItem(f"{ds.var(spec.name).display_name} = {spec.describe()}")
+            it.setData(Qt.UserRole, spec.name)
+            self.derived_list.addItem(it)
+        for i, f in enumerate(ds.filters):
+            it = QListWidgetItem(f"Keep rows where {ds.var(f.variable).display_name} "
+                                 f"{f.describe().split(' ', 1)[1]}")
+            it.setData(Qt.UserRole, i)
+            self.filter_list.addItem(it)
+
+    def _new_derived(self) -> None:
+        ds = self.state.dataset
+        if ds is None:
+            return
+        dlg = DeriveDialog(ds, self)
+        while dlg.exec() == QDialog.Accepted:
+            try:
+                ds.add_derived(dlg.spec, measure=dlg.measure_value)
+            except DatasetError as e:
+                dlg.error.setText(str(e))
+                continue
+            self.state.notify_metadata_changed()
+            return
+
+    def _remove_derived(self) -> None:
+        ds, it = self.state.dataset, self.derived_list.currentItem()
+        if ds is None or it is None:
+            return
+        try:
+            ds.remove_derived(it.data(Qt.UserRole))
+        except DatasetError as e:
+            QMessageBox.warning(self, "Cannot remove", str(e))
+            return
+        self.state.notify_metadata_changed()
+
+    def _new_filter(self) -> None:
+        ds = self.state.dataset
+        if ds is None:
+            return
+        dlg = FilterDialog(ds, self)
+        if dlg.exec() == QDialog.Accepted and dlg.spec:
+            try:
+                ds.add_filter(dlg.spec)
+            except DatasetError as e:
+                QMessageBox.warning(self, "Filter", str(e))
+                return
+            self.state.notify_metadata_changed()
+
+    def _remove_filter(self) -> None:
+        ds, it = self.state.dataset, self.filter_list.currentItem()
+        if ds is None or it is None:
+            return
+        ds.remove_filter(it.data(Qt.UserRole))
+        self.state.notify_metadata_changed()
+
     # ---- refresh ----------------------------------------------------
     def reload(self) -> None:
         ds = self.state.dataset
@@ -146,19 +241,23 @@ class DatasetExplorerPage(QWidget):
         if ds is None:
             return
         s = summarize(ds)
+        rows = (f"<b>{s.n_rows:,}</b> of {s.n_rows_total:,} rows (filters active)" if ds.filters
+                else f"<b>{s.n_rows:,}</b> rows")
         self.stats_label.setText(
-            f"<b>{s.n_rows:,}</b> rows &nbsp;·&nbsp; <b>{s.n_cols}</b> columns &nbsp;·&nbsp; "
+            f"{rows} &nbsp;·&nbsp; <b>{s.n_cols}</b> columns &nbsp;·&nbsp; "
             f"<b>{s.n_missing_cells:,}</b> missing cells ({s.pct_missing_cells:.1f}%) &nbsp;·&nbsp; "
             f"<b>{s.n_complete_rows:,}</b> complete rows &nbsp;·&nbsp; source format: {ds.source.format.upper()}"
         )
         frame = as_frame(s)[list(OVERVIEW_COLUMNS)].rename(columns=OVERVIEW_COLUMNS)
         self.overview_model.set_frame(frame)
-        self.preview_model.refresh_headers()
+        self.preview_model.refresh_all()
+        self._refresh_derived()
         row = self.var_list.currentRow()
         self.var_list.blockSignals(True)
         self.var_list.clear()
         for v in ds.variables.values():
-            self.var_list.addItem(f"{v.display_name}  [{v.measure.value}{'' if v.role is Role.NONE else ', ' + v.role.value}]")
+            tag = ", derived" if ds.is_derived(v.name) else ""
+            self.var_list.addItem(f"{v.display_name}  [{v.measure.value}{'' if v.role is Role.NONE else ', ' + v.role.value}{tag}]")
         self.var_list.blockSignals(False)
         self.var_list.setCurrentRow(max(row, 0))
         self._show_variable(self.var_list.currentRow())

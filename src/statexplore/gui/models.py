@@ -34,6 +34,7 @@ class DataPreviewModel(QAbstractTableModel):
         self.ds = ds
         self.show_labels = False
         self._cols: list[str] = []
+        self._keep = None  # row filter mask; filtered-out rows are greyed
         self._reset_columns()
 
     def set_dataset(self, ds: Dataset | None) -> None:
@@ -52,6 +53,12 @@ class DataPreviewModel(QAbstractTableModel):
 
     def _reset_columns(self) -> None:
         self._cols = list(self.ds.variables) if self.ds else []
+        self._keep = self.ds.row_mask().to_numpy() if self.ds is not None and self.ds.filters else None
+
+    def refresh_all(self) -> None:
+        self.beginResetModel()
+        self._reset_columns()
+        self.endResetModel()
 
     def rowCount(self, parent: QModelIndex = QModelIndex()) -> int:
         return 0 if parent.isValid() or self.ds is None else self.ds.n_rows
@@ -63,7 +70,7 @@ class DataPreviewModel(QAbstractTableModel):
         if self.ds is None or not index.isValid():
             return None
         name = self._cols[index.column()]
-        value = self.ds.raw.iat[index.row(), index.column()]
+        value = self.ds.column(name).iat[index.row()]
         if role == Qt.DisplayRole:
             if pd.isna(value):
                 return ""
@@ -71,6 +78,11 @@ class DataPreviewModel(QAbstractTableModel):
             if self.show_labels and value in v.value_labels:
                 return v.value_labels[value]
             return fmt(value, 6)
+        if self._keep is not None and not self._keep[index.row()]:
+            if role == Qt.ForegroundRole:
+                return QColor("#9e9e9e")
+            if role == Qt.ToolTipRole:
+                return "Row excluded by the active filters"
         if role in (Qt.ForegroundRole, Qt.ToolTipRole) and not pd.isna(value):
             v = self.ds.variables[name]
             if v.has_user_missing() and self.ds.is_user_missing_value(v, value):

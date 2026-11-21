@@ -5,15 +5,18 @@ from PySide6.QtCore import QSortFilterProxyModel, Qt
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView, QComboBox, QDialog, QDialogButtonBox, QFormLayout, QHBoxLayout, QLabel,
-    QLineEdit, QListWidget, QListWidgetItem, QMessageBox, QPlainTextEdit, QPushButton,
+    QLineEdit, QListWidget, QListWidgetItem, QMessageBox, QPlainTextEdit, QPushButton, QTextBrowser,
     QSplitter, QTableView, QTabWidget, QVBoxLayout, QWidget,
 )
 
 from ...analysis import eda
+from ...analysis.builders import BY_KEY
+from ...analysis.framework import AnalysisInputError, run_analysis, validate
 from ...core.overview import suggest_plots
 from ...core.schema import AnalysisResult, Status
 from ...core.variables import Role, Storage
 from ..models import FrameModel, table_to_frame
+from ..result_view import render
 from ..state import AppState
 
 
@@ -103,10 +106,13 @@ class EdaPage(QWidget):
         self.plot_btn.clicked.connect(self._plot)
         self.desc_btn = QPushButton("Describe (psych)")
         self.desc_btn.clicked.connect(self._describe)
+        self.corr_btn = QPushButton("Correlation tests")
+        self.corr_btn.setToolTip("psych::corr.test on the selected continuous variables: r, n, raw and Holm-adjusted p")
+        self.corr_btn.clicked.connect(self._corr_tests)
         self.code_btn = QPushButton("View Code")
         self.code_btn.setEnabled(False)
         self.code_btn.clicked.connect(self._view_code)
-        for b in (self.plot_btn, self.desc_btn, self.code_btn):
+        for b in (self.plot_btn, self.desc_btn, self.corr_btn, self.code_btn):
             row.addWidget(b)
         ll.addLayout(row)
 
@@ -129,6 +135,8 @@ class EdaPage(QWidget):
         dl.addWidget(dv)
         dl.addWidget(self.desc_note)
         self.out_tabs.addTab(dw, "Descriptives")
+        self.corr_view = QTextBrowser()
+        self.out_tabs.addTab(self.corr_view, "Correlation tests")
         self.messages = QLabel()
         self.messages.setWordWrap(True)
         self.messages.setTextInteractionFlags(Qt.TextSelectableByMouse)
@@ -209,7 +217,7 @@ class EdaPage(QWidget):
 
     # ---- actions ----------------------------------------------------
     def _busy(self, busy: bool) -> None:
-        for b in (self.plot_btn, self.desc_btn):
+        for b in (self.plot_btn, self.desc_btn, self.corr_btn):
             b.setEnabled(not busy)
         if busy:
             self.messages.setText("Running in R…")
@@ -254,6 +262,27 @@ class EdaPage(QWidget):
             QMessageBox.information(self, "Describe", "Select at least one continuous variable.")
             return
         self.state.run_r(lambda s: eda.describe(s, ds, names, group), self._describe_done, self._error)
+
+    def _corr_tests(self) -> None:
+        ds = self.state.dataset
+        if ds is None:
+            return
+        names = [n for n in self._selected() if not ds.var(n).is_categorical]
+        spec = BY_KEY["cor_matrix"]
+        try:
+            validate(spec, ds, {"variables": names}, {})
+        except AnalysisInputError as e:
+            QMessageBox.information(self, "Correlation tests", str(e))
+            return
+        self.state.run_r(lambda s: run_analysis(s, ds, spec, {"variables": names}, {}),
+                         self._corr_done, self._error)
+
+    def _corr_done(self, out) -> None:
+        result, artifacts = out
+        self.state.add_result(result, artifacts)
+        self._show_result(result)
+        render(self.corr_view, result, artifacts)
+        self.out_tabs.setCurrentIndex(2)
 
     def _describe_done(self, result: AnalysisResult) -> None:
         self.state.add_result(result, {})

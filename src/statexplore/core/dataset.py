@@ -8,7 +8,10 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from .variables import EDITABLE_FIELDS, Measure, Role, VariableMeta
+from .derive import (
+    DerivedSpec, DeriveError, FilterSpec, compute, filter_mask, validate_derived,
+)
+from .variables import EDITABLE_FIELDS, Measure, Role, Storage, VariableMeta, make_alias
 
 
 class DatasetError(Exception):
@@ -69,6 +72,10 @@ class Dataset:
         self.variables: dict[str, VariableMeta] = {v.name: v for v in variables}
         self.source = source
         self.changes: list[Change] = []
+        # Derived variables (in definition order) and row filters, applied in that order.
+        self.derived: dict[str, DerivedSpec] = {}
+        self.filters: list[FilterSpec] = []
+        self._derived_values: dict[str, pd.Series] = {}
 
     # ---- basic info -------------------------------------------------
     @property
@@ -77,7 +84,16 @@ class Dataset:
 
     @property
     def n_cols(self) -> int:
-        return self.raw.shape[1]
+        return len(self.variables)
+
+    def column(self, name: str) -> pd.Series:
+        """Stored values: raw column, or computed values for a derived variable."""
+        if name in self.derived:
+            return self._derived_values[name]
+        return self.raw[name]
+
+    def is_derived(self, name: str) -> bool:
+        return name in self.derived
 
     def var(self, name: str) -> VariableMeta:
         try:
@@ -101,7 +117,7 @@ class Dataset:
     def user_missing_mask(self, name: str) -> pd.Series:
         """True where the raw value is a declared (SPSS) user-missing code."""
         v = self.var(name)
-        col = self.raw[name]
+        col = self.column(name)
         mask = pd.Series(False, index=col.index)
         if not v.has_user_missing():
             return mask
@@ -114,13 +130,26 @@ class Dataset:
 
     def analysis_column(self, name: str) -> pd.Series:
         """Column with user-missing codes converted to NaN (raw data untouched)."""
-        col = self.raw[name]
+        col = self.column(name)
         mask = self.user_missing_mask(name)
         return col.mask(mask) if mask.any() else col
 
-    def analysis_frame(self, names: list[str] | None = None) -> pd.DataFrame:
+    def row_mask(self) -> pd.Series:
+        """Rows kept by all filters (True = keep)."""
+        keep = pd.Series(True, index=self.raw.index)
+        for f in self.filters:
+            keep &= filter_mask(f, self.analysis_column(f.variable))
+        return keep
+
+    @property
+    def n_rows_filtered(self) -> int:
+        return int(self.row_mask().sum())
+
+    def analysis_frame(self, names: list[str] | None = None, filtered: bool = True) -> pd.DataFrame:
+        """User-missing -> NaN; derived variables computed; filters applied (unless filtered=False)."""
         names = names if names is not None else self.names()
-        return pd.DataFrame({n: self.analysis_column(n) for n in names}, index=self.raw.index)
+        frame = pd.DataFrame({n: self.analysis_column(n) for n in names}, index=self.raw.index)
+        return frame[self.row_mask()] if filtered and self.filters else frame
 
     def missing_count(self, name: str) -> int:
         return int(self.analysis_column(name).isna().sum())
@@ -171,16 +200,108 @@ class Dataset:
             return
         setattr(v, field_name, new)
         self.changes.append(Change(
-            op="set", variable=name, field=field_name, old=_plain(old), new=_plain(new),
-            at=_dt.datetime.now().isoformat(timespec="seconds"),
+            op="set", variable=name, field=field_name, old=_plain(old), new=_plain(new), at=_now(),
         ))
+
+    # ---- derived variables & filters --------------------------------
+    def _next_alias(self) -> str:
+        used = [int(v.alias[1:]) for v in self.variables.values()]
+        return make_alias(max(used, default=0))
+
+    def _numeric_source(self, name: str) -> bool:
+        v = self.variables.get(name)
+        return v is not None and v.storage is Storage.NUMERIC
+
+    def add_derived(self, spec: DerivedSpec, measure: Measure = Measure.CONTINUOUS,
+                    value_labels: dict[float, str] | None = None) -> VariableMeta:
+        spec.name = spec.name.strip()
+        if spec.name in self.variables:
+            raise DatasetError(f"A variable named {spec.name!r} already exists.")
+        if any(v.display_name == spec.name for v in self.variables.values()):
+            raise DatasetError(f"Display name {spec.name!r} is already used.")
+        try:
+            validate_derived(spec, self._numeric_source)
+        except DeriveError as e:
+            raise DatasetError(str(e)) from None
+        meta = VariableMeta(name=spec.name, alias=self._next_alias(), storage=Storage.NUMERIC,
+                            measure=measure, label=spec.label or spec.describe(),
+                            value_labels=dict(value_labels or {}), source_measure="derived")
+        self._install_derived(spec, meta)
+        self.changes.append(Change(op="add_derived", variable=spec.name, field="",
+                                   old=None, new={"spec": spec.to_dict(), "meta": meta.to_dict()},
+                                   at=_now()))
+        return meta
+
+    def _install_derived(self, spec: DerivedSpec, meta: VariableMeta) -> None:
+        values = compute(spec, self.analysis_column)
+        self.variables[spec.name] = meta
+        self.derived[spec.name] = spec
+        self._derived_values[spec.name] = values
+
+    def _dependents(self, name: str) -> list[str]:
+        deps = [d.name for d in self.derived.values() if name in d.sources]
+        deps += [f.variable for f in self.filters if f.variable == name]
+        return deps
+
+    def remove_derived(self, name: str) -> None:
+        if name not in self.derived:
+            raise DatasetError(f"{name!r} is not a derived variable.")
+        if self._dependents(name):
+            raise DatasetError(f"{name!r} is used by: {', '.join(self._dependents(name))}. Remove those first.")
+        spec, meta = self.derived[name], self.variables[name]
+        self._uninstall_derived(name)
+        self.changes.append(Change(op="remove_derived", variable=name, field="",
+                                   old={"spec": spec.to_dict(), "meta": meta.to_dict()}, new=None, at=_now()))
+
+    def _uninstall_derived(self, name: str) -> None:
+        del self.derived[name], self.variables[name], self._derived_values[name]
+
+    def add_filter(self, f: FilterSpec) -> None:
+        from .derive import FILTER_OPS, VALUELESS_FILTER_OPS
+
+        self.var(f.variable)
+        if f.op not in FILTER_OPS:
+            raise DatasetError(f"Unknown filter operator {f.op!r}.")
+        if f.op not in VALUELESS_FILTER_OPS and (f.value is None or f.value == []):
+            raise DatasetError("This filter needs a value.")
+        if f.op in ("in", "not_in") and not isinstance(f.value, list):
+            f.value = [f.value]
+        if self.n_rows and not (self.row_mask() & filter_mask(f, self.analysis_column(f.variable))).any():
+            raise DatasetError("This filter would remove every row.")
+        self.filters.append(f)
+        self.changes.append(Change(op="add_filter", variable=f.variable, field="", old=None,
+                                   new=f.to_dict(), at=_now()))
+
+    def remove_filter(self, index: int) -> None:
+        f = self.filters.pop(index)
+        self.changes.append(Change(op="remove_filter", variable=f.variable, field=str(index),
+                                   old=f.to_dict(), new=None, at=_now()))
+
+    def restore_derived(self, specs: list[DerivedSpec], metas: list[VariableMeta]) -> None:
+        """Rebuild derived variables when reopening a project (no change-log entries)."""
+        by_name = {m.name: m for m in metas}
+        for spec in specs:
+            self._install_derived(spec, by_name[spec.name])
 
     def undo(self) -> Change | None:
         if not self.changes:
             return None
         ch = self.changes.pop()
-        setattr(self.var(ch.variable), ch.field, _coerce(ch.field, ch.old))
+        if ch.op == "set":
+            setattr(self.var(ch.variable), ch.field, _coerce(ch.field, ch.old))
+        elif ch.op == "add_derived":
+            self._uninstall_derived(ch.variable)
+        elif ch.op == "remove_derived":
+            self._install_derived(DerivedSpec.from_dict(ch.old["spec"]), VariableMeta.from_dict(ch.old["meta"]))
+        elif ch.op == "add_filter":
+            self.filters.pop()
+        elif ch.op == "remove_filter":
+            self.filters.insert(int(ch.field), FilterSpec.from_dict(ch.old))
         return ch
+
+
+def _now() -> str:
+    return _dt.datetime.now().isoformat(timespec="seconds")
 
 
 def _format_code(code: Any) -> str:

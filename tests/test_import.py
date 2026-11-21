@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import numpy as np
-import pandas as pd
 import pytest
 
 from statexplore.core.importers import CsvOptions, ImportError_, file_sha256, import_file, list_sheets

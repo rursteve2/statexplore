@@ -34,14 +34,18 @@ class RSession:
     @staticmethod
     def _metadata_signature(ds: Dataset) -> str:
         meta = [v.to_dict() for v in ds.variables.values()]
-        payload = json.dumps([ds.source.sha256, id(ds.raw), meta], sort_keys=True, default=str)
+        extra = [[d.to_dict() for d in ds.derived.values()], [f.to_dict() for f in ds.filters]]
+        payload = json.dumps([ds.source.sha256, id(ds.raw), meta, extra], sort_keys=True, default=str)
         return hashlib.sha256(payload.encode()).hexdigest()
 
     def export_csv(self, ds: Dataset, path: Path) -> None:
-        frame = ds.analysis_frame(list(ds.variables))
+        """Source variables only, unfiltered: derived variables and filters are applied by
+        the R load script itself so the recorded code reproduces them."""
+        base = [n for n in ds.variables if not ds.is_derived(n)]
+        frame = ds.analysis_frame(base, filtered=False)
         frame.columns = [ds.var(n).alias for n in frame.columns]
         for n in ds.variables.values():
-            if n.storage is Storage.DATETIME:
+            if n.storage is Storage.DATETIME and n.alias in frame.columns:
                 col = frame[n.alias]
                 frame[n.alias] = col.map(lambda x: "" if pd.isna(x) else pd.Timestamp(x).isoformat())
         # Default float formatting is repr(), so values round-trip exactly.

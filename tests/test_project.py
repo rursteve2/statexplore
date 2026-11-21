@@ -123,3 +123,54 @@ def test_tukey_and_suggestions():
     assert suggest_plots(["continuous", "continuous"]) == ["scatter"]
     assert suggest_plots(["continuous", "categorical"]) == ["boxplot", "violin"]
     assert suggest_plots(["continuous"] * 4) == ["pairs", "correlation"]
+
+
+def test_derived_filters_roundtrip_and_undo(sav_labelled, tmp_path):
+    from statexplore.core.derive import DerivedSpec, FilterSpec
+
+    ds = import_file(sav_labelled)
+    raw_before = ds.raw.copy()
+    m = ds.add_derived(DerivedSpec("avg", "mean_items", ["score", "income"], {"min_valid": 1}))
+    ds.add_derived(DerivedSpec("hi", "binarize", ["avg"], {"cutoff": 30}), measure=Measure.NOMINAL)
+    ds.add_filter(FilterSpec("sex", "in", [1.0]))
+    assert m.alias == "v006" and ds.var("hi").alias == "v007"
+    n_kept = ds.n_rows_filtered
+    assert n_kept == int((ds.raw["sex"] == 1).sum())
+    # dependency protection
+    with pytest.raises(DatasetError):
+        ds.remove_derived("avg")
+    out = tmp_path / "d.sxp"
+    Project(ds).save(out)
+    again = Project.open(out).dataset
+    pd.testing.assert_series_equal(again.column("avg"), ds.column("avg"))
+    assert list(again.variables) == list(ds.variables)
+    assert again.n_rows_filtered == n_kept
+    pd.testing.assert_frame_equal(again.raw, raw_before)  # source data untouched
+    # undo in reverse order restores everything
+    again.undo()
+    assert again.filters == []
+    again.undo()
+    assert "hi" not in again.variables
+    again.remove_derived("avg")
+    again.undo()  # undo the removal
+    assert "avg" in again.variables
+
+
+def test_derived_validation(sav_labelled):
+    from statexplore.core.derive import DerivedSpec, FilterSpec
+
+    ds = import_file(sav_labelled)
+    bad = [
+        DerivedSpec("x", "mean_items", ["score"], {"min_valid": 1}),           # needs 2+ items
+        DerivedSpec("x", "mean_items", ["score", "id"], {"min_valid": 3}),     # min_valid too big
+        DerivedSpec("x", "log", ["score", "id"]),                             # single source
+        DerivedSpec("score", "log", ["id"]),                                  # name clash
+        DerivedSpec("x", "recode", ["mood"], {"mapping": [[1, 2], [1, 3]]}),  # duplicate old value
+        DerivedSpec("x", "nope", ["score"]),
+    ]
+    for spec in bad:
+        with pytest.raises(DatasetError):
+            ds.add_derived(spec)
+    with pytest.raises(DatasetError):
+        ds.add_filter(FilterSpec("score", ">", 1e9))  # would remove every row
+    assert ds.changes == [] and ds.derived == {}

@@ -17,6 +17,7 @@ from typing import Any
 import pandas as pd
 
 from .dataset import Change, Dataset, SourceInfo
+from .derive import DerivedSpec, FilterSpec
 from .schema import AnalysisResult
 from .variables import VariableMeta
 
@@ -78,6 +79,8 @@ class Project:
             "format": PROJECT_FORMAT,
             "version": PROJECT_VERSION,
             "source": ds.source.to_dict(),
+            "derived": [d.to_dict() for d in ds.derived.values()],
+            "filters": [f.to_dict() for f in ds.filters],
         }
         con.executemany("INSERT INTO meta VALUES (?, ?)", [(k, json.dumps(v)) for k, v in meta.items()])
         con.executemany(
@@ -115,7 +118,14 @@ class Project:
                          con.execute("SELECT meta FROM variables ORDER BY position")]
             (blob,) = con.execute("SELECT parquet FROM data WHERE id = 1").fetchone()
             raw = pd.read_parquet(io.BytesIO(blob), engine="pyarrow")
-            ds = Dataset(raw, variables, SourceInfo(**meta["source"]))
+            derived = [DerivedSpec.from_dict(d) for d in meta.get("derived", [])]
+            derived_names = {d.name for d in derived}
+            base = [v for v in variables if v.name not in derived_names]
+            ds = Dataset(raw, base, SourceInfo(**meta["source"]))
+            ds.restore_derived(derived, [v for v in variables if v.name in derived_names])
+            # restore the saved variable order (derived variables may be interleaved after undo)
+            ds.variables = {v.name: ds.variables[v.name] for v in variables}
+            ds.filters = [FilterSpec.from_dict(f) for f in meta.get("filters", [])]
             ds.changes = [Change(**json.loads(c)) for (c,) in
                           con.execute("SELECT change FROM changes ORDER BY seq")]
             project = cls(ds)

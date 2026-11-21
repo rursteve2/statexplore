@@ -36,7 +36,8 @@ class VariableSummary:
 
 @dataclass
 class DatasetSummary:
-    n_rows: int
+    n_rows: int                 # rows after filters
+    n_rows_total: int
     n_cols: int
     n_missing_cells: int
     pct_missing_cells: float
@@ -68,19 +69,20 @@ def summarize(ds: Dataset) -> DatasetSummary:
             sd = float(arr.std(ddof=1)) if n_valid > 1 else None
             if not v.is_categorical:
                 n_out = tukey_outliers(arr)
+        n = len(frame)
         rows.append(VariableSummary(
             name=name, display_name=v.display_name, label=v.label,
             storage=v.storage.value, measure=v.measure.value, role=v.role.value,
-            n_valid=n_valid, n_missing=ds.n_rows - n_valid,
-            pct_missing=100.0 * (ds.n_rows - n_valid) / ds.n_rows if ds.n_rows else 0.0,
+            n_valid=n_valid, n_missing=n - n_valid,
+            pct_missing=100.0 * (n - n_valid) / n if n else 0.0,
             n_unique=int(valid.nunique()),
-            n_user_missing_codes=int(ds.user_missing_mask(name).sum()),
+            n_user_missing_codes=int(ds.user_missing_mask(name)[frame.index].sum()),
             mean=mean, sd=sd, min=lo, max=hi, n_outliers=n_out,
         ))
     n_missing = int(frame.isna().sum().sum())
     cells = frame.shape[0] * frame.shape[1]
     return DatasetSummary(
-        n_rows=ds.n_rows, n_cols=ds.n_cols, n_missing_cells=n_missing,
+        n_rows=len(frame), n_rows_total=ds.n_rows, n_cols=ds.n_cols, n_missing_cells=n_missing,
         pct_missing_cells=100.0 * n_missing / cells if cells else 0.0,
         n_complete_rows=int(frame.notna().all(axis=1).sum()),
         variables=rows,

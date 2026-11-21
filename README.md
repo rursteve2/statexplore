@@ -4,7 +4,7 @@ Offline Windows desktop app for exploratory statistical model discovery and teac
 (Python/PySide6 front end, R statistical engine). Build plan: `tasks/todo.md`.
 Architecture: `docs/architecture.md`.
 
-**Status: Phase 1 (desktop foundation).**
+**Status: Phases 1–2 complete (foundation + core statistical engine).**
 
 ## Requirements
 - Windows 10/11
@@ -18,7 +18,8 @@ py -3.11 -m venv .venv
 .venv\Scripts\python -m pip install -e ".[dev]"
 "C:\Program Files\R\R-4.6.2\bin\Rscript.exe" r\install_packages.R
 ```
-`install_packages.R` puts jsonlite, psych and ggplot2 into `r\library` (project-local).
+`install_packages.R` puts the required R packages (jsonlite, psych, ggplot2, car, afex, emmeans,
+effectsize, ppcor, lmtest, detectseparation and their dependencies) into `r\library` (project-local).
 StatExplore finds R automatically (PATH, registry, standard install folders). You can also set
 the path under **Settings** or with the `STATEXPLORE_RSCRIPT` environment variable.
 
@@ -47,8 +48,20 @@ R tests skip automatically if R or the Phase 1 packages are missing. The HRS fix
 - Projects: single `.sxp` file (SQLite) with a copy of the data, metadata, change log, results
   and plots. The original data file is never modified.
 
-## Known limitations (Phase 1)
-- Derived variables, row filters, and wide-to-long reshaping aren't implemented yet (Phases 2/5).
+## Phase 2 features
+- Analysis Builder: one-sample / Student / Welch / paired t-tests; Pearson, Spearman, partial correlation,
+  correlation matrices (raw + Holm/BH/Bonferroni p); one-way, Welch, factorial (≤3 factors, Type III),
+  repeated-measures, mixed-design ANOVA and ANCOVA (afex) with EMMs and adjusted pairwise comparisons;
+  linear regression (interactions, polynomial/spline term, standardized betas, nested term tests,
+  conditional slopes, diagnostics + plots); hierarchical regression (R² change); binary logistic regression
+  (ORs with profile CIs, LR tests, predicted probabilities + plot, separation detection).
+- Derived variables (item mean/sum, recode, log, sqrt, z-score, center, square, binarize) and row filters —
+  computed again in R, so View Code reproduces them from the source file.
+- Warnings when a participant-ID variable shows repeated rows (non-independent observations).
+
+## Known limitations
+- Wide-to-long reshaping arrives in Phase 5. Welch ANOVA has no post hoc test yet (Games-Howell planned).
+- z-scores / centering of derived variables use all rows (before filters).
 - Date/time columns are imported and shown but excluded from analyses.
 - Empty strings in text columns are treated as missing.
 - Ordinal variables are coded as unordered factors in R (avoids polynomial contrasts by default).
