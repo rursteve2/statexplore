@@ -1,113 +1,323 @@
 # StatExplore
 
-Offline Windows desktop app for exploratory statistical model discovery and teaching
-(Python/PySide6 front end, R statistical engine). Build plan: `tasks/todo.md`.
-Architecture: `docs/architecture.md`.
+**A desktop program for exploring a dataset, searching it for interesting statistical
+interactions, and teaching what those results do and don't mean.**
 
-**Status: all seven phases built and tested (see `tasks/todo.md`).**
+StatExplore runs on Windows, entirely on your own computer: no internet connection, no
+uploads, no accounts. You open a data file (Excel, CSV or SPSS). The program describes your
+variables, runs standard statistical tests, searches automatically for interaction effects, and
+draws graphs with a short plain-English interpretation underneath. It also shows you the exact
+statistical code behind every result.
 
-## Requirements
-- Windows 10/11
-- Python 3.11+
-- R 4.4+ for Windows (tested target: 4.6.2)
+> **Important:** StatExplore is built for *exploration and teaching*, not for publishing or making
+> decisions. Searching many models will always turn up some "significant" results by chance. The
+> program is designed to show you that, so treat its discoveries as ideas to test, not as proof.
 
-## Install
-```bat
-cd statexplore
-py -3.11 -m venv .venv
-.venv\Scripts\python -m pip install -e ".[dev]"
-"C:\Program Files\R\R-4.6.2\bin\Rscript.exe" r\install_packages.R
-```
-`install_packages.R` (in development) puts the required R packages (jsonlite, psych, ggplot2, car, afex, emmeans,
-effectsize, ppcor, lmtest, detectseparation and their dependencies) into `r\library` (project-local).
-StatExplore finds R automatically (PATH, registry, standard install folders). You can also set
-the path under **Settings** or with the `STATEXPLORE_RSCRIPT` environment variable.
+---
 
-## Run
-```bat
-run.bat                       :: or: .venv\Scripts\python -m statexplore
-run.bat path\to\data.sav      :: open a dataset directly
-```
+## Contents
+1. [What you need](#1-what-you-need)
+2. [Installing and starting StatExplore](#2-installing-and-starting-statexplore)
+3. [A first session, step by step](#3-a-first-session-step-by-step)
+4. [The sections of the program](#4-the-sections-of-the-program)
+5. [How to read the results](#5-how-to-read-the-results)
+6. [Five things to always keep in mind](#6-five-things-to-always-keep-in-mind)
+7. [Saving, exporting and sharing](#7-saving-exporting-and-sharing)
+8. [Troubleshooting and FAQ](#8-troubleshooting-and-faq)
+9. [Glossary](#9-glossary)
+10. [What is not finished yet](#10-what-is-not-finished-yet)
+11. [For developers](#11-for-developers)
 
-## Test
-```bat
-.venv\Scripts\python -m pytest -q
-```
-R tests skip automatically if R or the Phase 1 packages are missing. The HRS fixture tests look for
-`E:\Downloads\hrs_least_missing_1000.sav` (override with `STATEXPLORE_HRS`).
+---
 
-## Phase 1 features
-- Import CSV (delimiter/encoding auto-detect or manual), SPSS .sav (variable labels, value labels,
-  user-missing definitions, measurement levels) and Excel .xlsx (sheet selection); drag-and-drop.
-- Dataset Explorer: overview (rows, columns, missing cells, types, measurement levels, unique
-  values, mean/SD/min/max, Tukey outlier counts), spreadsheet preview with value-label toggle,
-  variable manager (display name, measurement level, role, reference level) with change log + undo.
-- EDA: `psych::describe` / `describeBy`; histogram, density, boxplot, violin, scatter, bar,
-  `psych::pairs.panels`, correlation heatmap (ggplot2); type-based plot suggestions; **View Code**
-  shows the exact R script executed.
-- Projects: single `.sxp` file (SQLite) with a copy of the data, metadata, change log, results
-  and plots. The original data file is never modified.
+## 1. What you need
 
-## Phase 2 features
-- Analysis Builder: one-sample / Student / Welch / paired t-tests; Pearson, Spearman, partial correlation,
-  correlation matrices (raw + Holm/BH/Bonferroni p); one-way, Welch, factorial (≤3 factors, Type III),
-  repeated-measures, mixed-design ANOVA and ANCOVA (afex) with EMMs and adjusted pairwise comparisons;
-  linear regression (interactions, polynomial/spline term, standardized betas, nested term tests,
-  conditional slopes, diagnostics + plots); hierarchical regression (R² change); binary logistic regression
-  (ORs with profile CIs, LR tests, predicted probabilities + plot, separation detection).
-- Derived variables (item mean/sum, recode, log, sqrt, z-score, center, square, binarize) and row filters —
-  computed again in R, so View Code reproduces them from the source file.
-- Warnings when a participant-ID variable shows repeated rows (non-independent observations).
+- A Windows 10 or Windows 11 computer.
+- About 1 GB of free disk space.
+- Your data in one of these formats:
+  - **Excel** (`.xlsx`): you choose which sheet.
+  - **CSV** (`.csv`): comma- or semicolon-separated text.
+  - **SPSS** (`.sav`): variable labels, value labels ("1 = Male"), and missing-value codes are kept.
 
-## Phase 3 features
-- Automated Model Discovery: bounded exhaustive search for two- and three-way interactions over up to 39
-  candidates (≤ 6 predictors per model), focal or all-subset covariate adjustment, shared or per-model
-  complete cases. Exact search-size estimate before running; modes A/B/C/D, Fast/Balanced/Thorough profiles,
-  parallel R workers, progress + ETA, cancel and resume.
-- Every attempt is recorded (invalid models with reasons). Raw, BH and Holm p-values, provisional when
-  incomplete. Discovery-significance and statistical-support rankings (transparent tiers).
-- Any candidate opens as a full regression analysis on the same rows; View Code shows the exact R call.
-- Candidate grammar: `docs/formula-grammar.md`.
+Your data should have **one column per variable** and **one row per observation**. For data
+collected repeatedly from the same people (for example yearly surveys), StatExplore works best
+with one row per person per occasion. Section 4 explains how to convert data that has one row per
+person with columns like `score_2010`, `score_2012`.
 
-## Phase 4 features
-- Teaching Studio: interaction plots computed from the fitted model (two- and three-way, categorical and
-  continuous, logistic probability curves) with CI bands, raw data, panels, labels; PNG/SVG/PDF; ggplot2 or
-  base R. Conditional slopes / simple effects, exact Johnson-Neyman interval, and a 3–6 sentence
-  template interpretation under every graph.
-- Model Comparison: build a model set (from discovery, the Teaching Studio or by hand), edit copies,
-  compare AIC/BIC/R² on a common sample, with nested F / likelihood-ratio tests only where valid.
-- Optional flexplot backend: `remotes::install_github("dustinfife/flexplot", lib = "r/library")`
-  (GitHub-only package; the option is disabled with an explanation when it is not installed).
+StatExplore uses a free statistics program called **R** behind the scenes. The installer includes
+R, so you don't have to install it separately (see 2A).
 
-## Phase 5 features
-- Mixed & Longitudinal Models: structure detection (ID / time / cluster), wide → long restructuring;
-  lme4/lmerTest random intercepts and slopes (nested clusters), nlme AR(1) / continuous-time AR(1),
-  mmrm unstructured marginal models; continuous, quadratic or categorical time; variance components,
-  marginal/conditional R², singularity and convergence checks; population, individual and conditional
-  trajectory plots; time / random-effect / residual-structure comparisons with the correct ML/REML rules.
+---
 
-## Phase 6 features
-- Validation & Uncertainty: holdout reserved before exploring (rows or whole participants), holdout
-  evaluation with an interaction replication test, k-fold / grouped / temporal cross-validation with
-  leakage checks, discovery stability by resampling, full-procedure cross-validation (selection inside
-  training folds), confidence vs prediction intervals, calibration.
-- Missing Data panel: missingness by variable, patterns, usable n per model.
+## 2. Installing and starting StatExplore
 
-## Phase 7 features
-- Reports: Excel, Word, PDF; self-contained R scripts (+ data.csv) that reproduce each analysis outside the
-  app; Python launcher scripts; discovery settings, analysis history, variable change log.
+### 2A. Using the installer (recommended for most people)
 
-## Build an offline installer
-```bat
-.venv\Scripts\python packaging\build.py        :: dist\StatExplore\ with R + packages bundled
-"C:\Program Files (x86)\Inno Setup 6\ISCC.exe" packaging\statexplore.iss   :: dist\installer\StatExplore-Setup.exe
-dist\StatExplore\StatExplore.exe --selftest     :: writes %TEMP%\statexplore_selftest.txt; exit code 0 = OK
-```
+1. Double-click **`StatExplore-Setup.exe`**.
+2. Click through the installer. You can choose to create a desktop shortcut.
+3. Start **StatExplore** from the Start menu or the desktop shortcut.
 
-## Known limitations
-- Binary mixed models and mixed models inside discovery are not available yet. Welch ANOVA has no post hoc test yet (Games-Howell planned).
-- z-scores / centering of derived variables use all rows (before filters).
-- Date/time columns are imported and shown but excluded from analyses.
-- Empty strings in text columns are treated as missing.
-- Ordinal variables are coded as unordered factors in R (avoids polynomial contrasts by default).
-- The installer has not yet been tested on a clean Windows 10/11 machine (user step).
+That's all: R and every statistical package come with the installer.
+
+> The installer file is created by running two build steps (see [For developers](#11-for-developers)).
+> If someone gave you the folder `dist\StatExplore` instead, just double-click
+> **`StatExplore.exe`** inside it. It contains everything it needs.
+
+### 2B. Running it from the project folder (this computer)
+
+On the computer where StatExplore was developed, open the `statexplore` folder and double-click
+**`run.bat`**.
+
+### What you should see
+
+- A window with a dark blue **sidebar** on the left listing the sections.
+- At the bottom right, the status bar first says **"Starting R…"** and then, after a second or
+  so, **"R ready: R version 4.6.2"**. That means the statistics engine is working.
+  - If it says **"R not available — see Settings"**, see [Troubleshooting](#8-troubleshooting-and-faq).
+
+---
+
+## 3. A first session, step by step
+
+This walkthrough uses a Health and Retirement Study (HRS) extract, `hrs_least_missing_1000.sav`
+(1,000 people, interviewed up to 16 times), which was used during development. HRS data is **not**
+included in this repository; you need your own copy. The same steps work for any dataset.
+
+### Step 1: Open your data
+- Click **File ▸ Import Dataset…** (or drag the file onto the window).
+- For Excel files you'll be asked which sheet; for CSV files, how the columns are separated (leave
+  it on "Auto-detect" if unsure).
+- The **Dataset Explorer** opens. The **Overview** tab lists every variable with its type,
+  missing values, averages and possible outliers.
+
+**Your original file is never changed.** StatExplore works on its own copy.
+
+### Step 2: Check your variables
+Open the **Variables** tab. Click a variable to see its label and codes. Check two things:
+
+- **Measurement level.** *Continuous* means a number you can average (age, income, a score).
+  *Nominal* means categories with no order (gender, race). *Ordinal* means ordered categories
+  (never / sometimes / often).
+  Files sometimes get this wrong. In the HRS file, *years of education* (`RAEDYRS`) is stored as
+  nominal; set it to **continuous**.
+- **Role.** If the same person appears on several rows, set their ID variable's role to **id**
+  (in HRS: `HHIDPN`), and the occasion variable to **time** (in HRS: `WAVE`). This matters: it lets
+  StatExplore warn you when rows aren't independent and enables the longitudinal tools.
+
+Click **Apply changes**. Every change is logged and can be undone with **Undo last change**.
+
+> **HRS tip:** `R_CESDM` is the *number of missing* depression items, **not** a depression score.
+
+### Step 3: Create a score from several items (optional)
+In the **Derived & Filters** tab, click **New derived variable…**. For example, to build the
+8-item CES-D depression score:
+1. First reverse the two positive items: operation **Recode**, source `R_WHAPPY`, rows `0 → 1`
+   and `1 → 0`, name it `WHAPPY_R`. Do the same for `R_ENLIFE`.
+2. Then operation **Sum of items** with the eight items (using the two reversed ones), named `CESD8`.
+
+You can also **add filters**, for example *keep rows where WAVE equals 10* to analyse one wave only.
+Filtered-out rows turn grey in the Data tab.
+
+### Step 4: Look at the data
+In **Exploratory Data Analysis**, pick variables on the left:
+- **Describe (psych)** gives the average, SD, median, skew and more for the chosen variables
+  (optionally split by a group).
+- **Draw plot** gives a histogram, boxplot, scatterplot, etc. The program suggests a suitable plot.
+- **Correlation tests** gives correlations with ordinary and multiple-testing-corrected p-values.
+
+### Step 5: Run a standard analysis
+**Analysis Builder** contains t-tests, correlations, ANOVA, ANCOVA, linear, hierarchical and
+logistic regression. Choose an analysis on the left, put variables into the boxes, then click
+**Run analysis**. Results show tables, graphs and any warnings.
+
+### Step 6: Search for interactions (the main feature)
+In **Automated Model Discovery**:
+1. Choose the **dependent variable** (the outcome, e.g. `CESD8`).
+2. Tick the **candidate predictors** (up to 39).
+3. Leave the other settings at their defaults the first time.
+4. If your data has several rows per person, choose the participant ID under **Repeated
+   measures** (or filter to one wave first).
+5. Click **Calculate search space** to see how many models will be tested, then **Start search**.
+
+Results appear in four tabs:
+- **Summary:** how many models were tested, how many look significant, and how many you'd expect
+  by chance alone.
+- **Discovery significance ranking:** sorted by p-value.
+- **Statistical support ranking:** better-supported findings first (clean checks and significant
+  after correction).
+- **All attempts:** every model, including ones that couldn't be fitted, with the reason.
+
+Select a row to **Open full analysis**, **Plot in Teaching Studio**, or **Add to comparison**.
+
+### Step 7: Understand an interaction
+**Teaching Studio** draws the interaction from the fitted model, with lines for each group or
+level and shaded confidence bands. Underneath is a short **Interpretation** in plain English.
+Change the x-axis, grouping, panels, labels and format (PNG, SVG, PDF) on the left.
+
+### Step 8: Check whether a finding holds up
+In **Validation & Uncertainty**:
+- **Resampling stability:** reruns the search on many random subsets of people and shows how often
+  each finding reappears.
+- **Full-procedure CV:** repeats the *whole search* on part of the data and tests the winner on the
+  rest.
+- **Holdout:** set aside a portion of the data **before** exploring, and test your final idea on it
+  once at the end.
+
+### Step 9: Save and export
+**File ▸ Save Project** saves everything (data copy, settings, results, graphs) in one `.sxp` file.
+**Reports** exports to Excel, Word, PDF and R scripts.
+
+---
+
+## 4. The sections of the program
+
+| Section | What it's for |
+|---|---|
+| **Dashboard** | Overview of the open project and recent analyses. |
+| **Dataset Explorer** | **Overview** of every variable; **Data** spreadsheet view (tick *Show value labels* to see "Male" instead of 1; red = a declared missing code); **Variables** to set measurement level, role, reference group and display name; **Derived & Filters**; **Missing data** (how much is missing, common patterns, how many rows each model can use). |
+| **Exploratory Data Analysis** | Descriptive statistics, plots, correlation tests. |
+| **Analysis Builder** | Standard tests and regressions with effect sizes, confidence intervals, assumption checks and diagnostic plots. |
+| **Automated Model Discovery** | Systematic search for interaction effects (see Step 6). Modes: *Exhaustive* tests everything in the defined space; *First significant* / *Target number* stop early (labelled incomplete); *Budget-limited* stops after a set number of models or minutes. Profiles Fast / Balanced / Thorough set sensible budgets. You can **Cancel** and later **Resume**. |
+| **Model Comparison** | Put models side by side (AIC, BIC, R²). Models that contain one another get a formal test. **Edit a copy** changes a model without losing the original. |
+| **Validation & Uncertainty** | Holdout, cross-validation, stability, full-procedure CV, prediction intervals (see Step 8). |
+| **Mixed & Longitudinal Models** | For repeated measurements. **Detect structure** suggests the ID and time variables; **Wide → long** converts one-row-per-person data. Fits models with random intercepts or slopes, correlated errors over time (AR(1)), or an unstructured covariance. Draws average and individual trajectories, and compares time specifications. |
+| **Teaching Studio** | Interaction graphs with interpretations (see Step 7). |
+| **Reports** | Export selected analyses and searches. |
+| **Settings** | Where R is; **Test R connection**. |
+
+Almost every result has a **View Code** button. It shows the *exact* R code that produced the result,
+which you can copy into R or RStudio.
+
+---
+
+## 5. How to read the results
+
+- **p-value:** how surprising the result would be if there were really no effect. Small (below .05)
+  means "surprising". It does **not** tell you how large or important an effect is.
+- **Adjusted p-value (BH / Holm):** a p-value corrected for running many tests. In a search,
+  **use these**. *BH* controls the share of false discoveries; *Holm* is stricter.
+- **Effect size:** how big the effect is. In discovery, **ΔR²** is the share of the outcome's
+  variation the interaction explains on its own: 0.01 is 1%, which is small.
+- **Confidence interval (CI):** a range of plausible values for an estimate. Wide intervals mean
+  uncertainty.
+- **Status:** *ok*; *warning* (read the "Check:" messages); *invalid* (the model couldn't be
+  estimated, with the reason); *failed* (an error, shown in red).
+- **"Check:" messages** flag real problems: rows that aren't independent, too few cases in a group,
+  a model that didn't converge, perfect prediction in logistic models ("separation").
+- **n used / excluded:** how many rows went into the analysis. Rows with missing values on the
+  analysis variables are left out, and the program tells you how many.
+- **Interpretation box (Teaching Studio):** three to six sentences generated from fixed templates
+  using the actual numbers. It always ends with a limitation.
+
+---
+
+## 6. Five things to always keep in mind
+
+1. **More tests means more false alarms.** With 100 tests at p < .05, about 5 look significant
+   even when nothing is real. The discovery summary prints how many to expect by chance.
+2. **"Significant" is not "reliable".** Use the support ranking, the stability check and a holdout
+   before believing a discovery.
+3. **Repeated measurements are not independent.** If a person appears on several rows, set their
+   ID role. StatExplore will then warn you, and you can use mixed models.
+4. **Association is not causation.** These are observational data.
+5. **Effect sizes from a search are inflated.** The winner of a search looks better than it really is.
+
+---
+
+## 7. Saving, exporting and sharing
+
+- **Project file (`.sxp`):** File ▸ Save Project. One file holds a copy of the data, your variable
+  settings, derived variables, filters, holdout, all results, graphs, searches and model sets.
+  Open it later with File ▸ Open Project. The original data file isn't needed again.
+- **Reports page:** tick analyses and searches, choose formats, pick a folder:
+  - **Excel:** every table, plus summaries and code.
+  - **Word / PDF:** a readable report with interpretations, graphs and tables.
+  - **R script (+ data.csv):** reproduces each analysis outside StatExplore. Run it in R or RStudio
+    from the export folder.
+  - **Python script:** reruns the R script and loads the result.
+  - Plus the analysis history and a log of every variable change.
+- **Privacy:** nothing leaves your computer. Note that project files and exports contain your data;
+  share them only as you would the data itself.
+
+---
+
+## 8. Troubleshooting and FAQ
+
+**The status bar says "R not available — see Settings".**
+StatExplore couldn't find R. If you used the installer, reinstall it. If you run from the project
+folder, install R for Windows, then in **Settings** click **Browse…**, select `Rscript.exe`
+(usually `C:\Program Files\R\R-4.6.2\bin\x64\Rscript.exe`), then **Save R path** and
+**Test R connection**. The test also lists any missing R packages.
+
+**"Some combinations of factor levels have no observations."**
+A group combination has no data (for example no women in one category). Merge small categories with
+a derived **Recode** variable, or leave that variable out.
+
+**"Check: … rows come from only … participants."**
+Your data has repeated rows per person. Filter to one occasion, or use **Mixed & Longitudinal
+Models**, or choose **Repeated measures** in Discovery.
+
+**A discovery search says it will take very long.**
+Reduce the number of candidate predictors, keep *Max predictors per model* at 3, use the default
+*Focal* covariate setting, or choose the *Fast* profile. You can always Cancel and Resume.
+
+**Many models are "invalid".**
+Usually a categorical variable has many categories (each one adds parameters), or some groups are
+empty. Check measurement levels: a number stored as *nominal* (like years of education in HRS)
+should be *continuous*.
+
+**The flexplot backend is greyed out.**
+flexplot is an optional plotting add-on that must be installed separately (see the developer
+guide). ggplot2 and base R graphs work without it.
+
+**Where is the log file?** `C:\Users\<you>\AppData\Local\StatExplore\statexplore.log`.
+
+**Can I break my data?** No. Imports are read-only, and every change is stored as a separate,
+undoable setting.
+
+---
+
+## 9. Glossary
+
+| Term | Meaning |
+|---|---|
+| **Dependent variable / outcome** | What you're trying to explain (e.g. depression score). |
+| **Predictor** | A variable that may explain the outcome. |
+| **Interaction** | When the effect of one predictor depends on another (e.g. exercise relates to depression differently for men and women). Written *A × B*. |
+| **Covariate** | A variable included to adjust for it. |
+| **Reference level** | The category other categories are compared with in regression. |
+| **Continuous / nominal / ordinal** | Number / unordered categories / ordered categories. |
+| **Effect size** | How big an effect is, regardless of sample size. |
+| **Confidence interval** | Plausible range for an estimate. |
+| **Prediction interval** | Plausible range for **one new person's** outcome (much wider than a CI). |
+| **Multiple-testing correction** | Adjusting p-values because many tests were run (BH, Holm). |
+| **Holdout** | Data set aside and only used at the end to test a finding. |
+| **Cross-validation** | Repeatedly fitting on part of the data and testing on the rest. |
+| **Mixed model** | A model for repeated measurements that allows each person their own level (random intercept) and change (random slope). |
+| **AR(1)** | Errors from neighbouring occasions are correlated. |
+| **Singular fit** | A mixed model with a component estimated as zero: simplify it. |
+| **Separation** | In logistic regression, a predictor perfectly predicts the outcome, so its estimates are unreliable. |
+| **Johnson-Neyman interval** | The range of the moderator where the effect of x is significant. |
+
+---
+
+## 10. What is not finished yet
+
+- **Installer:** the build is ready and tested, but the final `StatExplore-Setup.exe` still has to
+  be compiled with the free tool Inno Setup, then tested on a fresh Windows 10 and 11 computer.
+- **flexplot** plotting add-on: optional, needs a separate install (developer guide).
+- **Binary-outcome mixed models** (for example yes/no outcomes measured repeatedly) aren't
+  available yet.
+- Mixed-model discovery results can't yet be opened directly in the Teaching Studio; refit them in
+  **Mixed & Longitudinal Models**.
+- Welch ANOVA has no post hoc test yet.
+- Multiple imputation of missing values isn't included. Missing data is handled by complete cases,
+  or by all available occasions in mixed models.
+
+---
+
+## 11. For developers
+
+Building, testing, packaging and the architecture are described in
+**[docs/DEVELOPER.md](docs/DEVELOPER.md)**. The development plan and per-phase reviews are in
+[tasks/todo.md](tasks/todo.md).

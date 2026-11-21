@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import (
     QComboBox, QDialog, QDialogButtonBox, QFileDialog, QFormLayout, QHBoxLayout, QInputDialog, QLabel,
@@ -126,9 +126,12 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(central)
 
         self._build_menu()
-        self.r_label = QLabel("R not started")
+        self.r_label = QLabel("Starting R…")
         self.statusBar().addPermanentWidget(self.r_label)
         self.state.r_status_changed.connect(self.r_label.setText)
+        # Start R in the background now, so the first analysis is fast and the status bar shows
+        # whether R is available.
+        QTimer.singleShot(300, self._warm_up_r)
         self.state.busy_changed.connect(
             lambda b: self.statusBar().showMessage("Working…" if b else "Ready", 0 if b else 3000))
         self.state.show_in_teaching.connect(
@@ -136,6 +139,16 @@ class MainWindow(QMainWindow):
         self.state.project_changed.connect(self._update_title)
         self.state.metadata_changed.connect(self._update_title)
         self.state.result_added.connect(lambda _r: self._update_title())
+
+    def _warm_up_r(self) -> None:
+        def ok(info) -> None:
+            self.r_label.setText(f"R ready: {info.get('r_version', '')}")
+
+        def failed(msg: str) -> None:
+            self.r_label.setText("R not available — see Settings")
+            self.r_label.setToolTip(msg)
+
+        self.state.run_r(lambda s: s.worker.ready_info, ok, failed)
 
     def _build_menu(self) -> None:
         m = self.menuBar().addMenu("&File")

@@ -116,14 +116,14 @@ class AppState(QObject):
             worker.start()
             self._worker = worker
             self._session = RSession(worker, self._workdir)
-            self.r_status_changed.emit(worker.ready_info.get("r_version", "R ready"))
+            self.r_status_changed.emit("R ready: " + worker.ready_info.get("r_version", ""))
         return self._session
 
     def shutdown_r(self) -> None:
         if self._worker:
             self._worker.stop()
         self._worker = self._session = None
-        self.r_status_changed.emit("R not started")
+        self.r_status_changed.emit("R stopped (restarts automatically when needed)")
 
     # ---- background work --------------------------------------------
     def _submit(self, pool: QThreadPool, fn: Callable[[], Any],
