@@ -4,10 +4,11 @@ from __future__ import annotations
 from PySide6.QtCore import QSortFilterProxyModel, Qt
 from PySide6.QtWidgets import (
     QAbstractItemView, QCheckBox, QComboBox, QDialog, QFormLayout, QGroupBox, QHBoxLayout, QHeaderView,
-    QLabel, QLineEdit, QListWidget, QListWidgetItem, QMessageBox, QPlainTextEdit, QPushButton, QSplitter, QTableView,
+    QLabel, QLineEdit, QListWidget, QListWidgetItem, QMessageBox, QPlainTextEdit, QPushButton, QSplitter, QTableView, QTextBrowser,
     QTabWidget, QVBoxLayout, QWidget,
 )
 
+from ...core import missing
 from ...core.dataset import DatasetError
 from ..derive_dialogs import DeriveDialog, FilterDialog
 from ...core.overview import as_frame, summarize
@@ -32,6 +33,8 @@ class DatasetExplorerPage(QWidget):
         self.tabs.addTab(self._build_preview(), "Data")
         self.tabs.addTab(self._build_variables(), "Variables")
         self.tabs.addTab(self._build_derived(), "Derived && Filters")
+        self.missing_view = QTextBrowser()
+        self.tabs.addTab(self.missing_view, "Missing data")
         layout = QVBoxLayout(self)
         self.title = QLabel("No dataset loaded")
         self.title.setObjectName("pageTitle")
@@ -223,6 +226,41 @@ class DatasetExplorerPage(QWidget):
         ds.remove_filter(it.data(Qt.UserRole))
         self.state.notify_metadata_changed()
 
+    # ---- missing data panel (§17) -------------------------------------
+    def _refresh_missing(self) -> None:
+        import html as _html
+
+        ds, p = self.state.dataset, self.state.project
+        if ds is None:
+            self.missing_view.setHtml("")
+            return
+        names = ds.names()
+        bv = missing.by_variable(ds, names)
+        top = [n for n in bv.head(12)["variable"]]
+        top_names = [v.name for v in ds.variables.values() if v.display_name in top]
+        pat = missing.patterns(ds, top_names)
+        models = [(m.label or m.id, [m.outcome] + m.variables + m.sample_vars) for m in (p.models if p else [])]
+        models += [(f"Search {r.id}", [r.settings.outcome] + r.settings.candidates + r.settings.required)
+                   for r in (p.searches if p else [])]
+        un = missing.usable_n(ds, models) if models else None
+
+        def table(df) -> str:
+            head = "".join(f"<th>{_html.escape(str(c))}</th>" for c in df.columns)
+            rows = "".join("<tr>" + "".join(
+                f"<td>{_html.escape(f'{v:.1f}' if isinstance(v, float) else str(v))}</td>" for v in r) + "</tr>"
+                for r in df.itertuples(index=False))
+            return f"<table border='1' cellspacing='0' cellpadding='3'><tr>{head}</tr>{rows}</table>"
+
+        parts = ["<h3>Missing values by variable</h3>", table(bv),
+                 "<h3>Most common missingness patterns (12 most-missing variables; X = missing)</h3>",
+                 table(pat) if not pat.empty else "<p>—</p>"]
+        if un is not None:
+            parts += ["<h3>Usable observations per model (complete cases)</h3>", table(un),
+                      "<p>Models fitted to different rows are not directly comparable.</p>"]
+        parts.append("<p>Analyses use complete cases on their variables; mixed models use all available "
+                     "occasions (MAR assumption). Nothing is imputed automatically.</p>")
+        self.missing_view.setHtml("".join(parts))
+
     # ---- refresh ----------------------------------------------------
     def reload(self) -> None:
         ds = self.state.dataset
@@ -252,6 +290,7 @@ class DatasetExplorerPage(QWidget):
         self.overview_model.set_frame(frame)
         self.preview_model.refresh_all()
         self._refresh_derived()
+        self._refresh_missing()
         row = self.var_list.currentRow()
         self.var_list.blockSignals(True)
         self.var_list.clear()

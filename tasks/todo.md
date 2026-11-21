@@ -141,13 +141,21 @@ Test dataset: `E:\Downloads\hrs_least_missing_1000.sav` (HRS, long format, 1000 
 - Bugs found and fixed: (1) nlme `optim` failed on unbalanced data ("coefficient matrix not invertible") → nlminb default + fallback; (2) labelled time (SPSS "Wave 3") became NA as continuous time → explicit label→code map (+ regression test); (3) multi-string check message split again (lessons.md rule applied); (4) spurious ggplot/model.frame warnings; (5) internal names sx_time/sx_id shown in tables.
 - HRS (waves 2–16, 1,000 people, 9,786 rows): CES-D rises 0.053/wave; women +0.58; no time × gender (p = .36) or time × vigorous activity (p = .28); random intercept SD 1.98; AR(1) improves fit (ΔAIC 34). lme4 convergence gradient 0.028 flagged.
 
-## Phase 6 — Validation & Uncertainty
-- [ ] Holdout reserved before search (cluster-level for repeated data), never used in selection
-- [ ] k-fold / grouped / temporal CV; full-procedure CV (selection inside folds)
-- [ ] Discovery stability via resampling (top-k only), selection frequency
-- [ ] Uncertainty Assessment workspace (CIs, PIs, predicted vs observed)
-- [ ] Missing Data panel (patterns, per-model usable n); mice later
-- [ ] Tests N + leakage tests
+## Phase 6 — Validation & Uncertainty  ✅ **complete (2026-11-21)**
+- [x] Holdout reserved before exploring (rows or whole participants/clusters; seeded, deterministic, undoable, saved); every analysis, search and EDA uses training rows only; R load script splits explicitly
+- [x] Holdout evaluation (fit on training, score on holdout) + interaction replication test in the holdout; reuse counter with warning
+- [x] Cross-validation: k-fold, grouped (participants), temporal (expanding window); per-fold + summary + in-sample optimism; participant-overlap (leakage) table and warning; unseen factor levels handled
+- [x] Discovery stability by resampling (participants when an ID exists): selection frequency, top-rank frequency
+- [x] Full-procedure CV: whole search inside each training fold; selected model scored and re-tested on the test fold
+- [x] Prediction uncertainty: CI vs prediction interval bands (linear), calibration plot (logistic), predicted vs observed
+- [x] Missing Data panel (Dataset Explorer tab): by variable, patterns, usable n per model / search
+- [x] Validation & Uncertainty workspace (11th sidebar section)
+- [x] Tests (10): holdout split deterministic/grouped/undo/round-trip, holdout rows never reach analyses or discovery, holdout RMSE/R² vs numpy, reuse warning, Test N grouped CV zero overlap vs naive leakage, temporal splits, logistic CV metrics, stability + procedure CV recover planted effect, prediction intervals vs statsmodels, missing summaries; GUI test
+
+### Review (Phase 6)
+- 138/138 tests pass; no orphan R processes.
+- Bugs found and fixed: helper names failed alias validation (good: the guard works) → explicit split column; complete-case helper dropped the ID/time columns CV needs.
+- HRS wave-10 lead (light activity × education, p = .005, q = .31): significant in 80% of subsamples but ranked first in 40%; full-procedure CV picks different interactions across folds and out-of-sample R² ≈ 0 — a clear "significant but unstable" teaching example.
 
 ## Phase 7 — Export & Packaging
 - [ ] Excel (openpyxl), Word (python-docx or officer), PDF exports; R/Python script export; analysis history & search settings export

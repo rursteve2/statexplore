@@ -32,6 +32,18 @@ class SourceInfo:
 
 
 @dataclass
+class HoldoutSpec:
+    """Rows (or whole participants/clusters) reserved before exploration (§13.1)."""
+    fraction: float
+    seed: int
+    group: str | None = None       # split by participant/cluster when set
+    evaluations: int = 0           # how often the holdout has been used for evaluation
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass
 class Change:
     op: str
     variable: str
@@ -75,6 +87,8 @@ class Dataset:
         # Derived variables (in definition order) and row filters, applied in that order.
         self.derived: dict[str, DerivedSpec] = {}
         self.filters: list[FilterSpec] = []
+        self.holdout: HoldoutSpec | None = None
+        self._holdout_mask: pd.Series | None = None
         self._derived_values: dict[str, pd.Series] = {}
 
     # ---- basic info -------------------------------------------------
@@ -134,22 +148,67 @@ class Dataset:
         mask = self.user_missing_mask(name)
         return col.mask(mask) if mask.any() else col
 
-    def row_mask(self) -> pd.Series:
-        """Rows kept by all filters (True = keep)."""
+    def row_mask(self, part: str = "train") -> pd.Series:
+        """Rows kept by all filters (True = keep). With a holdout, `part` selects
+        "train" (default: everything except the holdout), "holdout", or "all"."""
         keep = pd.Series(True, index=self.raw.index)
         for f in self.filters:
             keep &= filter_mask(f, self.analysis_column(f.variable))
+        if self._holdout_mask is not None and part != "all":
+            keep &= self._holdout_mask if part == "holdout" else ~self._holdout_mask
         return keep
+
+    # ---- holdout -----------------------------------------------------
+    def set_holdout(self, spec: HoldoutSpec | None) -> None:
+        if spec is not None:
+            if not 0.05 <= spec.fraction <= 0.5:
+                raise DatasetError("The holdout fraction must be between 5% and 50%.")
+            if spec.group is not None:
+                self.var(spec.group)
+        old = self.holdout.to_dict() if self.holdout else None
+        self.holdout = spec
+        self._holdout_mask = self._compute_holdout() if spec else None
+        self.changes.append(Change(op="set_holdout", variable="", field="", old=old,
+                                   new=spec.to_dict() if spec else None, at=_now()))
+
+    def _compute_holdout(self) -> pd.Series:
+        """Deterministic split: numpy Generator(seed) permutes rows, or sorted group values."""
+        h = self.holdout
+        rng = np.random.default_rng(h.seed)
+        if h.group is None:
+            n_hold = int(round(h.fraction * self.n_rows))
+            chosen = rng.permutation(self.n_rows)[:n_hold]
+            mask = np.zeros(self.n_rows, bool)
+            mask[chosen] = True
+            return pd.Series(mask, index=self.raw.index)
+        col = self.analysis_column(h.group)
+        groups = np.array(sorted(col.dropna().unique().tolist(), key=str), dtype=object)
+        n_hold = int(round(h.fraction * len(groups)))
+        held = set(groups[rng.permutation(len(groups))[:n_hold]].tolist())
+        return col.isin(held) & col.notna()
+
+    def holdout_labels(self) -> pd.Series | None:
+        if self._holdout_mask is None:
+            return None
+        return self._holdout_mask.map({True: "holdout", False: "train"})
 
     @property
     def n_rows_filtered(self) -> int:
         return int(self.row_mask().sum())
 
-    def analysis_frame(self, names: list[str] | None = None, filtered: bool = True) -> pd.DataFrame:
-        """User-missing -> NaN; derived variables computed; filters applied (unless filtered=False)."""
+    def restore_holdout(self, spec: HoldoutSpec | None) -> None:
+        self.holdout = spec
+        self._holdout_mask = self._compute_holdout() if spec else None
+
+    def analysis_frame(self, names: list[str] | None = None, filtered: bool = True,
+                       part: str = "train") -> pd.DataFrame:
+        """User-missing -> NaN; derived variables computed; filters (and the holdout
+        split) applied unless filtered=False."""
         names = names if names is not None else self.names()
         frame = pd.DataFrame({n: self.analysis_column(n) for n in names}, index=self.raw.index)
-        return frame[self.row_mask()] if filtered and self.filters else frame
+        if not filtered or (not self.filters and self._holdout_mask is None):
+            return frame
+        return frame[self.row_mask(part)]
 
     def missing_count(self, name: str) -> int:
         return int(self.analysis_column(name).isna().sum())
@@ -293,6 +352,9 @@ class Dataset:
             self._uninstall_derived(ch.variable)
         elif ch.op == "remove_derived":
             self._install_derived(DerivedSpec.from_dict(ch.old["spec"]), VariableMeta.from_dict(ch.old["meta"]))
+        elif ch.op == "set_holdout":
+            self.holdout = HoldoutSpec(**ch.old) if ch.old else None
+            self._holdout_mask = self._compute_holdout() if self.holdout else None
         elif ch.op == "add_filter":
             self.filters.pop()
         elif ch.op == "remove_filter":

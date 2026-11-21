@@ -50,7 +50,8 @@ TIERS = {
 
 def data_signature(ds: Dataset) -> str:
     meta = [v.to_dict() for v in ds.variables.values()]
-    extra = [[d.to_dict() for d in ds.derived.values()], [f.to_dict() for f in ds.filters]]
+    extra = [[d.to_dict() for d in ds.derived.values()], [f.to_dict() for f in ds.filters],
+             {k: v for k, v in (ds.holdout.to_dict() if ds.holdout else {}).items() if k != "evaluations"}]
     payload = json.dumps([ds.source.sha256, meta, extra], sort_keys=True, default=str)
     return hashlib.sha256(payload.encode()).hexdigest()
 

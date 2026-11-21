@@ -34,7 +34,8 @@ class RSession:
     @staticmethod
     def _metadata_signature(ds: Dataset) -> str:
         meta = [v.to_dict() for v in ds.variables.values()]
-        extra = [[d.to_dict() for d in ds.derived.values()], [f.to_dict() for f in ds.filters]]
+        extra = [[d.to_dict() for d in ds.derived.values()], [f.to_dict() for f in ds.filters],
+                 {k: v for k, v in (ds.holdout.to_dict() if ds.holdout else {}).items() if k != "evaluations"}]
         payload = json.dumps([ds.source.sha256, id(ds.raw), meta, extra], sort_keys=True, default=str)
         return hashlib.sha256(payload.encode()).hexdigest()
 
@@ -49,6 +50,9 @@ class RSession:
                 col = frame[n.alias]
                 frame[n.alias] = col.map(lambda x: "" if pd.isna(x) else pd.Timestamp(x).isoformat())
         # Default float formatting is repr(), so values round-trip exactly.
+        labels = ds.holdout_labels()
+        if labels is not None:
+            frame["sx_split"] = labels  # train/holdout assignment computed in Python (seeded)
         frame.to_csv(path, index=False, na_rep="", encoding="utf-8", lineterminator="\n")
 
     def ensure_data(self, ds: Dataset) -> None:

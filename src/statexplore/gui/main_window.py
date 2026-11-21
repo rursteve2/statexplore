@@ -24,11 +24,12 @@ from .pages.mixed import MixedPage
 from .pages.eda import EdaPage
 from .pages.simple import DashboardPage, PlannedPage, SettingsPage
 from .pages.teaching import TeachingPage
+from .pages.validation import ValidationPage
 from .state import AppState
 
 SECTIONS = [
     "Dashboard", "Dataset Explorer", "Exploratory Data Analysis", "Analysis Builder",
-    "Automated Model Discovery", "Model Comparison", "Mixed & Longitudinal Models",
+    "Automated Model Discovery", "Model Comparison", "Validation & Uncertainty", "Mixed & Longitudinal Models",
     "Teaching Studio", "Reports", "Settings",
 ]
 PLANNED = {
@@ -103,6 +104,7 @@ class MainWindow(QMainWindow):
             "Model Comparison": ComparisonPage(self.state),
             "Teaching Studio": TeachingPage(self.state),
             "Mixed & Longitudinal Models": MixedPage(self.state),
+            "Validation & Uncertainty": ValidationPage(self.state),
             "Settings": SettingsPage(self.state),
         }
         for name in SECTIONS:

@@ -184,7 +184,8 @@ def data_load_script(ds: Dataset, csv_path: str) -> str:
         "sx_names <- " + r_vec([v.display_name for v in variables], [v.alias for v in variables]),
         "dat <- utils::read.csv(",
         "  sx_data_file, na.strings = \"\", fileEncoding = \"UTF-8\", check.names = FALSE,",
-        "  colClasses = " + r_vec([_COLCLASS[v.storage] for v in base], [v.alias for v in base]),
+        "  colClasses = " + r_vec([_COLCLASS[v.storage] for v in base], [v.alias for v in base])
+        + (" |> c(sx_split = \"character\")" if ds.holdout else ""),
         ")",
     ]
     if ds.derived:
@@ -211,5 +212,13 @@ def data_load_script(ds: Dataset, csv_path: str) -> str:
     if cat_lines:
         lines.append("# Categorical variables: numeric codes -> labelled factor levels")
         lines.extend(cat_lines)
+    if ds.holdout:
+        h = ds.holdout
+        lines += [
+            f"# Holdout: {int(round(h.fraction * 100))}% of " + ("participants" if h.group else "rows")
+            + f" reserved (seed {h.seed}); exploration uses the training rows only",
+            "sx_holdout_dat <- dat[dat$sx_split == \"holdout\", , drop = FALSE]",
+            "dat <- dat[dat$sx_split == \"train\", , drop = FALSE]",
+        ]
     lines.append("sx_result <- list(n_rows = nrow(dat), n_cols = ncol(dat))")
     return "\n".join(lines) + "\n"

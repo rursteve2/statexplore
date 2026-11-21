@@ -4,7 +4,7 @@ Offline Windows desktop app for exploratory statistical model discovery and teac
 (Python/PySide6 front end, R statistical engine). Build plan: `tasks/todo.md`.
 Architecture: `docs/architecture.md`.
 
-**Status: Phases 1–5 complete (foundation, statistical engine, model discovery, Teaching Studio & Model Comparison, mixed & longitudinal models).**
+**Status: Phases 1–6 complete; Phase 7 (export & packaging) in progress.**
 
 ## Requirements
 - Windows 10/11
@@ -85,6 +85,13 @@ R tests skip automatically if R or the Phase 1 packages are missing. The HRS fix
   mmrm unstructured marginal models; continuous, quadratic or categorical time; variance components,
   marginal/conditional R², singularity and convergence checks; population, individual and conditional
   trajectory plots; time / random-effect / residual-structure comparisons with the correct ML/REML rules.
+
+## Phase 6 features
+- Validation & Uncertainty: holdout reserved before exploring (rows or whole participants), holdout
+  evaluation with an interaction replication test, k-fold / grouped / temporal cross-validation with
+  leakage checks, discovery stability by resampling, full-procedure cross-validation (selection inside
+  training folds), confidence vs prediction intervals, calibration.
+- Missing Data panel: missingness by variable, patterns, usable n per model.
 
 ## Known limitations
 - Binary mixed models and mixed models inside discovery are not available yet. Welch ANOVA has no post hoc test yet (Games-Howell planned).

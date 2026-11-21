@@ -16,7 +16,7 @@ from typing import Any
 
 import pandas as pd
 
-from .dataset import Change, Dataset, SourceInfo
+from .dataset import Change, Dataset, HoldoutSpec, SourceInfo
 from .derive import DerivedSpec, FilterSpec
 from .schema import AnalysisResult
 from .variables import VariableMeta
@@ -85,6 +85,7 @@ class Project:
             "derived": [d.to_dict() for d in ds.derived.values()],
             "filters": [f.to_dict() for f in ds.filters],
             "models": [m.to_dict() for m in self.models],
+            "holdout": ds.holdout.to_dict() if ds.holdout else None,
         }
         con.executemany("INSERT INTO meta VALUES (?, ?)", [(k, json.dumps(v)) for k, v in meta.items()])
         con.executemany(
@@ -135,6 +136,8 @@ class Project:
             # restore the saved variable order (derived variables may be interleaved after undo)
             ds.variables = {v.name: ds.variables[v.name] for v in variables}
             ds.filters = [FilterSpec.from_dict(f) for f in meta.get("filters", [])]
+            if meta.get("holdout"):
+                ds.restore_holdout(HoldoutSpec(**meta["holdout"]))
             ds.changes = [Change(**json.loads(c)) for (c,) in
                           con.execute("SELECT change FROM changes ORDER BY seq")]
             project = cls(ds)

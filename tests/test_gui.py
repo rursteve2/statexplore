@@ -26,7 +26,7 @@ def window(qtbot, tmp_path, monkeypatch):
 
 
 def test_sidebar_sections(window):
-    assert window.sidebar.count() == len(SECTIONS) == 10
+    assert window.sidebar.count() == len(SECTIONS) == 11
     for i, name in enumerate(SECTIONS):
         window.sidebar.setCurrentRow(i)
         assert window.stack.currentIndex() == i
@@ -215,3 +215,34 @@ def test_mixed_page(window, qtbot, tmp_path, r_worker):
     assert "Random effects" in page.output.toPlainText() and len(page.current.plots) == 3
     page.residual.setCurrentIndex(page.residual.findData("unstructured"))
     assert page.random.currentData() == "none" and "mmrm" in page.engine_label.text()
+
+
+@pytest.mark.r
+def test_validation_page_and_missing_tab(window, qtbot, tmp_path, r_worker):
+    import numpy as np
+    import pandas as pd
+
+    from statexplore.analysis.models import ModelSpec
+    from statexplore.core.importers import import_file
+    from statexplore.core.project import Project
+
+    rng = np.random.default_rng(3)
+    df = pd.DataFrame({"pid": np.repeat(np.arange(1, 41), 3), "x": rng.normal(size=120)})
+    df["y"] = df["x"] + rng.normal(size=120)
+    df.loc[:4, "x"] = np.nan
+    p = tmp_path / "val.csv"
+    df.to_csv(p, index=False)
+    ds = import_file(p)
+    ds.set_variable_field("pid", "role", "id")
+    window.state.set_project(Project(ds))
+    window.state.add_model(ModelSpec("y", [("x",)], "gaussian", label="simple"))
+    page = window.pages["Validation & Uncertainty"]
+    assert page.h_group.currentData() == "pid"
+    page._reserve()
+    assert ds.holdout is not None and "reserved" in page.h_status.text()
+    page.scheme.setCurrentIndex(page.scheme.findData("grouped"))
+    page._cv()
+    qtbot.waitUntil(lambda: page.current is not None, timeout=60000)
+    assert "Cross-validation summary" in page.output.toPlainText()
+    text = window.pages["Dataset Explorer"].missing_view.toPlainText()
+    assert "Missing values by variable" in text and "simple" in text
