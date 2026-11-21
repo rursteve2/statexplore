@@ -1,0 +1,231 @@
+"""Dataset Explorer: overview, spreadsheet preview, and variable management."""
+from __future__ import annotations
+
+from PySide6.QtCore import QSortFilterProxyModel, Qt
+from PySide6.QtWidgets import (
+    QAbstractItemView, QCheckBox, QComboBox, QFormLayout, QGroupBox, QHBoxLayout, QHeaderView,
+    QLabel, QLineEdit, QListWidget, QMessageBox, QPlainTextEdit, QPushButton, QSplitter, QTableView,
+    QTabWidget, QVBoxLayout, QWidget,
+)
+
+from ...core.dataset import DatasetError
+from ...core.overview import as_frame, summarize
+from ...core.variables import Measure, Role
+from ..models import DataPreviewModel, FrameModel, fmt
+from ..state import AppState
+
+OVERVIEW_COLUMNS = {
+    "display_name": "Variable", "label": "Label", "storage": "Type", "measure": "Measure",
+    "role": "Role", "n_valid": "Valid N", "n_missing": "Missing", "pct_missing": "% missing",
+    "n_unique": "Unique", "mean": "Mean", "sd": "SD", "min": "Min", "max": "Max",
+    "n_outliers": "Potential outliers (Tukey)", "n_user_missing_codes": "User-missing codes",
+}
+
+
+class DatasetExplorerPage(QWidget):
+    def __init__(self, state: AppState):
+        super().__init__()
+        self.state = state
+        self.tabs = QTabWidget()
+        self.tabs.addTab(self._build_overview(), "Overview")
+        self.tabs.addTab(self._build_preview(), "Data")
+        self.tabs.addTab(self._build_variables(), "Variables")
+        layout = QVBoxLayout(self)
+        self.title = QLabel("No dataset loaded")
+        self.title.setObjectName("pageTitle")
+        layout.addWidget(self.title)
+        layout.addWidget(self.tabs)
+        state.project_changed.connect(self.reload)
+        state.metadata_changed.connect(self.refresh_metadata)
+        self.reload()
+
+    # ---- overview ---------------------------------------------------
+    def _build_overview(self) -> QWidget:
+        w = QWidget()
+        lay = QVBoxLayout(w)
+        self.stats_label = QLabel()
+        self.stats_label.setTextFormat(Qt.RichText)
+        lay.addWidget(self.stats_label)
+        self.overview_model = FrameModel()
+        proxy = QSortFilterProxyModel()
+        proxy.setSourceModel(self.overview_model)
+        proxy.setSortRole(Qt.UserRole)
+        self.overview_view = QTableView()
+        self.overview_view.setModel(proxy)
+        self.overview_view.setSortingEnabled(True)
+        self.overview_view.sortByColumn(-1, Qt.AscendingOrder)  # dataset order until the user sorts
+        self.overview_view.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.overview_view.horizontalHeader().setSectionResizeMode(QHeaderView.Interactive)
+        lay.addWidget(self.overview_view)
+        return w
+
+    # ---- preview ----------------------------------------------------
+    def _build_preview(self) -> QWidget:
+        w = QWidget()
+        lay = QVBoxLayout(w)
+        bar = QHBoxLayout()
+        self.labels_box = QCheckBox("Show value labels")
+        self.labels_box.toggled.connect(lambda on: self.preview_model.set_show_labels(on))
+        bar.addWidget(self.labels_box)
+        bar.addWidget(QLabel("User-missing codes are shown in red; blank cells are system-missing."))
+        bar.addStretch()
+        lay.addLayout(bar)
+        self.preview_model = DataPreviewModel()
+        view = QTableView()
+        view.setModel(self.preview_model)
+        view.horizontalHeader().setDefaultSectionSize(110)
+        view.verticalHeader().setDefaultSectionSize(22)
+        lay.addWidget(view)
+        return w
+
+    # ---- variables --------------------------------------------------
+    def _build_variables(self) -> QWidget:
+        split = QSplitter()
+        self.var_list = QListWidget()
+        self.var_list.currentRowChanged.connect(self._show_variable)
+        split.addWidget(self.var_list)
+
+        right = QWidget()
+        rl = QVBoxLayout(right)
+        box = QGroupBox("Variable properties")
+        form = QFormLayout(box)
+        self.f_name = QLabel()
+        self.f_label = QLabel()
+        self.f_label.setWordWrap(True)
+        self.f_display = QLineEdit()
+        self.f_measure = QComboBox()
+        self.f_measure.addItems([m.value for m in Measure])
+        self.f_role = QComboBox()
+        self.f_role.addItems([r.value for r in Role])
+        self.f_ref = QComboBox()
+        self.f_values = QPlainTextEdit()
+        self.f_values.setReadOnly(True)
+        self.f_values.setMaximumHeight(140)
+        self.f_missing = QLabel()
+        form.addRow("Original name", self.f_name)
+        form.addRow("Label", self.f_label)
+        form.addRow("Display name", self.f_display)
+        form.addRow("Measurement level", self.f_measure)
+        form.addRow("Role", self.f_role)
+        form.addRow("Reference level", self.f_ref)
+        form.addRow("Value labels", self.f_values)
+        form.addRow("User-missing", self.f_missing)
+        btns = QHBoxLayout()
+        self.apply_btn = QPushButton("Apply changes")
+        self.apply_btn.clicked.connect(self._apply)
+        self.undo_btn = QPushButton("Undo last change")
+        self.undo_btn.clicked.connect(self._undo)
+        btns.addWidget(self.apply_btn)
+        btns.addWidget(self.undo_btn)
+        btns.addStretch()
+        rl.addWidget(box)
+        rl.addLayout(btns)
+        rl.addWidget(QLabel("Change log (original data is never modified):"))
+        self.log_view = QPlainTextEdit()
+        self.log_view.setReadOnly(True)
+        rl.addWidget(self.log_view)
+        split.addWidget(right)
+        split.setSizes([260, 600])
+        return split
+
+    # ---- refresh ----------------------------------------------------
+    def reload(self) -> None:
+        ds = self.state.dataset
+        self.preview_model.set_dataset(ds)
+        self.var_list.clear()
+        if ds is None:
+            self.title.setText("No dataset loaded — use File ▸ Import Dataset or drag a file onto the window.")
+            self.overview_model.set_frame(as_frame_empty())
+            self.stats_label.setText("")
+            return
+        self.title.setText(f"Dataset: {ds.source.path}")
+        self.refresh_metadata()
+
+    def refresh_metadata(self) -> None:
+        ds = self.state.dataset
+        if ds is None:
+            return
+        s = summarize(ds)
+        self.stats_label.setText(
+            f"<b>{s.n_rows:,}</b> rows &nbsp;·&nbsp; <b>{s.n_cols}</b> columns &nbsp;·&nbsp; "
+            f"<b>{s.n_missing_cells:,}</b> missing cells ({s.pct_missing_cells:.1f}%) &nbsp;·&nbsp; "
+            f"<b>{s.n_complete_rows:,}</b> complete rows &nbsp;·&nbsp; source format: {ds.source.format.upper()}"
+        )
+        frame = as_frame(s)[list(OVERVIEW_COLUMNS)].rename(columns=OVERVIEW_COLUMNS)
+        self.overview_model.set_frame(frame)
+        self.preview_model.refresh_headers()
+        row = self.var_list.currentRow()
+        self.var_list.blockSignals(True)
+        self.var_list.clear()
+        for v in ds.variables.values():
+            self.var_list.addItem(f"{v.display_name}  [{v.measure.value}{'' if v.role is Role.NONE else ', ' + v.role.value}]")
+        self.var_list.blockSignals(False)
+        self.var_list.setCurrentRow(max(row, 0))
+        self._show_variable(self.var_list.currentRow())
+        self.log_view.setPlainText("\n".join(
+            f"{c.at}  {c.variable}.{c.field}: {c.old!r} → {c.new!r}" for c in ds.changes))
+
+    def _current_name(self) -> str | None:
+        ds = self.state.dataset
+        row = self.var_list.currentRow()
+        if ds is None or row < 0:
+            return None
+        return list(ds.variables)[row]
+
+    def _show_variable(self, row: int) -> None:
+        ds = self.state.dataset
+        name = self._current_name()
+        if ds is None or name is None:
+            return
+        v = ds.var(name)
+        self.f_name.setText(f"{v.name}  (internal: {v.alias})")
+        self.f_label.setText(v.label or "—")
+        self.f_display.setText(v.display_name)
+        self.f_measure.setCurrentText(v.measure.value)
+        self.f_role.setCurrentText(v.role.value)
+        self.f_ref.clear()
+        self.f_ref.addItem("(first level)", None)
+        if v.is_categorical:
+            levels = ds.levels(name)
+            if len(levels) <= 200:
+                for code in levels:
+                    self.f_ref.addItem(f"{fmt(code)} — {ds.level_label(name, code)}", code)
+            if v.reference_level is not None:
+                idx = self.f_ref.findData(v.reference_level)
+                self.f_ref.setCurrentIndex(max(idx, 0))
+        self.f_ref.setEnabled(v.is_categorical)
+        self.f_values.setPlainText("\n".join(f"{fmt(k)} = {lab}" for k, lab in v.value_labels.items()) or "—")
+        miss = [fmt(x) for x in v.missing_values] + [f"{fmt(lo)}–{fmt(hi)}" for lo, hi in v.missing_ranges]
+        self.f_missing.setText(", ".join(miss) or "none declared")
+
+    def _apply(self) -> None:
+        ds = self.state.dataset
+        name = self._current_name()
+        if ds is None or name is None:
+            return
+        updates = [
+            ("display_name", self.f_display.text()),
+            ("measure", self.f_measure.currentText()),
+            ("role", self.f_role.currentText()),
+        ]
+        if ds.var(name).is_categorical and Measure(self.f_measure.currentText()) is not Measure.CONTINUOUS:
+            updates.append(("reference_level", self.f_ref.currentData()))
+        elif ds.var(name).reference_level is not None:
+            updates.append(("reference_level", None))
+        try:
+            for field_name, value in updates:
+                ds.set_variable_field(name, field_name, value)
+        except DatasetError as e:
+            QMessageBox.warning(self, "Cannot apply change", str(e))
+        self.state.notify_metadata_changed()
+
+    def _undo(self) -> None:
+        ds = self.state.dataset
+        if ds and ds.undo():
+            self.state.notify_metadata_changed()
+
+
+def as_frame_empty():
+    import pandas as pd
+
+    return pd.DataFrame(columns=list(OVERVIEW_COLUMNS.values()))
