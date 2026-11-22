@@ -255,6 +255,136 @@ class FrameModel(QAbstractTableModel):
         return str(section + 1)
 
 
+class ResultFrameModel(FrameModel):
+    """FrameModel with vectorised sorting and searching for very large result tables (hundreds of
+    thousands of rows): no per-row Python callbacks. Same sort rules as NumericSortProxy — numbers
+    numerically, text case-insensitively, numbers before text, missing / NaN / infinite LAST in both
+    directions, stable for ties. `lazy` columns are computed only for rows that are displayed."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._order = np.arange(0)
+        self._sort_col, self._sort_order = -1, Qt.AscendingOrder
+        self._query = ""
+        self._hay: pd.Series | None = None
+        self.only_rows: np.ndarray | None = None
+        self.lazy: dict[str, Any] = {}
+        self._lazy_cache: dict[tuple[int, str], Any] = {}
+
+    # ---- data -------------------------------------------------------------------------
+    def set_frame(self, frame: pd.DataFrame, highlight=None, warning=None, tips=None, lazy=None) -> None:
+        self.beginResetModel()
+        self.frame = frame.reset_index(drop=True)
+        self.highlight = None if highlight is None else np.asarray(highlight, bool)
+        self.warning = None if warning is None else np.asarray(warning, bool)
+        self.row_tips = tips
+        self.lazy = dict(lazy or {})
+        self._lazy_cache.clear()
+        self._hay = None
+        self._order = self._compute_order()
+        self.endResetModel()
+
+    def set_row_status(self, highlight=None, warning=None, tips=None, text=None) -> None:
+        self.highlight = None if highlight is None else np.asarray(highlight, bool)
+        self.warning = None if warning is None else np.asarray(warning, bool)
+        self.row_tips = tips
+        self.status_text = text
+        if self.rowCount():
+            self.dataChanged.emit(self.index(0, 0), self.index(self.rowCount() - 1, self.frame.shape[1] - 1),
+                                  [Qt.BackgroundRole, Qt.ToolTipRole, Qt.DisplayRole])
+
+    def rowCount(self, parent: QModelIndex = QModelIndex()) -> int:  # noqa: N802
+        return 0 if parent.isValid() else len(self._order)
+
+    def source_row(self, row: int) -> int:
+        return int(self._order[row])
+
+    def view_row(self, source: int) -> int:
+        hits = np.flatnonzero(self._order == source)
+        return int(hits[0]) if len(hits) else -1
+
+    def data(self, index: QModelIndex, role: int = Qt.DisplayRole) -> Any:
+        if not index.isValid() or index.row() >= len(self._order):
+            return None
+        src = int(self._order[index.row()])
+        name = self.frame.columns[index.column()]
+        if name in self.lazy and role in (Qt.DisplayRole, Qt.UserRole, Qt.ToolTipRole):
+            key = (src, name)
+            if key not in self._lazy_cache:
+                self._lazy_cache[key] = self.lazy[name](src)
+            return self._lazy_cache[key]
+        return super().data(self.createIndex(src, index.column()), role)
+
+    # ---- sorting / searching -----------------------------------------------------------
+    def sortColumn(self) -> int:  # noqa: N802 (Qt-style API, mirrors QSortFilterProxyModel)
+        return self._sort_col
+
+    def sortOrder(self):  # noqa: N802
+        return self._sort_order
+
+    def sort(self, column: int, order=Qt.AscendingOrder) -> None:
+        self._sort_col, self._sort_order = column, order
+        self.layoutAboutToBeChanged.emit()
+        self._order = self._compute_order()
+        self.layoutChanged.emit()
+
+    def set_query(self, text: str) -> None:
+        self._query = text.strip().casefold()
+        self.beginResetModel()
+        self._order = self._compute_order()
+        self.endResetModel()
+
+    def set_only_rows(self, rows) -> None:
+        self.only_rows = None if rows is None else np.asarray(sorted(rows), dtype=int)
+        self.beginResetModel()
+        self._order = self._compute_order()
+        self.endResetModel()
+
+    def _sort_keys(self, column: int) -> list[np.ndarray]:
+        name = self.frame.columns[column]
+        if self.status_text is not None and name == self.status_col:
+            col = pd.Series(self.status_text, dtype=object)
+        else:
+            col = self.frame.iloc[:, column]
+        num = pd.to_numeric(col, errors="coerce").astype(float)
+        finite = np.isfinite(num.to_numpy())
+        if col.dtype == object or pd.api.types.is_string_dtype(col):
+            text = col.astype(str).str.strip()
+            is_text = ~finite & col.notna().to_numpy() & (text != "").to_numpy() & (text.str.casefold() != "nan").to_numpy()
+        else:
+            text = pd.Series("", index=col.index)
+            is_text = np.zeros(len(col), bool)
+        missing = ~finite & ~is_text
+        return [missing, is_text, np.where(finite, num.to_numpy(), 0.0), text.str.casefold().to_numpy()]
+
+    def _compute_order(self) -> np.ndarray:
+        n = len(self.frame)
+        keep = np.ones(n, bool)
+        if self.only_rows is not None:
+            keep[:] = False
+            keep[self.only_rows[self.only_rows < n]] = True
+        if self._query:
+            if self._hay is None:
+                txt = [c for c in self.frame.columns if self.frame[c].dtype == object
+                       or pd.api.types.is_string_dtype(self.frame[c])]
+                hay = pd.Series("", index=self.frame.index, dtype=object)
+                for c in txt:                                   # vectorised concatenation (no per-row Python)
+                    hay = hay + " " + self.frame[c].astype(str)
+                self._hay = hay.str.casefold()
+            keep &= self._hay.str.contains(self._query, regex=False).to_numpy()
+        if 0 <= self._sort_col < self.frame.shape[1] and n:
+            missing, is_text, num, text = self._sort_keys(self._sort_col)
+            asc = self._sort_order == Qt.AscendingOrder
+            keys = pd.DataFrame({"m": missing, "t": is_text, "v": num, "s": text})
+            order = keys.sort_values(["m", "t", "v", "s"], ascending=[True, asc, asc, asc], kind="stable").index.to_numpy()
+            if not asc:   # descending: numbers (not text) come first, as in ascending
+                key2 = keys.loc[order]
+                order = key2.sort_values(["m", "t"], ascending=[True, True], kind="stable").index.to_numpy()
+        else:
+            order = np.arange(n)
+        return order[keep[order]]
+
+
 def table_to_frame(t: Table) -> pd.DataFrame:
     df = pd.DataFrame(t.rows, columns=t.columns)
     if t.row_names:

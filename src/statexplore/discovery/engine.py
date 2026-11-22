@@ -394,8 +394,12 @@ def _logit_scale(run: DiscoveryRun) -> bool:
 
 def _test_record(ds: Dataset, run: DiscoveryRun, c: Candidate, plan: dict[str, Any], r: dict[str, Any]) -> dict[str, Any]:
     fam = run.family
+    from .modelspec import display
+
+    dn = lambda n: ds.var(n).display_name  # noqa: E731
     out = {"test_id": int(plan["id"]), "type": plan["type"], "label": test_label(ds, c, plan),
            "drop": [":".join(t) for t in plan["drop"]],
+           "reference": display(plan["reduced"], dn(run.settings.outcome), dn),
            **{k: _num(r.get(k)) for k in ("statistic", "df1", "df_den", "p", "effect", "partial_eta2",
                                           "estimate", "se", "ci_low", "ci_high")}}
     single = len(plan["drop"]) == 1 and out["df1"] == 1 and fam != "multinomial"
@@ -647,7 +651,7 @@ def _null_flags(df: pd.DataFrame) -> pd.Series:
     return df["status"].isin(["ok", "warning"]) & df["p"].notna() & ~df["speculative"].astype(bool)
 
 
-def tests_frame(run: DiscoveryRun) -> pd.DataFrame:
+def tests_frame(run: DiscoveryRun, interpret: bool = True) -> pd.DataFrame:
     """One row per tested hypothesis, with its model's fields. Multiplicity families are the test
     types within this run (F2): BH and Holm are computed separately for each type."""
     s = run.settings
@@ -704,8 +708,20 @@ def tests_frame(run: DiscoveryRun) -> pd.DataFrame:
     df["adj_method"] = ("Benjamini-Hochberg" if s.correction == "BH" else "Holm") + " within " + df["test_label"]
     df["validation"] = [run.validation.get(int(i), "not validated" if f else "")
                         for i, f in zip(df["idx"], df["in_family"])]
-    df["interpretation"] = [interpret_row(r, s, run.family) for r in df.to_dict("records")]
+    # interpretations are text built per row: large tables compute them lazily for the visible rows only
+    df["interpretation"] = interpretations(df, run) if interpret else ""
     return df
+
+
+INTERPRET_FIELDS = ("status", "reason", "speculative", "formula", "test_type", "kind", "label", "interaction", "p",
+                    "p_adj", "effect", "family_size", "sig_adj", "sig_raw", "estimate", "ci_applicable", "ci_level",
+                    "ci_low", "ci_high", "flags", "test_method", "reference")
+
+
+def interpretations(df: pd.DataFrame, run: DiscoveryRun) -> list[str]:
+    cols = [c for c in INTERPRET_FIELDS if c in df]
+    return [interpret_row(dict(zip(cols, vals)), run.settings, run.family)
+            for vals in zip(*(df[c].tolist() for c in cols))]
 
 
 MODEL_FIELDS = ("idx", "key", "focal", "covariates", "kind", "order", "interaction", "formula", "cached", "status",
@@ -715,15 +731,17 @@ MODEL_FIELDS = ("idx", "key", "focal", "covariates", "kind", "order", "interacti
                 "fitted_at", "structure", "qic")
 
 
-def results_frame(run: DiscoveryRun) -> pd.DataFrame:
+def results_frame(run: DiscoveryRun, tf: pd.DataFrame | None = None) -> pd.DataFrame:
     """All attempts (one row per model) with the model's declared focal test, its adjusted
-    p-value (within its test-type family), significance and support tier."""
+    p-value (within its test-type family), significance and support tier. Pass the run's
+    `tests_frame` as `tf` to avoid computing it twice."""
     df = pd.DataFrame(run.rows)
     if df.empty:
         return df
     if "tests" in df:
         df = df.drop(columns=["tests"])
-    tf = tests_frame(run)
+    if tf is None:
+        tf = tests_frame(run)
     prim = tf[tf["primary"]].set_index("idx") if len(tf) else pd.DataFrame()
     cols = ("test_type", "test_label", "label", "statistic", "df1", "df_den", "lrt_df", "p", "effect",
             "partial_eta2", "estimate", "se", "ci_low", "ci_high", "ci_applicable", "ci_scale", "ci_null",
@@ -740,8 +758,8 @@ def results_frame(run: DiscoveryRun) -> pd.DataFrame:
         df[c] = df[c].fillna(False).astype(bool)
     df["tier"] = df["tier"].fillna("")
     df["validation"] = df["validation"].fillna("")
-    df["interpretation"] = [r if isinstance(r, str) else (f"Not tested: {reason}" if reason else "")
-                            for r, reason in zip(df["interpretation"], df.get("reason", ""))]
+    df["interpretation"] = [r if isinstance(r, str) and r else (f"Not tested: {reason}" if reason else "")
+                            for r, reason in zip(df["interpretation"], df.get("reason", pd.Series("", index=df.index)))]
     df["n_tests"] = df["idx"].map(tf.groupby("idx").size()).fillna(0).astype(int) if len(tf) else 0
     return df
 
@@ -755,35 +773,42 @@ def legacy_model_type(row: dict[str, Any]) -> str:
 
 def add_display_columns(df: pd.DataFrame, run: DiscoveryRun) -> pd.DataFrame:
     """Columns for presentation: model type, 'Predictors k / max', term counts for legacy rows,
-    diagnostics status text. Does not change any statistic."""
+    diagnostics status text. Vectorised; legacy (v1.1) rows are filled individually. Does not change
+    any statistic."""
     if df.empty:
         return df
     df = df.copy()
     s = run.settings
     req = len(s.required)
-    recs = df.to_dict("records")
-    if "model_type" not in df or df["model_type"].isna().any():
-        mt = [r.get("model_type") if isinstance(r.get("model_type"), str) else legacy_model_type(r) for r in recs]
-        df["model_type"] = mt
-    if "n_predictors" not in df or df["n_predictors"].isna().any():
-        df["n_predictors"] = [r["n_predictors"] if _num(r.get("n_predictors")) is not None else
-                              len(set(list(r.get("focal") or []) + list(r.get("covariates") or []))) + req
-                              for r in recs]
-    if "n_terms" not in df or df["n_terms"].isna().any():
+    for col in ("model_type", "n_predictors", "n_terms"):
+        if col not in df:
+            df[col] = np.nan
+    df["model_type"] = df["model_type"].astype(object)
+    legacy = df["model_type"].isna() | pd.to_numeric(df["n_predictors"], errors="coerce").isna() \
+        | pd.to_numeric(df["n_terms"], errors="coerce").isna()
+    if legacy.any():
         from .space import Candidate, model_terms
 
-        def nterms(r):
-            if _num(r.get("n_terms")) is not None:
-                return r["n_terms"]
-            c = Candidate(int(r["idx"]), tuple(r.get("focal") or ()), tuple(r.get("covariates") or ()),
-                          tuple(s.required), r.get("kind") or "focal")
-            return len(model_terms(c)[0])
-        df["n_terms"] = [nterms(r) for r in recs]
-    df["predictors_txt"] = [f"{int(k)} / {s.max_predictors}" if _num(k) is not None else ""
-                            for k in df["n_predictors"]]
+        sub = df.loc[legacy]
+        recs = sub[[c for c in ("idx", "kind", "focal", "covariates") if c in sub]].to_dict("records")
+        mt, npred, nterm = [], [], []
+        for r in recs:
+            focal, cov = list(r.get("focal") or []), list(r.get("covariates") or [])
+            mt.append(legacy_model_type(r))
+            npred.append(len(set(focal + cov)) + req)
+            c = Candidate(int(r["idx"]), tuple(focal), tuple(cov), tuple(s.required), r.get("kind") or "focal")
+            nterm.append(len(model_terms(c)[0]))
+        df.loc[legacy, "model_type"] = np.where(sub["model_type"].isna(), mt, sub["model_type"])
+        df.loc[legacy, "n_predictors"] = np.where(pd.to_numeric(sub["n_predictors"], errors="coerce").isna(), npred,
+                                                  sub["n_predictors"])
+        df.loc[legacy, "n_terms"] = np.where(pd.to_numeric(sub["n_terms"], errors="coerce").isna(), nterm,
+                                             sub["n_terms"])
+    k = pd.to_numeric(df["n_predictors"], errors="coerce")
+    df["predictors_txt"] = np.where(k.notna(), k.fillna(0).astype(int).astype(str) + f" / {s.max_predictors}", "")
     df["status_text"] = ""          # filled per row by the table from the current highlight mode
-    df["diag_text"] = ["not fitted" if st in ("invalid", "failed") else ("⚠ " + f if f else "clean")
-                       for st, f in zip(df["status"], df["flags"].fillna("").astype(str))]
+    flags = df["flags"].fillna("").astype(str)
+    df["diag_text"] = np.where(df["status"].isin(["invalid", "failed"]), "not fitted",
+                               np.where(flags != "", "⚠ " + flags, "clean"))
     return df
 
 
@@ -895,8 +920,10 @@ def interpret_row(r: dict[str, Any], s: SearchSettings, family: str = "gaussian"
         what = f"the model's predictors together explain {outcome} better than the {label.split(' vs ', 1)[-1]}"
     elif len(parts) == 2:
         what = f"the {parts[0]}–{outcome} relationship differs across {parts[1]}"
-    else:
+    elif len(parts) == 3:
         what = f"the {parts[0]} × {parts[1]} interaction on {outcome} differs across {parts[2]}"
+    else:
+        what = f"{label} improves the model of {outcome}"
     p, pa = r["p"], r.get("p_adj")
     if r.get("effect") is None or r.get("effect") != r.get("effect"):
         eff = ""
@@ -928,8 +955,13 @@ def interpret_row(r: dict[str, Any], s: SearchSettings, family: str = "gaussian"
             scale += " (subject-specific)"
         text += (f" The {scale} is {'positive' if est > 0 else 'negative'} ({est:.3g}, "
                  f"{100 * float(r.get('ci_level') or s.conf):.0f}% CI {r['ci_low']:.3g} to {r['ci_high']:.3g}).")
+    method = r.get("test_method") or test_method(ttype, family)
+    ref = r.get("reference")
+    text += f" Test: {method}" + (f", against {ref}." if isinstance(ref, str) and ref else ".")
     if r.get("flags"):
         text += f" Screening flags: {r['flags']}."
+    text += (" This is an association in the analysed data, not evidence of cause and effect"
+             + (", and it was selected from many models." if (r.get("family_size") or 0) > 1 else "."))
     return text
 
 

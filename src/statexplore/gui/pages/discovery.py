@@ -27,7 +27,7 @@ from ...discovery.space import (
 from ...analysis.measurement import TreatmentError, apply_treatments
 from ..widgets.treatment_panel import TreatmentPanel
 from ..widgets.variable_selector import VariableSelector
-from ..models import FrameModel, NumericSortProxy
+from ..models import ResultFrameModel
 from ..result_view import render
 from ..state import AppState
 from .eda import CodeDialog
@@ -36,9 +36,11 @@ P_COLS = ("p", "p (adjusted)", "p (BH)", "p (Holm)")
 STATUS_COL = "Highlight"
 _TEST_COLS = {"status_text": STATUS_COL, "test_id": "Test ID", "idx": "#", "model_type": "Model type",
               "label": "Tested effect", "test_label": "Test type", "formula": "Model", "statistic": "Statistic",
+              "reference": "Reference model", "test_method": "Test method",
               "df1": "df1", "df_den": "df (denominator)", "p": "p", "p_adj": "p (adjusted)",
               "adj_method": "Adjusted p method", "effect": "Effect", "estimate": "Estimate", "ci_low": "CI low",
-              "ci_high": "CI high", "ci_scale": "Effect scale", "ci_status": "CI applicability",
+              "ci_high": "CI high", "ci_scale": "Effect scale", "odds_ratio": "Odds ratio", "or_low": "OR CI low",
+              "or_high": "OR CI high", "ci_status": "CI applicability",
               "predictors_txt": "Predictors", "n_terms": "Model terms", "n_params": "Estimated parameters",
               "n": "n", "n_groups": "Groups (participants)", "diag_text": "Diagnostics status", "flags": "Flags",
               "search_scope": "Search complete/partial", "validation": "Validation status",
@@ -66,8 +68,9 @@ class _Bridge(QObject):
 
 
 class ResultTable(QWidget):
-    """Searchable, numerically sortable table over a results frame. Keeps the sort column and
-    direction, the search text and the selected row (by its stable ID) when the data refresh."""
+    """Searchable, numerically sortable table over a results frame. Sorting and searching are vectorised
+    (fast for hundreds of thousands of rows). Keeps the sort column and direction, the search text and
+    the selected row (by its stable ID) when the data refresh."""
 
     def __init__(self, columns: dict[str, str], id_col: str = "#"):
         super().__init__()
@@ -79,27 +82,38 @@ class ResultTable(QWidget):
         self.search = QLineEdit()
         self.search.setPlaceholderText("Search (variable names, status, flags…)")
         lay.addWidget(self.search)
-        self.model = FrameModel(p_columns=P_COLS)
+        self.model = ResultFrameModel(p_columns=P_COLS)
         self.model.status_col = STATUS_COL
-        self.proxy = NumericSortProxy()
-        self.proxy.setSourceModel(self.model)
-        self.search.textChanged.connect(self.proxy.setFilterFixedString)
+        self.proxy = self.model            # the model sorts and filters itself (kept name for callers)
+        self.search.textChanged.connect(self._query)
         self.view = QTableView()
-        self.view.setModel(self.proxy)
+        self.view.setModel(self.model)
         self.view.setSortingEnabled(True)
-        self.view.sortByColumn(-1, Qt.AscendingOrder)
+        self.view.horizontalHeader().setSortIndicator(-1, Qt.AscendingOrder)
         self.view.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.view.setSelectionMode(QAbstractItemView.SingleSelection)
         lay.addWidget(self.view)
         self._highlight = np.zeros(0, bool)
 
-    def set_frame(self, df: pd.DataFrame, highlight=None, warning=None, text: list[str] | None = None) -> None:
+    def _query(self, text: str) -> None:
+        keep = self.selected_id()
+        self.model.set_query(text)
+        if keep is not None:
+            self.select_id(keep)
+
+    def set_frame(self, df: pd.DataFrame, highlight=None, warning=None, text: list[str] | None = None,
+                  lazy: dict[str, Any] | None = None) -> None:
         keep = self.selected_id()
         cols = [c for c in self.columns if c in df.columns]
         frame = df[cols].rename(columns=self.columns) if len(df) else pd.DataFrame(columns=list(self.columns.values()))
-        self.model.set_frame(frame)
-        self.set_status(highlight, warning, text)
-        if 0 < len(df) <= 5000 and not getattr(self, "_sized", False):
+        lazy = {self.columns[k]: f for k, f in (lazy or {}).items() if k in self.columns}
+        n = len(frame)
+        self._highlight = np.zeros(n, bool) if highlight is None else np.asarray(highlight, bool)
+        self.model.status_text = text
+        self.model.set_frame(frame, self._highlight, warning, tips=None if text is None else [t or None for t in text],
+                             lazy=lazy)
+        self._apply_only()
+        if 0 < n <= 5000 and not getattr(self, "_sized", False):
             # sizing scans every row: only once, and never for very large searches
             self.view.resizeColumnsToContents()
             for c in range(self.model.columnCount()):
@@ -113,26 +127,34 @@ class ResultTable(QWidget):
         self._highlight = np.zeros(n, bool) if highlight is None else np.asarray(highlight, bool)
         self.model.set_row_status(self._highlight, warning, text=text,
                                   tips=None if text is None else [t or None for t in text])
-        self._apply_only()
+        if self.highlight_only:
+            self._apply_only()
+        elif STATUS_COL in self.model.frame.columns and \
+                self.model.sortColumn() == list(self.model.frame.columns).index(STATUS_COL):
+            self.model.sort(self.model.sortColumn(), self.model.sortOrder())     # sorted by the status text
 
     def set_highlight_only(self, on: bool) -> None:
         self.highlight_only = on
         self._apply_only()
 
     def _apply_only(self) -> None:
-        self.proxy.set_only_rows(set(np.flatnonzero(self._highlight).tolist()) if self.highlight_only else None)
+        keep = self.selected_id()
+        self.model.set_only_rows(np.flatnonzero(self._highlight) if self.highlight_only else None)
+        if keep is not None:
+            self.select_id(keep)
 
     def counts(self) -> tuple[int, int, int]:
         """(highlighted among shown rows, shown rows, total rows)."""
-        shown = [self.proxy.mapToSource(self.proxy.index(r, 0)).row() for r in range(self.proxy.rowCount())]
-        hl = int(sum(self._highlight[i] for i in shown if i < len(self._highlight)))
+        shown = self.model._order
+        hl = int(self._highlight[shown].sum()) if len(self._highlight) and len(shown) else 0
         return hl, len(shown), len(self.model.frame)
 
     def selected_id(self):
-        sel = self.view.selectionModel().selectedRows() if self.view.selectionModel() else []
-        if not sel or self.id_col not in self.model.frame.columns:
+        sm = self.view.selectionModel()
+        sel = sm.selectedRows() if sm else []
+        if not sel or self.id_col not in self.model.frame.columns or sel[0].row() >= self.model.rowCount():
             return None
-        return self.model.frame.iloc[self.proxy.mapToSource(sel[0]).row()][self.id_col]
+        return self.model.frame.iloc[self.model.source_row(sel[0].row())][self.id_col]
 
     def select_id(self, value) -> bool:
         if self.id_col not in self.model.frame.columns:
@@ -140,19 +162,19 @@ class ResultTable(QWidget):
         hits = np.flatnonzero((self.model.frame[self.id_col] == value).to_numpy())
         if not len(hits):
             return False
-        idx = self.proxy.mapFromSource(self.model.index(int(hits[0]), 0))
-        if not idx.isValid():
+        row = self.model.view_row(int(hits[0]))
+        if row < 0:
             return False
-        self.view.selectRow(idx.row())
-        self.view.scrollTo(idx)
+        self.view.selectRow(row)
+        self.view.scrollTo(self.model.index(row, 0))
         return True
 
     def selected_idx(self) -> int | None:
-        sel = self.view.selectionModel().selectedRows()
+        sm = self.view.selectionModel()
+        sel = sm.selectedRows() if sm else []
         if not sel:
             return None
-        src = self.proxy.mapToSource(sel[0])
-        return int(self.model.frame.iloc[src.row()]["#"])
+        return int(self.model.frame.iloc[self.model.source_row(sel[0].row())]["#"])
 
 
 class DiscoveryPage(QWidget):
@@ -387,6 +409,15 @@ class DiscoveryPage(QWidget):
                                     "the same thing; each type is its own multiple-testing family.")
         self.view_filter.addItem("All hypotheses", None)
         frow.addWidget(self.view_filter, 1)
+        self.diag_filter = QComboBox()
+        for text, key in (("All diagnostics", None), ("Clean fits only", "clean"), ("Flagged fits only", "flagged")):
+            self.diag_filter.addItem(text, key)
+        self.ci_filter = QComboBox()
+        for text, key in (("Any CI", None), ("Same-estimand CI available", "same_estimand"),
+                          ("Joint tests (no single CI)", "joint")):
+            self.ci_filter.addItem(text, key)
+        frow.addWidget(self.diag_filter)
+        frow.addWidget(self.ci_filter)
         rl.addLayout(frow)
         self.tabs = QTabWidget()
         self.summary_view = QTextBrowser()
@@ -408,6 +439,8 @@ class DiscoveryPage(QWidget):
         self.hl_alpha.currentTextChanged.connect(self._highlight_changed)
         self.hl_only.toggled.connect(self._highlight_changed)
         self.view_filter.currentIndexChanged.connect(self._refresh_tables)
+        self.diag_filter.currentIndexChanged.connect(self._refresh_tables)
+        self.ci_filter.currentIndexChanged.connect(self._refresh_tables)
         self.tabs.addTab(self.summary_view, "Summary")
         self.tabs.addTab(self.discovery_table, "Discovery significance ranking")
         self.tabs.addTab(self.support_table, "Statistical support ranking")
@@ -909,8 +942,9 @@ class DiscoveryPage(QWidget):
                 t.set_frame(pd.DataFrame())
             self._update_counts()
             return
-        self.frame = engine.add_display_columns(engine.results_frame(run), run)
-        self.tests = engine.add_display_columns(engine.tests_frame(run), run)
+        tf = engine.tests_frame(run, interpret=False)       # interpretations: computed for visible rows only
+        self.frame = engine.add_display_columns(engine.results_frame(run, tf), run)
+        self.tests = engine.add_display_columns(tf, run)
         self.summary_view.setHtml(self._summary_html(run, self.frame))
         self._fill_view_filter()
         self._refresh_tables()
@@ -931,11 +965,20 @@ class DiscoveryPage(QWidget):
         self.view_filter.blockSignals(False)
 
     def _filtered(self, df: pd.DataFrame) -> pd.DataFrame:
-        f = self.view_filter.currentData()
-        if not len(df) or not f:
+        if not len(df):
             return df
-        col, val = f.split("=", 1)
-        return df[df[col] == val] if col in df else df
+        f = self.view_filter.currentData()
+        if f:
+            col, val = f.split("=", 1)
+            df = df[df[col] == val] if col in df else df
+        diag = self.diag_filter.currentData()
+        if diag:
+            flagged = engine.warning_mask(df)
+            df = df[flagged] if diag == "flagged" else df[~flagged & df["status"].isin(["ok"])]
+        ci = self.ci_filter.currentData()
+        if ci and "ci_applicable" in df:
+            df = df[df["ci_applicable"] == ci]
+        return df
 
     def _refresh_tables(self) -> None:
         if self.run is None:
@@ -951,8 +994,13 @@ class DiscoveryPage(QWidget):
         for table in (self.discovery_table, self.support_table, self.all_table, self.compare_table):
             df = frames[id(table)]
             hl, warn, text = self._status(df)
-            table.set_frame(df, hl, warn, text)
-            table.set_highlight_only(self.hl_only.isChecked())
+            lazy = None
+            if table in (self.discovery_table, self.support_table) and len(df):
+                run = self.run
+                sub = df.reset_index(drop=True)
+                lazy = {"interpretation": lambda i, sub=sub, run=run: engine.interpretations(sub.iloc[[i]], run)[0]}
+            table.highlight_only = self.hl_only.isChecked()
+            table.set_frame(df, hl, warn, text, lazy=lazy)
         self._update_counts()
 
     def _alpha(self) -> float:

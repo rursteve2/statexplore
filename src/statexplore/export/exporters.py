@@ -225,16 +225,20 @@ def export(project: Project, result_ids: Iterable[str], folder: Path, formats: s
 
         tf = tests_frame(run)
         if len(tf):   # every tested hypothesis with raw and adjusted p, its family and CI metadata (numeric)
-            tcols = [c for c in ("test_id", "idx", "model_type", "formula", "test_type", "test_label", "label",
+            tcols = [c for c in ("test_id", "idx", "model_type", "formula", "reference", "test_type", "test_label", "label",
                                  "test_method", "statistic", "df1", "df_den", "lrt_df", "p", "p_adj", "p_bh",
                                  "p_holm", "family_size", "adj_method", "effect", "estimate", "se", "ci_low",
                                  "ci_high", "ci_scale", "ci_null", "ci_level", "ci_method", "ci_applicable",
+                                 "odds_ratio", "or_low", "or_high",
                                  "n", "n_groups", "n_predictors", "n_terms", "n_params", "status", "flags",
                                  "search_scope", "candidate_id", "model_id") if c in tf.columns]
             extra[f"search {run.id} hypotheses"] = tf[tcols]
         sm = summary(run, df) if len(df) else {}
         settings = {**run.settings.to_dict(), **{k: v for k, v in sm.items()}, "status": run.status,
-                    "warnings": " | ".join(run.warnings)}
+                    "warnings": " | ".join(run.warnings),
+                    # presentation metadata only — never part of the inferential calculations
+                    "presentation: highlight": json.dumps(project.settings.get("discovery_highlight")
+                                                          or {"mode": "adjusted", "alpha": 0.05, "only": False})}
         extra[f"search {run.id} settings"] = pd.DataFrame({"setting": list(settings), "value": [str(v) for v in settings.values()]})
         (folder / f"search_{run.id}_settings.json").write_text(json.dumps(run.meta_dict(), indent=2, default=str))
         written.append(folder / f"search_{run.id}_settings.json")

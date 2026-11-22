@@ -53,8 +53,8 @@ def test_factorial_anova_expands_to_five_factors_with_cell_check(wide):
     assert pre["cells"] == 16 and pre["empty_cells"] == 0 and pre["terms"] == 15
     sparse = {"dependent": ["y"], "factors": ["f1", "f2", "g"]}
     wide.raw.loc[(wide.raw["f1"] == "p") & (wide.raw["f2"] == "p") & (wide.raw["g"] == "a"), "y"] = np.nan
-    with pytest.raises(AnalysisInputError, match="factor combinations have no rows"):
-        validate(spec, wide, sparse, {})
+    pre = preflight("anova_factorial", wide, sparse, {})
+    assert pre["cells"] == 16 and pre["empty_cells"] == 1              # shown before fitting
 
 
 def test_ancova_default_two_factors_four_covariates(wide):

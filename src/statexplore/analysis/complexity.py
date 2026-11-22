@@ -5,7 +5,8 @@ limits — one number per analysis, used both by the form and by backend validat
 R code can never disagree. A limit counts distinct variables; the preflight separately reports model
 terms, fixed coefficients after dummy coding and interactions, complete rows, residual df and (for
 factorial designs) observed cells. No observations-per-predictor rule decides validity on its own:
-only an unidentifiable model (coefficients >= rows, empty factorial cells) is refused.
+a model with at least as many coefficients as rows is refused here; empty factorial cells are shown in
+the preflight and reported by the analysis.
 """
 from __future__ import annotations
 
@@ -70,9 +71,7 @@ def enforce(key: str, ds: Dataset, vars_: dict[str, list[str]], opts: dict[str, 
     if pre and pre["n"] and pre["coefficients"] >= pre["n"]:
         raise AnalysisInputError(f"The model needs {pre['coefficients']} fixed coefficients but only {pre['n']} rows "
                                  "are complete: it cannot be estimated.")
-    if pre and pre.get("empty_cells"):
-        raise AnalysisInputError(f"{pre['empty_cells']} of {pre['cells']} factor combinations have no rows: the "
-                                 "highest-order interaction is not estimable. Use fewer factors or collapse levels.")
+    # empty factorial cells are shown by the preflight and reported by the R analysis itself (failed result)
 
 
 def preflight(key: str, ds: Dataset, vars_: dict[str, list[str]], opts: dict[str, Any]) -> dict[str, Any] | None:
