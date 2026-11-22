@@ -22,7 +22,7 @@ from .schema import AnalysisResult
 from .variables import VariableMeta
 
 PROJECT_FORMAT = "statexplore-project"
-PROJECT_VERSION = 1
+PROJECT_VERSION = 2     # 2 = v1.1: measurement review fields, analysis treatments, outcome families (additive)
 
 _DDL = """
 CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -49,6 +49,8 @@ class Project:
         self.searches: list = []  # discovery.engine.DiscoveryRun
         self.models: list = []    # analysis.models.ModelSpec (comparison set)
         self.path: Path | None = None
+        self.loaded_version = PROJECT_VERSION   # format version of the file this project was opened from
+        self.backup_path: Path | None = None
 
     def add_result(self, result: AnalysisResult, artifacts: dict[str, bytes] | None = None) -> None:
         self.results.append(result)
@@ -57,9 +59,18 @@ class Project:
 
     # ---- save -------------------------------------------------------
     def save(self, path: str | os.PathLike) -> None:
-        """Atomically write the project: build a temp file, then replace."""
+        """Atomically write the project: build a temp file, then replace. Overwriting a file written by
+        an older StatExplore first keeps a copy of it (reversible migration)."""
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
+        if self.loaded_version < PROJECT_VERSION and path.is_file() and self.path is not None \
+                and path.resolve() == self.path.resolve():
+            import shutil
+
+            backup = path.with_name(f"{path.stem}.v{self.loaded_version}-backup{path.suffix}")
+            if not backup.exists():
+                shutil.copy2(path, backup)
+            self.backup_path = backup
         fd, tmp = tempfile.mkstemp(suffix=".sxp.tmp", dir=path.parent)
         os.close(fd)
         try:
@@ -74,6 +85,7 @@ class Project:
         except BaseException:
             Path(tmp).unlink(missing_ok=True)
             raise
+        self.loaded_version = PROJECT_VERSION
         self.path = path
 
     def _write(self, con: sqlite3.Connection) -> None:
@@ -153,6 +165,7 @@ class Project:
         finally:
             con.close()
         project.path = path
+        project.loaded_version = int(meta.get("version", 1))
         return project
 
 

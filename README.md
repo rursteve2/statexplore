@@ -9,6 +9,13 @@ variables, runs standard statistical tests, searches automatically for interacti
 draws graphs with a short plain-English interpretation underneath. It also shows you the exact
 statistical code behind every result.
 
+**New in 1.1:** a *Measurement Review* that flags variables whose declared level looks wrong (for
+example ordered answer scales stored as "nominal"), a per-analysis **"treat as continuous"** option,
+frequency tables, cross-tabulations and categorical plots, odds / risk ratios and risk differences,
+ordinal and multinomial outcomes in Discovery and regression, binary / ordinal / multinomial mixed
+models and GEE, a longitudinal data check before fitting, survey-weighted analysis, an **R Console**
+for your own R code, and an offline **R Package Manager**.
+
 > **Important:** StatExplore is built for *exploration and teaching*, not for publishing or making
 > decisions. Searching many models will always turn up some "significant" results by chance. The
 > program is designed to show you that, so treat its discoveries as ideas to test, not as proof.
@@ -55,9 +62,9 @@ yourself (see 2B).
 ### Download it (for most people)
 1. Go to the **[Releases page](https://github.com/rursteve2/statexplore/releases/latest)**.
 2. Under **Assets**, download **one** of:
-   - **`StatExplore-1.0.0-Setup.exe`**: the installer (recommended). Double-click it and click
+   - **`StatExplore-1.1.0-Setup.exe`**: the installer (recommended). Double-click it and click
      through; then start **StatExplore** from the Start menu or the desktop shortcut.
-   - **`StatExplore-1.0.0-portable.zip`**: no installation. Right-click ▸ *Extract All…* into, for
+   - **`StatExplore-1.1.0-portable.zip`**: no installation. Right-click ▸ *Extract All…* into, for
      example, your Documents folder, open the extracted `StatExplore` folder and double-click
      **`StatExplore.exe`**.
 3. **If Windows says "Windows protected your PC":** click **More info**, then **Run anyway**. This
@@ -129,9 +136,14 @@ Open the **Variables** tab. Click a variable to see its label and codes. Check t
 
 - **Measurement level.** *Continuous* means a number you can average (age, income, a score).
   *Nominal* means categories with no order (gender, race). *Ordinal* means ordered categories
-  (never / sometimes / often).
-  Files sometimes get this wrong. In the HRS file, *years of education* (`RAEDYRS`) is stored as
-  nominal; set it to **continuous**.
+  (never / sometimes / often). *Binary* means exactly two categories.
+  Files sometimes get this wrong. Open the **Measurement Review** tab: it lists every variable whose
+  values and labels suggest a different level, with the reason. In the HRS file, the activity
+  frequencies (`R_LTACTX`: 1 = every day … 5 = never) and self-rated health (`R_SHLT`: 1 = excellent …
+  5 = poor) are stored as *nominal* but are ordered scales, and *years of education* (`RAEDYRS`) is
+  stored as nominal but is a number. Nothing changes until you click **Accept suggestion**, **Keep
+  original classification** or **Set this level** — and confirm. The file's own level is always kept
+  alongside yours. See [4A](#4a-measurement-levels-and-treat-as-continuous).
 - **Role.** If the same person appears on several rows, set their ID variable's role to **id**
   (in HRS: `HHIDPN`), and the occasion variable to **time** (in HRS: `WAVE`). This matters: it lets
   StatExplore warn you when rows aren't independent and enables the longitudinal tools.
@@ -208,18 +220,34 @@ In **Validation & Uncertainty**:
 |---|---|
 | **Dashboard** | Overview of the open project and recent analyses. |
 | **Dataset Explorer** | **Overview** of every variable; **Data** spreadsheet view (tick *Show value labels* to see "Male" instead of 1; red = a declared missing code); **Variables** to set measurement level, role, reference group and display name; **Derived & Filters**; **Missing data** (how much is missing, common patterns, how many rows each model can use). |
-| **Exploratory Data Analysis** | Descriptive statistics, plots, correlation tests. |
-| **Analysis Builder** | Standard tests and regressions with effect sizes, confidence intervals, assumption checks and diagnostic plots. Also **Mediation** (does X affect Y *through* M? with a bootstrap confidence interval) and **Scale reliability** (Cronbach's alpha). |
-| **Automated Model Discovery** | Systematic search for interaction effects (see Step 6). Modes: *Exhaustive* tests everything in the defined space; *First significant* / *Target number* stop early (labelled incomplete); *Budget-limited* stops after a set number of models or minutes. Profiles Fast / Balanced / Thorough set sensible budgets. You can **Cancel** and later **Resume**. |
+| **Exploratory Data Analysis** | Descriptive statistics (psych) for continuous variables; **Frequencies** (counts, %, valid %, missing, mode, number of categories; cumulative % and median category for ordinal) for categorical ones — no means of category codes; **Cross-tabulation** (row / column / total %, expected counts, chi-square with Fisher advice); bar, percentage, horizontal, clustered, stacked, 100 % stacked, mosaic and ordinal-distribution plots; correlation tests (Spearman ranks ordinal categories; Pearson needs "treat as continuous"). Every list has search, *Check visible*, *Clear visible*, *Check all*, *Clear all* and a count. |
+| **Analysis Builder** | Standard tests and regressions with effect sizes, confidence intervals, assumption checks and diagnostic plots. **Categorical Association**: chi-square / Fisher's exact (r × c, Cramér's V) and the **2 × 2 table** (you choose the event and reference outcome categories and the exposed and comparison groups; the table is shown before anything is computed; odds ratio, risk ratio, risk difference with labelled CI methods, phi). **Ordinal** and **multinomial** logistic regression, a **Likert sensitivity** comparison (Gaussian on the codes vs ordinal), **Mediation** and **Scale reliability**. **Copy tables** pastes the results into Word or Excel. |
+| **Automated Model Discovery** | Systematic search for interaction effects (see Step 6). You must confirm the **outcome model family** (Gaussian, binary logistic, ordinal logistic or multinomial logistic; a suggestion is shown); interactions are tested with the family's own nested-model test. Modes: *Exhaustive* tests everything in the defined space; *First significant* / *Target number* stop early (labelled incomplete); *Budget-limited* stops after a set number of models or minutes. Profiles Fast / Balanced / Thorough set sensible budgets. You can **Cancel** and later **Resume**. |
 | **Model Comparison** | Put models side by side (AIC, BIC, R²). Models that contain one another get a formal test. **Edit a copy** changes a model without losing the original. |
 | **Validation & Uncertainty** | Holdout, cross-validation, stability, full-procedure CV, prediction intervals (see Step 8). |
-| **Mixed & Longitudinal Models** | For repeated measurements. **Detect structure** suggests the ID and time variables; **Wide → long** converts one-row-per-person data. Fits models with random intercepts or slopes, correlated errors over time (AR(1)), or an unstructured covariance. Draws average and individual trajectories, and compares time specifications. |
-| **Teaching Studio** | Interaction graphs with interpretations (see Step 7). |
+| **Mixed & Longitudinal Models** | For repeated measurements. **Detect structure** suggests the ID and time variables; **Wide → long** converts one-row-per-person data. The **preflight** panel shows, before fitting, how many records, participants and observed values each time point has (e.g. `R_LTACTX` is not asked in HRS waves 1–6, so the analysis range is waves 7–16). Outcome families: **Gaussian** (random intercepts or slopes, AR(1), unstructured; inference by Satterthwaite, Kenward–Roger or likelihood-ratio tests), **binary logistic** (glmer: odds ratios, conditional *and* population-average predicted probabilities), **ordinal** (clmm) and **multinomial** (mblogit, an approximate PQL method — limitations are shown). **GEE** fits population-average models with robust standard errors. |
+| **Survey Analysis** | Declare the sampling weight, PSUs, strata (and optionally a finite population correction or replicate weights); then weighted means, proportions and frequency tables, survey-adjusted cross-tabs (Rao–Scott), and survey-weighted linear / logistic regression. StatExplore never guesses design variables (in HRS extracts, `R_WEIGHT` is body weight, not a survey weight). |
+| **Teaching Studio** | Interaction graphs with interpretations (see Step 7). **Find teaching examples** lists analyses already run that illustrate a point (significant after adjustment, significant only before adjustment, unstable estimates, assumption problems, Gaussian vs ordinal disagreement, GLMM vs GEE). |
+| **R Console** | Run your own R code on a copy of the data (`my_data`). Each run starts a clean R session unless you switch on *Persistent session*. Output, warnings, errors and plots are shown separately; scripts can be opened and saved. Changes to `my_data` reach the project only through **Import resulting dataset**, which shows what will change and saves a recoverable snapshot first. **Your code runs with your Windows permissions: the console is not a sandbox.** **Package Manager** installs R packages from files on your computer (never downloads), into a separate library that cannot replace StatExplore's own packages. |
 | **Reports** | Export selected analyses and searches. |
-| **Settings** | Where R is; **Test R connection**. |
+| **Settings** | Where R is; **Test R connection**; **R Package Manager**. |
 
 Almost every result has a **View Code** button. It shows the *exact* R code that produced the result,
 which you can copy into R or RStudio.
+
+### 4A. Measurement levels and "treat as continuous"
+
+StatExplore keeps three things apart:
+
+1. **Source level** — what the file declares (e.g. SPSS *nominal*). Never changed.
+2. **Project level** — what you approved in the Measurement Review or the Variables tab. Logged and undoable.
+3. **Treatment for one analysis** — how a variable is used in *this* analysis only. Wherever a numeric
+   categorical or ordinal variable is selected, a checkbox appears: **Treat this variable as continuous
+   for this analysis**. Ticking it asks you to acknowledge that this assumes the numeric codes can be
+   read as quantities (and, for a nominal variable, to confirm that the codes really are numbers).
+   The analysis then uses the original codes (1–5 for `R_LTACTX`; higher = *less* frequent activity),
+   never an arbitrary factor index. The treatment is shown with the result, in the R code, in exports
+   and in the saved project; the variable's levels in the project do not change.
 
 ---
 
@@ -341,15 +369,20 @@ undoable setting.
 
 ## 10. What is not finished yet
 
-- **Testing on other computers:** release 1.0.0 was built and checked on the development computer. It
-  hasn't yet been tried on a freshly installed Windows 10/11 machine; please report any problem via
+- **Testing on other computers:** releases are built and checked on the development computer. They
+  haven't yet been tried on a freshly installed Windows 10/11 machine; please report any problem via
   GitHub **Issues**.
 - **flexplot** plotting add-on: optional, needs a separate install (developer guide).
-- Games-Howell post hoc for Welch ANOVA, omega / factor analysis, robust standard errors.
-- **Binary-outcome mixed models** (for example yes/no outcomes measured repeatedly) aren't
-  available yet.
+- Games-Howell post hoc for Welch ANOVA, omega / factor analysis, robust standard errors outside GEE.
+- **Multinomial mixed models** use penalized quasi-likelihood (PQL), an approximation that can
+  underestimate random-effect variances; results say so. Likelihood-ratio tests are not available for them.
+- Discovery with repeated measures fits Gaussian mixed models only; binary / ordinal / nominal repeated
+  outcomes are modelled in **Mixed & Longitudinal Models**. Resampling stability and full-procedure CV
+  are available for Gaussian and binary searches, not yet for ordinal or multinomial ones.
 - Mixed-model discovery results can't yet be opened directly in the Teaching Studio; refit them in
   **Mixed & Longitudinal Models**.
+- R packages installed through the Package Manager are specific to the R version (4.6); source
+  packages with compiled code need Rtools, which StatExplore does not include.
 - Multiple imputation of missing values isn't included. Missing data is handled by complete cases,
   or by all available occasions in mixed models.
 
@@ -357,7 +390,9 @@ undoable setting.
 
 ## 11. For developers
 
-How each requirement of the original specification is met: **[docs/spec-compliance.md](docs/spec-compliance.md)**.
+How each requirement of the original specification is met: **[docs/spec-compliance.md](docs/spec-compliance.md)**;
+for the 1.1 upgrade: **[docs/spec-compliance-v1.1.md](docs/spec-compliance-v1.1.md)**. Release notes:
+[docs/RELEASE_NOTES_v1.1.0.md](docs/RELEASE_NOTES_v1.1.0.md).
 
 Building, testing, packaging and the architecture are described in
 **[docs/DEVELOPER.md](docs/DEVELOPER.md)**. The development plan and per-phase reviews are in

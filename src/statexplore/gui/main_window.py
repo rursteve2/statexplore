@@ -239,6 +239,9 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Open project", str(e))
             return
         self._update_title()
+        if self.state.project.loaded_version < 2:
+            self.statusBar().showMessage("This project was saved by StatExplore 1.0. It opens unchanged; the first save "
+                                         "in the 1.1 format keeps a backup copy of the original file.", 15000)
 
     def save_project(self) -> bool:
         p = self.state.project
@@ -266,7 +269,9 @@ class MainWindow(QMainWindow):
             return False
         self.state.dirty = False
         self._update_title()
-        self.statusBar().showMessage(f"Saved {path}", 4000)
+        backup = self.state.project.backup_path
+        self.statusBar().showMessage(f"Saved {path}" + (f" (the 1.0 file was kept as {backup.name})" if backup else ""),
+                                     8000)
         return True
 
     def _confirm_discard(self) -> bool:

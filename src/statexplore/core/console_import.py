@@ -139,9 +139,9 @@ def apply_import(project: Project, new_ds: Dataset, directory: Path | None = Non
     stamp = _dt.datetime.now().strftime("%Y%m%d-%H%M%S")
     stem = project.path.stem if project.path else "untitled"
     snap = directory / f"{stem}-before-R-import-{stamp}.sxp"
-    path_before = project.path
+    path_before, version_before = project.path, project.loaded_version
     project.save(snap)
-    project.path = path_before                      # the snapshot does not become the working file
+    project.path, project.loaded_version = path_before, version_before   # the snapshot is not the working file
     new = Project(new_ds)
     new.results, new.artifacts, new.models, new.searches = (list(project.results), dict(project.artifacts),
                                                             list(project.models), list(project.searches))

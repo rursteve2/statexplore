@@ -270,6 +270,10 @@ def run_analysis(session: RSession, ds: Dataset, spec: AnalysisSpec, vars_: dict
             artifacts[key] = p.read_bytes()
             result.plots.append(key)
     result.messages = [_rename(m, names) for m in result.messages]
+    from .interpret import brief
+
+    if result.status.value in ("ok", "warning"):
+        result.values["interpretation"] = brief(result)
     return result, artifacts
 
 

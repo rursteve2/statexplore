@@ -210,8 +210,11 @@ class MixedPage(QWidget):
         self.code_btn = QPushButton("View Code")
         self.code_btn.setEnabled(False)
         self.code_btn.clicked.connect(lambda: self.current and CodeDialog(self.current, self).exec())
+        self.copy_btn = QPushButton("Copy tables")
+        self.copy_btn.clicked.connect(self._copy_tables)
         row.addWidget(self.fit_btn)
         row.addWidget(self.code_btn)
+        row.addWidget(self.copy_btn)
         ll.addLayout(row)
         crow = QHBoxLayout()
         crow.addWidget(QLabel("Compare:"))
@@ -470,3 +473,11 @@ class MixedPage(QWidget):
                 return
             self.state.set_project(Project(dlg.result_dataset))
             self.state.dirty = True
+
+    def _copy_tables(self) -> None:
+        from PySide6.QtWidgets import QApplication
+
+        from ...analysis.interpret import tables_tsv
+
+        if self.current is not None:
+            QApplication.clipboard().setText(tables_tsv(self.current))

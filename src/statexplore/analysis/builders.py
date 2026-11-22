@@ -649,6 +649,76 @@ def _multinom_reg(ctx: Ctx) -> str:
     return "\n".join(L) + "\n"
 
 
+def _check_likert(ds, vars_: dict[str, list[str]], opts: dict[str, Any]) -> None:
+    from ..core.variables import Storage
+
+    for n in vars_.get("dependent", []):
+        if ds.var(n).storage is not Storage.NUMERIC:
+            raise AnalysisInputError(f"{ds.var(n).display_name} has text categories: the Gaussian side of the "
+                                     "comparison needs numeric codes.")
+        if len(ds.levels(n)) < 3:
+            raise AnalysisInputError(f"{ds.var(n).display_name} needs at least three ordered categories.")
+
+
+def _likert_sensitivity(ctx: Ctx) -> str:
+    """§17.3: the same numeric ordinal outcome as Gaussian (numeric codes) and as ordinal (clm).
+    The two models answer on different scales; the comparison is about direction, significance,
+    assumptions and predictions, never about equating coefficients."""
+    from .eda import category_codes
+
+    name = ctx.vars["dependent"][0]
+    y = ctx.one("dependent")
+    rhs = _rhs(ctx)
+    codes, labels = category_codes(ctx.ds, name)
+    first = ctx.aliases("predictors")[0]
+    L = _prologue(ctx, "dependent", "predictors") + [
+        f"sx_codes <- {r_vec(codes)}; sx_labels <- {r_vec(labels)}",
+        f"sx_d$sx_num <- sx_codes[match(as.character(sx_d${y}), sx_labels)]  # explicit label -> code map (no factor indexes)",
+        f"sx_d$sx_ord <- droplevels(factor(as.character(sx_d${y}), levels = sx_labels, ordered = TRUE))",
+        f"sx_lm <- stats::lm(sx_num ~ {rhs}, data = sx_d)",
+        f"sx_clm <- ordinal::clm(sx_ord ~ {rhs}, data = sx_d, link = \"logit\")",
+        "sx_a <- as.data.frame(coef(summary(sx_lm)))[-1, , drop = FALSE]",
+        "sx_b <- as.data.frame(coef(summary(sx_clm)))[names(sx_clm$beta), , drop = FALSE]",
+        "sx_cmp <- data.frame(term = rownames(sx_a), gaussian_B = sx_a[[1]], gaussian_p = sx_a[[4]],",
+        "  ordinal_log_odds = sx_b[rownames(sx_a), 1], ordinal_OR = exp(sx_b[rownames(sx_a), 1]), ordinal_p = sx_b[rownames(sx_a), 4])",
+        "sx_cmp$same_direction <- sign(sx_cmp$gaussian_B) == sign(sx_cmp$ordinal_log_odds)",
+        f"sx_cmp$same_significance <- (sx_cmp$gaussian_p < {1 - float(ctx.opts['conf']):.10g}) == (sx_cmp$ordinal_p < {1 - float(ctx.opts['conf']):.10g})",
+        "# predictions across the first predictor (others at mean / first category): mean code vs expected code",
+        f"sx_fv <- sx_d${first}",
+        "sx_grid <- if (is.factor(sx_fv)) factor(levels(sx_fv), levels = levels(sx_fv)) else seq(min(sx_fv), max(sx_fv), length.out = 5)",
+        f"sx_others <- setdiff(all.vars(stats::reformulate(\"{rhs}\")), \"{first}\")",
+        "sx_held <- lapply(sx_d[, sx_others, drop = FALSE], function(v) if (is.factor(v)) factor(levels(v)[1], levels = levels(v)) else mean(v))",
+        f"sx_nd <- do.call(data.frame, c(list({first} = sx_grid), sx_held))",
+        "sx_P <- stats::predict(sx_clm, newdata = sx_nd, type = \"prob\")$fit",
+        "sx_obs_codes <- sx_codes[match(levels(sx_d$sx_ord), sx_labels)]",
+        "sx_pred <- data.frame(x = sx_grid, gaussian_mean_code = stats::predict(sx_lm, sx_nd),",
+        "  ordinal_expected_code = as.vector(sx_P %*% sx_obs_codes), ordinal_most_likely = levels(sx_d$sx_ord)[max.col(sx_P)])",
+        "names(sx_pred)[1] <- sx_names[[\"" + first + "\"]]",
+        "sx_res <- stats::residuals(sx_lm)",
+        "sx_sw <- sx_shapiro(if (length(sx_res) > 5000) sx_res[seq(1, length(sx_res), length.out = 5000)] else sx_res)",
+        "sx_po <- tryCatch(ordinal::nominal_test(sx_clm), error = function(e) NULL)",
+        "sx_po_min <- if (is.null(sx_po)) NA_real_ else suppressWarnings(min(sx_po[[\"Pr(>Chi)\"]], na.rm = TRUE))",
+        "sx_assume <- data.frame(model = c(\"Gaussian (numeric codes)\", \"Ordinal (cumulative logit)\"),",
+        "  key_assumption = c(\"Equal spacing of categories; normal, constant-variance residuals; predictions can fall between or outside the categories\",",
+        "    \"Proportional odds (one effect for every cut-point); categories only ordered, not spaced\"),",
+        "  check = c(paste0(\"Shapiro-Wilk W = \", signif(sx_sw[[\"W\"]], 3), \", p = \", signif(sx_sw[[\"p\"]], 3)),",
+        "    paste0(\"smallest nominal_test p = \", signif(sx_po_min, 3))),",
+        "  AIC_not_comparable = c(stats::AIC(sx_lm), stats::AIC(sx_clm)))",
+        "sx_agree <- all(sx_cmp$same_direction, na.rm = TRUE) && all(sx_cmp$same_significance, na.rm = TRUE)",
+        "sx_note <- if (sx_agree) \"The two treatments agree on the direction and significance of every term.\" else",
+        "  \"The Gaussian and ordinal treatments DISAGREE on the direction or significance of at least one term: conclusions depend on how the outcome is treated.\"",
+        "sx_result <- list(tables = list(",
+        "  sx_table(\"Gaussian vs ordinal: estimated relationships\", sx_cmp, notes = paste0(\"gaussian_B = change in the mean \",",
+        "    \"numeric code per unit (or vs the reference category); ordinal = cumulative log-odds of a higher category. \",",
+        "    \"The scales differ: compare direction and significance, not the size of the numbers.\")),",
+        "  sx_table(\"Predictions\", sx_pred, notes = \"Mean code (Gaussian) vs expected code = sum of code x predicted probability (ordinal).\"),",
+        "  sx_table(\"Model assumptions\", sx_assume, notes = \"AIC values come from different likelihoods (continuous vs categorical) and are NOT comparable.\")),",
+        "  notes = sx_note, checks = if (sx_agree) character() else sx_note,",
+        f"  {COMMON_TAIL})",
+    ]
+    return "\n".join(L) + "\n"
+
+
 def _logistic(ctx: Ctx) -> str:
     y = ctx.one("dependent")
     rhs = _rhs(ctx)
@@ -1062,6 +1132,13 @@ SPECS: list[AnalysisSpec] = [
                  "Cumulative-logit model for an ordered categorical outcome (ordinal::clm), with a proportional-odds check.",
                  [Slot("dependent", "Outcome (ordinal, 3+ categories)", "ordinal"), Slot("predictors", "Predictors", "any", 1, 10)],
                  [INTERACTIONS, CONF], ["ordinal"], _ordinal_reg),
+    AnalysisSpec("likert_sensitivity", "Regression", "Likert sensitivity: Gaussian vs ordinal",
+                 "Fit a numeric ordinal (e.g. Likert) outcome both as Gaussian on its numeric codes and as an ordinal "
+                 "(cumulative logit) model; compare relationships, assumptions, predictions and significance. "
+                 "Coefficients from the two families are not interchangeable.",
+                 [Slot("dependent", "Outcome (ordinal, numeric codes)", "ordinal"),
+                  Slot("predictors", "Predictors", "any", 1, 10)],
+                 [INTERACTIONS, CONF], ["ordinal", "stats"], _likert_sensitivity, check=_check_likert),
     AnalysisSpec("multinom_reg", "Regression", "Multinomial logistic regression",
                  "Baseline-category logit model for an unordered outcome with 3+ categories (nnet::multinom).",
                  [Slot("dependent", "Outcome (3+ categories)", "categorical"), Slot("predictors", "Predictors", "any", 1, 10)],

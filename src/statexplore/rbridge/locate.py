@@ -19,7 +19,8 @@ WORKER_SCRIPT = Path(__file__).resolve().parents[1] / "r" / "worker.R"
 PHASE1_PACKAGES = ["jsonlite", "psych", "ggplot2"]
 PHASE2_PACKAGES = ["car", "afex", "emmeans", "effectsize", "ppcor", "lmtest", "detectseparation"]
 PHASE5_PACKAGES = ["lme4", "lmerTest", "nlme", "mmrm", "performance"]
-REQUIRED_PACKAGES = PHASE1_PACKAGES + PHASE2_PACKAGES + PHASE5_PACKAGES
+V11_PACKAGES = ["ordinal", "nnet", "mclogit", "geepack", "survey", "vcd", "pbkrtest", "MASS"]
+REQUIRED_PACKAGES = PHASE1_PACKAGES + PHASE2_PACKAGES + PHASE5_PACKAGES + V11_PACKAGES
 
 
 def _version_key(path: Path) -> tuple[int, ...]:

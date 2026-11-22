@@ -76,8 +76,11 @@ class SurveyPage(QWidget):
         self.code_btn = QPushButton("View Code")
         self.code_btn.setEnabled(False)
         self.code_btn.clicked.connect(lambda: self.current and CodeDialog(self.current, self).exec())
+        self.copy_btn = QPushButton("Copy tables")
+        self.copy_btn.clicked.connect(self._copy_tables)
         brow.addWidget(self.run_btn)
         brow.addWidget(self.code_btn)
+        brow.addWidget(self.copy_btn)
         ll.addLayout(brow)
         ll.addStretch()
         scroll = QScrollArea()
@@ -175,3 +178,11 @@ class SurveyPage(QWidget):
         self.current = result
         self.code_btn.setEnabled(True)
         render(self.output, result, artifacts)
+
+    def _copy_tables(self) -> None:
+        from PySide6.QtWidgets import QApplication
+
+        from ...analysis.interpret import tables_tsv
+
+        if self.current is not None:
+            QApplication.clipboard().setText(tables_tsv(self.current))

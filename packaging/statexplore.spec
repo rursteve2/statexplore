@@ -5,7 +5,8 @@ root = Path(SPECPATH).parent
 a = Analysis(
     [str(root / "packaging" / "launcher.py")],
     pathex=[str(root / "src")],
-    datas=[(str(root / "src" / "statexplore" / "r" / "worker.R"), "statexplore/r")],
+    datas=[(str(root / "src" / "statexplore" / "r" / "worker.R"), "statexplore/r"),
+           (str(root / "src" / "statexplore" / "r" / "console_worker.R"), "statexplore/r")],
     hiddenimports=["pyreadstat._readstat_parser", "openpyxl", "docx", "pyarrow", "statexplore.gui.main_window"],
     excludes=["tkinter", "pytest", "statsmodels", "matplotlib"],
 )

@@ -41,6 +41,9 @@ def selftest() -> int:
     if ok and "--full" in sys.argv:
         ok = _full_selftest(say, rscript, tmp)
     say("OK" if ok else f"FAIL: {res.messages}")
+    import shutil
+
+    shutil.rmtree(tmp, ignore_errors=True)
     return 0 if ok else 1
 
 
@@ -54,7 +57,8 @@ def _full_selftest(say, rscript, tmp: Path) -> bool:
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     from PySide6.QtWidgets import QApplication
 
-    from .analysis import comparison, mixed, teaching, validation
+    from .analysis import comparison, mixed, survey, teaching, validation
+    from .analysis.measurement import VariableTreatment
     from .analysis.builders import BY_KEY
     from .analysis.framework import run_analysis
     from .analysis.models import ModelSpec
@@ -72,10 +76,13 @@ def _full_selftest(say, rscript, tmp: Path) -> bool:
     n = 120
     df = pd.DataFrame({"id": np.repeat(np.arange(1, 41), 3), "t": np.tile([0, 1, 2], 40),
                        "x": rng.normal(size=n), "g": rng.choice(["a", "b"], n)})
-    df["y"] = df["x"] * (df["g"] == "b") + 0.3 * df["t"] + rng.normal(size=n)
+    df["y"] = df["x"] * (df["g"] == "b") + 0.3 * df["t"] + np.repeat(rng.normal(0, 1, 40), 3) + rng.normal(size=n)
     df["yb"] = (df["y"] > df["y"].median()).astype(int)
+    df["lik"] = np.clip(np.round(2.5 + df["y"]), 1, 5)
     df.to_csv(tmp / "full.csv", index=False)
     ds = import_file(tmp / "full.csv")
+    ds.set_variable_field("lik", "measure", "ordinal")
+    ds.set_variable_field("yb", "measure", "nominal")
     proj = Project(ds)
     ok = True
     with RWorker(rscript) as w:
@@ -96,6 +103,18 @@ def _full_selftest(say, rscript, tmp: Path) -> bool:
             ("mixed (mmrm)", lambda: mixed.run(sess, ds, mixed.MixedSpec(outcome="y", id="id", time="t", time_type="categorical",
                                                                          random="none", residual="unstructured"))),
             ("cross-validation", lambda: validation.cross_validate(sess, ds, ModelSpec("y", [("x",)], "gaussian"), "kfold", 4)),
+            # v1.1
+            ("2x2 association", lambda: run_analysis(sess, ds, BY_KEY["assoc_2x2"], {"outcome": ["yb"], "group": ["g"]},
+                                                     {"event": 1.0, "outcome_ref": 0.0, "exposed": "b", "comparison": "a"})),
+            ("ordinal regression", lambda: run_analysis(sess, ds, BY_KEY["ordinal_reg"], {"dependent": ["lik"], "predictors": ["x"]}, {})),
+            ("multinomial regression", lambda: run_analysis(sess, ds, BY_KEY["multinom_reg"], {"dependent": ["lik"], "predictors": ["x"]}, {})),
+            ("continuous treatment", lambda: run_analysis(sess, ds, BY_KEY["lm"], {"dependent": ["lik"], "predictors": ["x"]}, {},
+                                                          treatments=[VariableTreatment("lik", "continuous", acknowledged=True)])),
+            ("binary mixed (glmer)", lambda: mixed.run(sess, ds, mixed.MixedSpec(outcome="yb", id="id", time="t", family="binomial"))),
+            ("ordinal mixed (clmm)", lambda: mixed.run(sess, ds, mixed.MixedSpec(outcome="lik", id="id", time="t", family="ordinal"))),
+            ("GEE (geepack)", lambda: mixed.run(sess, ds, mixed.MixedSpec(outcome="yb", id="id", time="t", family="binomial",
+                                                                          estimator="gee", random="none"))),
+            ("survey (svymean)", lambda: survey.run(sess, ds, survey.SurveyDesign(psu="id", pooled_waves_ack=True), "mean", ["y"])),
         ]
         for name, fn in checks:
             try:
@@ -119,6 +138,14 @@ def _full_selftest(say, rscript, tmp: Path) -> bool:
         proj.save(tmp / "p.sxp")
         Project.open(tmp / "p.sxp")
         say("  ok  project save/reopen")
+        from .rbridge.console import RConsole
+
+        con = RConsole(tmp / "console", rscript=str(rscript))
+        con.set_dataset(ds)
+        cres = con.run("m <- mean(my_data$y)\nplot(my_data$x, my_data$y)\nm")
+        good = not cres.error and len(cres.plots) == 1
+        say(f"  {'ok ' if good else 'BAD'} R console (separate process, plot captured)")
+        ok &= good
     except Exception as e:
         say(f"  BAD discovery/export/project: {e}")
         ok = False

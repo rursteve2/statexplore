@@ -886,6 +886,9 @@ def run(session: RSession, ds: Dataset, s: MixedSpec) -> tuple[AnalysisResult, d
             result.status = Status.WARNING
     result.values.setdefault("notes", [])
     result.values["notes"] = list(result.values["notes"]) + pre.notes
+    from .interpret import brief
+
+    result.values["interpretation"] = brief(result)
     result.values["engine_choice"] = s.engine
     result.values["family"] = FAMILIES[s.family]
     result.values["estimator"] = ESTIMATORS[s.estimator]

@@ -85,6 +85,10 @@ def _summary_rows(result: AnalysisResult) -> list[tuple[str, Any]]:
             ("n used", result.n_used), ("Missing data", result.missing_data)]
     if result.values.get("interpretation"):
         rows.append(("Interpretation", result.values["interpretation"]))
+    rows += [("Variable treatment (this analysis only)", t.get("description", "")) for t in
+             result.inputs.get("treatments") or []]
+    if result.inputs.get("treatment_warning"):
+        rows.append(("Treatment warning", result.inputs["treatment_warning"]))
     rows += [("Message", m) for m in result.messages]
     rows += [("Note", n) for n in result.values.get("notes") or []]
     if result.seed is not None:
@@ -140,6 +144,12 @@ def write_docx(results: list[AnalysisResult], artifacts: dict[str, bytes], path:
             p = doc.add_paragraph()
             p.add_run("Interpretation. ").bold = True
             p.add_run(r.values["interpretation"])
+        for t in r.inputs.get("treatments") or []:
+            p = doc.add_paragraph(style="List Bullet")
+            p.add_run("Variable treatment for this analysis only: ").bold = True
+            p.add_run(t.get("description", ""))
+        if r.inputs.get("treatment_warning"):
+            doc.add_paragraph(r.inputs["treatment_warning"]).italic = True
         for m in r.messages:
             doc.add_paragraph(m, style="List Bullet")
         for key in r.plots:

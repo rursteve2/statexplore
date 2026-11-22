@@ -85,6 +85,11 @@ class TeachingPage(QWidget):
         for b in (self.draw_btn, self.code_btn, self.save_btn, self.add_btn):
             row.addWidget(b)
         ll.addLayout(row)
+        self.finder_btn = QPushButton("Find teaching examples in this project…")
+        self.finder_btn.setToolTip("Lists completed analyses that illustrate common teaching points (significant "
+                                   "interactions, adjustment, instability, assumption problems, model disagreement)")
+        self.finder_btn.clicked.connect(self.show_examples)
+        ll.addWidget(self.finder_btn)
         scroll = QScrollArea()
         scroll.setWidget(left)
         scroll.setWidgetResizable(True)
@@ -274,3 +279,34 @@ class TeachingPage(QWidget):
             return
         self.state.add_model(m)
         QMessageBox.information(self, "Teaching Studio", "Added to the Model Comparison set.")
+
+    def show_examples(self) -> list:
+        """Teaching Example Finder (§17.5): only completed results in the project are listed."""
+        from PySide6.QtWidgets import QDialog, QDialogButtonBox, QHeaderView, QTableWidget, QTableWidgetItem
+
+        from ...analysis.teaching_finder import find
+
+        if self.state.project is None:
+            return []
+        examples = find(self.state.project)
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Teaching examples found in this project")
+        dlg.resize(1000, 520)
+        lay = QVBoxLayout(dlg)
+        lay.addWidget(QLabel(f"{len(examples)} example(s) from analyses and searches already run. Nothing here is "
+                             "fitted or invented: run more analyses to find more."))
+        tab = QTableWidget(len(examples), 4)
+        tab.setHorizontalHeaderLabels(["Teaching point", "Analysis", "Detail", "Source"])
+        for i, e in enumerate(examples):
+            for j, v in enumerate((e.category, e.title, e.detail, e.source)):
+                tab.setItem(i, j, QTableWidgetItem(v))
+        tab.horizontalHeader().setSectionResizeMode(QHeaderView.Interactive)
+        tab.horizontalHeader().setStretchLastSection(True)
+        tab.resizeColumnsToContents()
+        lay.addWidget(tab)
+        bb = QDialogButtonBox(QDialogButtonBox.Close)
+        bb.rejected.connect(dlg.reject)
+        lay.addWidget(bb)
+        self._examples_dialog = dlg
+        dlg.show()
+        return examples

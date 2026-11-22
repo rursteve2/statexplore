@@ -142,6 +142,11 @@ R_ERROR_HINTS = [
     ("cannot allocate vector", "Not enough memory: the model is too large (often a categorical variable with "
      "very many categories)."),
     ("new levels", "A category appears in the evaluation data but not in the data used to fit the model."),
+    ("Hessian is not positive definite", "Standard errors could not be computed: usually a random-effect variance is "
+     "(near) zero, or the data are too sparse for this model. Simplify the random effects, or fit the model without "
+     "random effects (e.g. Ordinal logistic regression in the Analysis Builder)."),
+    ("Hessian is numerically singular", "Standard errors could not be computed: some parameters are not identified "
+     "(sparse categories, separation, or redundant predictors)."),
 ]
 
 
