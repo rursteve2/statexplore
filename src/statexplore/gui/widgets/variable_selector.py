@@ -1,0 +1,199 @@
+"""Reusable variable selector (v1.1 §7).
+
+A searchable, checkable list with Check visible / Clear visible / Check all / Clear all and a
+selected count that includes selections hidden by the current search. Searching never
+changes the selection. `selected()` returns variables in the order they were checked (EDA
+uses this for x-then-y plots).
+
+`self.list` is the underlying QListWidget; item check states are the source of truth, so
+code that walks the items keeps working.
+"""
+from __future__ import annotations
+
+from typing import Callable
+
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtWidgets import (
+    QComboBox, QHBoxLayout, QLabel, QLineEdit, QListWidget, QListWidgetItem, QPushButton, QVBoxLayout, QWidget,
+)
+
+from ...core.dataset import Dataset
+
+ALL_LEVELS = "All measurement levels"
+
+
+class VariableSelector(QWidget):
+    changed = Signal()
+
+    def __init__(self, parent: QWidget | None = None, *, single: bool = False, max_height: int | None = None,
+                 placeholder: str = "Search name, label or original name…", show_level_filter: bool = True):
+        super().__init__(parent)
+        self.single = single
+        self._order: list[str] = []
+        self._decorate: Callable[[str], str] | None = None
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(3)
+        top = QHBoxLayout()
+        self.search = QLineEdit()
+        self.search.setPlaceholderText(placeholder)
+        self.search.setClearButtonEnabled(True)
+        self.search.textChanged.connect(self._apply_filter)
+        top.addWidget(self.search, 1)
+        self.level = QComboBox()
+        self.level.addItem(ALL_LEVELS, None)
+        for m in ("continuous", "ordinal", "nominal", "binary"):
+            self.level.addItem(m, m)
+        self.level.setToolTip("Show only variables with this project measurement level")
+        self.level.currentIndexChanged.connect(self._apply_filter)
+        self.level.setVisible(show_level_filter)
+        top.addWidget(self.level)
+        lay.addLayout(top)
+        self.list = QListWidget()
+        if max_height:
+            self.list.setMaximumHeight(max_height)
+        self.list.itemChanged.connect(self._item_changed)
+        lay.addWidget(self.list, 1)
+        bar = QHBoxLayout()
+        self.buttons: dict[str, QPushButton] = {}
+        for key, text, fn in (("check_visible", "Check visible", self.check_visible),
+                              ("clear_visible", "Clear visible", self.clear_visible),
+                              ("check_all", "Check all", self.check_all),
+                              ("clear_all", "Clear all", self.clear_all)):
+            b = QPushButton(text)
+            b.setAutoDefault(False)
+            b.clicked.connect(fn)
+            b.setVisible(not (single and key in ("check_visible", "check_all")))
+            self.buttons[key] = b
+            bar.addWidget(b)
+        bar.addStretch()
+        self.count = QLabel()
+        bar.addWidget(self.count)
+        lay.addLayout(bar)
+        self._levels: dict[str, str] = {}
+        self._update_count()
+
+    # ---- content ----------------------------------------------------------------
+    def set_variables(self, ds: Dataset | None, names: list[str], keep: bool = True,
+                      decorate: Callable[[str], str] | None = None, default_checked: bool = False) -> None:
+        """Fill the list. With `keep`, previously checked variables stay checked."""
+        previous = [n for n in self._order if n in names] if keep else []
+        self._decorate = decorate
+        self.list.blockSignals(True)
+        self.list.clear()
+        self._levels = {}
+        for n in names:
+            v = ds.var(n) if ds is not None else None
+            text = (v.display_name if v else n) + (decorate(n) if decorate else "")
+            it = QListWidgetItem(text)
+            it.setData(Qt.UserRole, n)
+            if v is not None:
+                self._levels[n] = v.measure.value
+                parts = [v.display_name]
+                if v.name != v.display_name:
+                    parts.append(f"original name: {v.name}")
+                if v.label:
+                    parts.append(v.label)
+                parts.append(f"level: {v.measure.value}" + (f" (source: {v.source_measure})" if v.source_measure else ""))
+                it.setToolTip("\n".join(parts))
+                it.setData(Qt.UserRole + 1, " ".join([v.display_name, v.name, v.label]).lower())
+            it.setFlags(it.flags() | Qt.ItemIsUserCheckable)
+            it.setCheckState(Qt.Checked if (n in previous or (default_checked and not keep)) else Qt.Unchecked)
+            self.list.addItem(it)
+        self.list.blockSignals(False)
+        self._order = previous + ([n for n in names if default_checked and not keep and n not in previous])
+        self._apply_filter()
+        self.changed.emit()
+
+    def names(self) -> list[str]:
+        return [self.list.item(i).data(Qt.UserRole) for i in range(self.list.count())]
+
+    # ---- selection ----------------------------------------------------------------
+    def selected(self) -> list[str]:
+        checked = {self.list.item(i).data(Qt.UserRole) for i in range(self.list.count())
+                   if self.list.item(i).checkState() == Qt.Checked}
+        return [n for n in self._order if n in checked] + [n for n in self.names() if n in checked and n not in self._order]
+
+    def set_selected(self, names: list[str]) -> None:
+        wanted = list(dict.fromkeys(names))
+        if self.single:
+            wanted = wanted[:1]
+        self.list.blockSignals(True)
+        for i in range(self.list.count()):
+            it = self.list.item(i)
+            it.setCheckState(Qt.Checked if it.data(Qt.UserRole) in wanted else Qt.Unchecked)
+        self.list.blockSignals(False)
+        self._order = [n for n in wanted if n in self.names()]
+        self._update_count()
+        self.changed.emit()
+
+    def _set_items(self, items: list[QListWidgetItem], state: Qt.CheckState) -> None:
+        self.list.blockSignals(True)
+        for it in items:
+            it.setCheckState(state)
+        self.list.blockSignals(False)
+        self._sync_order()
+        self._update_count()
+        self.changed.emit()
+
+    def visible_items(self) -> list[QListWidgetItem]:
+        return [self.list.item(i) for i in range(self.list.count()) if not self.list.item(i).isHidden()]
+
+    def check_visible(self) -> None:
+        self._set_items(self.visible_items(), Qt.Checked)
+
+    def clear_visible(self) -> None:
+        self._set_items(self.visible_items(), Qt.Unchecked)
+
+    def check_all(self) -> None:
+        self._set_items([self.list.item(i) for i in range(self.list.count())], Qt.Checked)
+
+    def clear_all(self) -> None:
+        self._set_items([self.list.item(i) for i in range(self.list.count())], Qt.Unchecked)
+
+    def _item_changed(self, it: QListWidgetItem) -> None:
+        name = it.data(Qt.UserRole)
+        if it.checkState() == Qt.Checked:
+            if self.single:
+                self.list.blockSignals(True)
+                for i in range(self.list.count()):
+                    other = self.list.item(i)
+                    if other is not it and other.checkState() == Qt.Checked:
+                        other.setCheckState(Qt.Unchecked)
+                self.list.blockSignals(False)
+                self._order = []
+            if name not in self._order:
+                self._order.append(name)
+        elif name in self._order:
+            self._order.remove(name)
+        self._update_count()
+        self.changed.emit()
+
+    def _sync_order(self) -> None:
+        checked = [self.list.item(i).data(Qt.UserRole) for i in range(self.list.count())
+                   if self.list.item(i).checkState() == Qt.Checked]
+        self._order = [n for n in self._order if n in checked] + [n for n in checked if n not in self._order]
+
+    # ---- filtering --------------------------------------------------------------------
+    def set_filter(self, text: str) -> None:
+        self.search.setText(text)
+
+    def _apply_filter(self, *_args) -> None:
+        text = self.search.text().strip().lower()
+        level = self.level.currentData()
+        for i in range(self.list.count()):
+            it = self.list.item(i)
+            hay = it.data(Qt.UserRole + 1) or it.text().lower()
+            hide = (bool(text) and text not in hay and text not in it.text().lower()) or \
+                   (level is not None and self._levels.get(it.data(Qt.UserRole)) != level)
+            it.setHidden(hide)
+        self._update_count()
+
+    def _update_count(self) -> None:
+        sel = self.selected()
+        hidden = sum(1 for i in range(self.list.count())
+                     if self.list.item(i).isHidden() and self.list.item(i).checkState() == Qt.Checked)
+        txt = f"{len(sel)} of {self.list.count()} selected"
+        if hidden:
+            txt += f" ({hidden} hidden by the search)"
+        self.count.setText(txt)

@@ -8,6 +8,7 @@ from PySide6.QtWidgets import (
     QTabWidget, QVBoxLayout, QWidget,
 )
 
+from ...analysis.measurement import approve
 from ...core import missing
 from ...core.dataset import DatasetError
 from ..derive_dialogs import DeriveDialog, FilterDialog
@@ -15,6 +16,7 @@ from ...core.overview import as_frame, summarize
 from ...core.variables import Measure, Role
 from ..models import DataPreviewModel, FrameModel, fmt
 from ..state import AppState
+from .measurement_review import MeasurementReviewWidget
 
 OVERVIEW_COLUMNS = {
     "display_name": "Variable", "label": "Label", "storage": "Type", "measure": "Measure",
@@ -32,6 +34,8 @@ class DatasetExplorerPage(QWidget):
         self.tabs.addTab(self._build_overview(), "Overview")
         self.tabs.addTab(self._build_preview(), "Data")
         self.tabs.addTab(self._build_variables(), "Variables")
+        self.review = MeasurementReviewWidget(state)
+        self.tabs.addTab(self.review, "Measurement Review")
         self.tabs.addTab(self._build_derived(), "Derived && Filters")
         self.missing_view = QTextBrowser()
         self.tabs.addTab(self.missing_view, "Missing data")
@@ -270,6 +274,7 @@ class DatasetExplorerPage(QWidget):
             self.title.setText("No dataset loaded — use File ▸ Import Dataset or drag a file onto the window.")
             self.overview_model.set_frame(as_frame_empty())
             self.stats_label.setText("")
+            self.review.refresh()
             return
         self.title.setText(f"Dataset: {ds.source.path}")
         self.refresh_metadata()
@@ -278,6 +283,7 @@ class DatasetExplorerPage(QWidget):
         ds = self.state.dataset
         if ds is None:
             return
+        self.review.refresh()
         s = summarize(ds)
         rows = (f"<b>{s.n_rows:,}</b> of {s.n_rows_total:,} rows (filters active)" if ds.filters
                 else f"<b>{s.n_rows:,}</b> rows")
@@ -343,7 +349,6 @@ class DatasetExplorerPage(QWidget):
             return
         updates = [
             ("display_name", self.f_display.text()),
-            ("measure", self.f_measure.currentText()),
             ("role", self.f_role.currentText()),
         ]
         if ds.var(name).is_categorical and Measure(self.f_measure.currentText()) is not Measure.CONTINUOUS:
@@ -351,6 +356,8 @@ class DatasetExplorerPage(QWidget):
         elif ds.var(name).reference_level is not None:
             updates.append(("reference_level", None))
         try:
+            if self.f_measure.currentText() != ds.var(name).measure.value:
+                approve(ds, name, self.f_measure.currentText())   # explicit user choice: records status too
             for field_name, value in updates:
                 ds.set_variable_field(name, field_name, value)
         except DatasetError as e:

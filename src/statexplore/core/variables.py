@@ -10,6 +10,10 @@ class Measure(str, Enum):
     CONTINUOUS = "continuous"
     ORDINAL = "ordinal"
     NOMINAL = "nominal"
+    BINARY = "binary"          # two-category nominal (v1.1)
+
+
+CATEGORICAL = (Measure.NOMINAL, Measure.ORDINAL, Measure.BINARY)
 
 
 class Storage(str, Enum):
@@ -27,7 +31,13 @@ class Role(str, Enum):
 
 
 # Fields a user may change through Dataset.set_variable_field (all logged + undoable).
-EDITABLE_FIELDS = ("display_name", "measure", "role", "reference_level")
+EDITABLE_FIELDS = ("display_name", "measure", "role", "reference_level", "category_order",
+                   "measure_status", "coding_direction")
+
+# measure_status values: how the project measurement level was decided (v1.1, §3.1 B).
+STATUS_SOURCE = "source"        # as declared by the source file, not reviewed
+STATUS_APPROVED = "approved"    # the user approved a different level (suggested or chosen)
+STATUS_KEPT = "kept"            # the user reviewed and kept the source level
 
 
 @dataclass
@@ -52,6 +62,12 @@ class VariableMeta:
     role: Role = Role.NONE
     reference_level: Any = None
     source_measure: str = ""  # measurement level as declared by the source file, if any
+    # ---- v1.1 measurement review (all optional; v1.0 projects load with these defaults) ----
+    suggested_measure: str = ""                                   # rule-based suggestion, never applied automatically
+    suggestion_reasons: list[str] = field(default_factory=list)
+    measure_status: str = STATUS_SOURCE
+    category_order: list[Any] | None = None                       # explicit order of codes (ordinal)
+    coding_direction: str = ""                                    # e.g. "higher = less frequent"
 
     def __post_init__(self) -> None:
         if not self.display_name:
@@ -59,7 +75,7 @@ class VariableMeta:
 
     @property
     def is_categorical(self) -> bool:
-        return self.measure in (Measure.NOMINAL, Measure.ORDINAL)
+        return self.measure in CATEGORICAL
 
     def has_user_missing(self) -> bool:
         return bool(self.missing_values or self.missing_ranges)
@@ -82,7 +98,8 @@ class VariableMeta:
         d["role"] = Role(d["role"])
         d["value_labels"] = {k: v for k, v in d["value_labels"]}
         d["missing_ranges"] = [tuple(r) for r in d["missing_ranges"]]
-        return cls(**d)
+        known = {f for f in cls.__dataclass_fields__}
+        return cls(**{k: v for k, v in d.items() if k in known})
 
 
 def make_alias(index: int) -> str:

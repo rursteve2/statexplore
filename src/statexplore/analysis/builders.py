@@ -8,6 +8,9 @@ Conventions for every body:
 """
 from __future__ import annotations
 
+from typing import Any
+
+from ..core.variables import Measure
 from ..rbridge.codegen import r_str, r_vec
 from .framework import (
     ADJUST, ALTERNATIVE, CONF, INTERACTIONS, AnalysisInputError, AnalysisSpec, Ctx, Option, Slot,
@@ -118,12 +121,42 @@ def _paired(ctx: Ctx) -> str:
 
 # ======================================================================= correlations
 
-METHOD = Option("method", "Method", "choice", "pearson", [("pearson", "Pearson"), ("spearman", "Spearman")])
+METHOD = Option("method", "Method", "choice", "pearson", [("pearson", "Pearson"), ("spearman", "Spearman")],
+                help="Spearman uses ranks: ordinal variables are ranked by their category order. Pearson needs "
+                     "interval values: an ordinal variable must be treated as continuous for the analysis.")
+
+
+def _cor_check(ds, vars_: dict[str, list[str]], opts: dict[str, Any]) -> None:
+    """§8.5: Spearman accepts ordinal variables; Pearson needs an explicit numeric treatment."""
+    if opts.get("method") != "pearson":
+        return
+    for n in [n for names in vars_.values() for n in names]:
+        v = ds.var(n)
+        if v.measure is Measure.ORDINAL:
+            raise AnalysisInputError(
+                f"Pearson correlation treats values as interval measurements, but {v.display_name} is ordinal. "
+                f"Choose Spearman (it ranks the categories in their order), or tick \"Treat {v.display_name} as "
+                "continuous for this analysis\".")
+
+
+def _rank_ordinal(ctx: Ctx, frame: str, slots: tuple[str, ...]) -> list[str]:
+    """Spearman: ordinal factors -> category positions 1..k in the category order (explicit
+    label mapping; never as.numeric(factor), whose level order a reference level may change)."""
+    from .eda import category_codes
+
+    out = []
+    for n in [n for s in slots for n in ctx.vars.get(s, [])]:
+        if ctx.ds.var(n).measure is Measure.ORDINAL:
+            a = ctx.a(n)
+            _codes, labels = category_codes(ctx.ds, n)
+            out.append(f"{frame}${a} <- match(as.character({frame}${a}), {r_vec(labels)})  "
+                       "# ordinal: category positions (Spearman ranks them)")
+    return out
 
 
 def _cor_pair(ctx: Ctx) -> str:
     x, y = ctx.one("x"), ctx.one("y")
-    L = _prologue(ctx, "x", "y") + [
+    L = _prologue(ctx, "x", "y") + _rank_ordinal(ctx, "sx_d", ("x", "y")) + [
         f"sx_exact <- if ({ctx.str_('method')} == \"spearman\") !(anyDuplicated(sx_d${x}) || anyDuplicated(sx_d${y})) else NULL",
         f"sx_ct <- stats::cor.test(sx_d${x}, sx_d${y}, method = {ctx.str_('method')}, conf.level = {ctx.num('conf')}, exact = sx_exact)",
         "sx_ci <- if (is.null(sx_ct$conf.int)) c(NA_real_, NA_real_) else sx_ct$conf.int",
@@ -141,7 +174,7 @@ def _cor_pair(ctx: Ctx) -> str:
 def _cor_partial(ctx: Ctx) -> str:
     x, y = ctx.one("x"), ctx.one("y")
     z = ctx.aliases("controls")
-    L = _prologue(ctx, "x", "y", "controls") + [
+    L = _prologue(ctx, "x", "y", "controls") + _rank_ordinal(ctx, "sx_d", ("x", "y", "controls")) + [
         f"sx_pc <- ppcor::pcor.test(sx_d${x}, sx_d${y}, sx_d[, {r_vec(z)}, drop = FALSE], method = {ctx.str_('method')})",
         f"sx_k <- {len(z)}",
         "sx_se <- 1 / sqrt(nrow(sx_d) - 3 - sx_k)",
@@ -162,6 +195,7 @@ def _cor_matrix(ctx: Ctx) -> str:
     L = [
         f"sx_used <- {r_vec(vs)}",
         "sx_d <- dat[, sx_used, drop = FALSE]  # pairwise deletion",
+        *_rank_ordinal(ctx, "sx_d", ("variables",)),
         f"sx_ct <- psych::corr.test(sx_d, use = \"pairwise\", method = {ctx.str_('method')}, adjust = {ctx.str_('adjust')})",
         "sx_pairs <- utils::combn(seq_along(sx_used), 2)",
         "sx_n <- function(i, j) if (is.matrix(sx_ct$n)) sx_ct$n[i, j] else sx_ct$n",
@@ -644,19 +678,21 @@ SPECS: list[AnalysisSpec] = [
                  [Slot("first", "First measurement", "continuous"), Slot("second", "Second measurement", "continuous")],
                  [ALTERNATIVE, CONF], ["effectsize"], _paired),
     AnalysisSpec("cor_pair", "Correlation", "Correlation (two variables)", "Pearson or Spearman correlation with test.",
-                 [Slot("x", "Variable X", "continuous"), Slot("y", "Variable Y", "continuous")], [METHOD, CONF],
-                 [], _cor_pair),
+                 [Slot("x", "Variable X", "rankable"), Slot("y", "Variable Y", "rankable")], [METHOD, CONF],
+                 [], _cor_pair, check=_cor_check),
     AnalysisSpec("cor_partial", "Correlation", "Partial correlation",
                  "Correlation between X and Y controlling for other variables.",
-                 [Slot("x", "Variable X", "continuous"), Slot("y", "Variable Y", "continuous"),
-                  Slot("controls", "Control variables", "continuous", 1, 5)], [METHOD, CONF], ["ppcor"], _cor_partial),
+                 [Slot("x", "Variable X", "rankable"), Slot("y", "Variable Y", "rankable"),
+                  Slot("controls", "Control variables", "rankable", 1, 5)], [METHOD, CONF], ["ppcor"], _cor_partial,
+                 check=_cor_check),
     AnalysisSpec("cor_matrix", "Correlation", "Correlation matrix (psych::corr.test)",
                  "All pairwise correlations with raw and multiplicity-adjusted p-values.",
-                 [Slot("variables", "Variables", "continuous", 2, 15)],
+                 [Slot("variables", "Variables", "rankable", 2, 15)],
                  [METHOD, Option("adjust", "p-value adjustment", "choice", "holm",
                                  [("holm", "Holm"), ("BH", "Benjamini-Hochberg (FDR)"), ("bonferroni", "Bonferroni"),
                                   ("none", "None")])],
-                 ["psych"], _cor_matrix, missing_data="Pairwise deletion (each correlation uses all rows complete on that pair)."),
+                 ["psych"], _cor_matrix, missing_data="Pairwise deletion (each correlation uses all rows complete on that pair).",
+                 check=_cor_check),
     AnalysisSpec("anova_oneway", "ANOVA", "One-way ANOVA", "Compare means across groups of one factor.",
                  [DV, Slot("factors", "Factor", "categorical")], [ADJUST, CONF], ["afex", "emmeans", "car"], _anova_between),
     AnalysisSpec("anova_welch", "ANOVA", "Welch one-way ANOVA", "One-way ANOVA without assuming equal variances.",

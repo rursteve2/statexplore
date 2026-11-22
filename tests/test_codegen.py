@@ -102,7 +102,7 @@ def test_plot_bodies_are_ascii_and_parse_shape(sav_labelled, kind, vars_, group)
     ds = import_file(sav_labelled)
     body, packages = eda.plot_body(ds, eda.PlotRequest(kind, vars_, group, title=HOSTILE), "C:/t/p.png")
     assert body.isascii()
-    assert "sx_result <- list(plot = sx_plot_file, n = sx_n)" in body
+    assert "sx_result <- list(plot = sx_plot_file, n = sx_n" in body   # categorical plots add a counts table
     assert packages in (["ggplot2"], ["psych"])
     code = re.sub(r'"(?:\\.|[^"\\])*"', '""', body)  # drop string literals
     assert code.count("(") == code.count(")")

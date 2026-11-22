@@ -168,26 +168,38 @@ def _filter_r(ds: Dataset, f) -> str:
     return f"dat <- dat[which({cond}), , drop = FALSE]"
 
 
-def data_load_script(ds: Dataset, csv_path: str) -> str:
-    """Script that reads the exported CSV, computes derived variables, applies
-    filters, and applies variable coding. Executed verbatim by the worker and
-    included verbatim in "View Code"."""
+def data_load_parts(ds: Dataset, csv_path: str) -> tuple[str, str]:
+    """(read, prepare): the read part loads the exported CSV of codes once; the prepare part
+    rebuilds `dat` from it (derived variables, filters, variable coding, holdout). The
+    worker re-runs only the prepare part when just the metadata or the analysis-specific
+    treatment changed; the recorded script is always read + prepare."""
     variables = list(ds.variables.values())
     base = [v for v in variables if not ds.is_derived(v.name)]
-    lines = [
+    read = [
         R_HELPERS,
         "# ---- StatExplore: data preparation ----",
         f"# Source file: {r_str(ds.source.path)}",
         "# Values declared as user-missing in the source were exported as NA.",
         f"sx_data_file <- {r_str(csv_path)}",
-        "# Internal names (v001, ...) -> variable names",
-        "sx_names <- " + r_vec([v.display_name for v in variables], [v.alias for v in variables]),
-        "dat <- utils::read.csv(",
+        "sx_raw <- utils::read.csv(",
         "  sx_data_file, na.strings = \"\", fileEncoding = \"UTF-8\", check.names = FALSE,",
         "  colClasses = " + r_vec([_COLCLASS[v.storage] for v in base], [v.alias for v in base])
         + (" |> c(sx_split = \"character\")" if ds.holdout else ""),
         ")",
+        "sx_result <- list(n_raw = nrow(sx_raw))",
     ]
+    lines = [
+        "# Internal names (v001, ...) -> variable names",
+        "sx_names <- " + r_vec([v.display_name for v in variables], [v.alias for v in variables]),
+        "dat <- sx_raw",
+    ]
+    treatments = getattr(ds, "treatments", [])
+    if treatments:
+        lines.append("# Analysis-specific variable treatment (this analysis only; the dataset's "
+                     "measurement levels are unchanged):")
+        for t, text in treatments:
+            note = "kept as its numeric codes" if t.treatment == "continuous" else f"coded as {t.treatment} categories"
+            lines.append(f"#   {alias(ds.var(t.variable).alias)} {note}: {r_str(text)}")
     if ds.derived:
         lines.append("# Derived variables (computed on numeric codes, before filters)")
         lines.extend(_derived_r(ds, spec) for spec in ds.derived.values())
@@ -221,4 +233,11 @@ def data_load_script(ds: Dataset, csv_path: str) -> str:
             "dat <- dat[dat$sx_split == \"train\", , drop = FALSE]",
         ]
     lines.append("sx_result <- list(n_rows = nrow(dat), n_cols = ncol(dat))")
-    return "\n".join(lines) + "\n"
+    return "\n".join(read) + "\n", "\n".join(lines) + "\n"
+
+
+def data_load_script(ds: Dataset, csv_path: str) -> str:
+    """Script that reads the exported CSV, computes derived variables, applies filters, and
+    applies variable coding. Executed by the worker and included verbatim in "View Code"."""
+    read, prepare = data_load_parts(ds, csv_path)
+    return read + prepare

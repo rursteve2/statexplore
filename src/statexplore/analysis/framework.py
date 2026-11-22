@@ -20,6 +20,7 @@ KIND_LABELS = {
     "categorical": "categorical (nominal/ordinal)",
     "binary": "exactly two values",
     "any": "continuous or categorical",
+    "rankable": "continuous or ordinal",
 }
 
 
@@ -61,6 +62,8 @@ class AnalysisSpec:
     build: Callable[["Ctx"], str]
     n_plots: int = 0
     missing_data: str = "Complete cases on the analysis variables (listwise deletion)."
+    # Optional extra validation (ds, variables, cleaned options) -> raises AnalysisInputError.
+    check: Callable[[Dataset, dict[str, list[str]], dict[str, Any]], None] | None = None
 
 
 @dataclass
@@ -116,11 +119,23 @@ def _matches(ds: Dataset, name: str, kind: str) -> bool:
         return ds.analysis_frame([name])[name].dropna().nunique() == 2
     if kind == "any":
         return v.is_categorical or (v.measure is Measure.CONTINUOUS and v.storage is Storage.NUMERIC)
+    if kind == "rankable":
+        return v.measure is Measure.ORDINAL or (v.measure is Measure.CONTINUOUS and v.storage is Storage.NUMERIC)
     raise ValueError(kind)
 
 
-def eligible(ds: Dataset, slot: Slot) -> list[str]:
-    """Variables offered for a slot: right kind, not constant, and not the ID (except in ID slots)."""
+def treatable(ds: Dataset, name: str) -> bool:
+    """A numeric categorical variable that may be treated as continuous for one analysis (§6)."""
+    from .measurement import continuous_problem
+
+    v = ds.var(name)
+    return v.is_categorical and v.storage is Storage.NUMERIC and not continuous_problem(ds, name)
+
+
+def eligible(ds: Dataset, slot: Slot, offer_treatment: bool = False) -> list[str]:
+    """Variables offered for a slot: right kind, not constant, and not the ID (except in ID slots).
+    With `offer_treatment`, continuous slots also list numeric categorical variables, which
+    become usable once the user ticks "treat as continuous for this analysis"."""
     from ..core.variables import Role
 
     out = []
@@ -128,7 +143,9 @@ def eligible(ds: Dataset, slot: Slot) -> list[str]:
         v = ds.var(n)
         if v.role is Role.ID and slot.key != "id":
             continue
-        if _matches(ds, n, slot.kind) and ds.analysis_frame([n])[n].dropna().nunique() > 1:
+        ok = _matches(ds, n, slot.kind) or (offer_treatment and slot.kind in ("continuous", "rankable")
+                                            and treatable(ds, n))
+        if ok and ds.analysis_frame([n])[n].dropna().nunique() > 1:
             out.append(n)
     return out
 
@@ -148,8 +165,12 @@ def validate(spec: AnalysisSpec, ds: Dataset, vars_: dict[str, list[str]], opts:
                                          f"'{seen[n]}' and '{slot.label}'.")
             seen[n] = slot.label
             if not _matches(ds, n, slot.kind):
+                hint = ""
+                if slot.kind in ("continuous", "rankable") and treatable(ds, n):
+                    hint = (f" It is {ds.var(n).measure.value} in this project: tick \"Treat "
+                            f"{ds.var(n).display_name} as continuous for this analysis\" to use its numeric codes.")
                 raise AnalysisInputError(f"{slot.label}: {ds.var(n).display_name} must be "
-                                         f"{KIND_LABELS[slot.kind]}.")
+                                         f"{KIND_LABELS[slot.kind]}.{hint}")
     from .models import variable_problem
 
     chosen_all = [n for names in vars_.values() for n in names]
@@ -174,6 +195,8 @@ def validate(spec: AnalysisSpec, ds: Dataset, vars_: dict[str, list[str]], opts:
         if o.min is not None and val < o.min or o.max is not None and val > o.max:
             raise AnalysisInputError(f"{o.label} must be between {o.min} and {o.max}.")
         clean[o.key] = val
+    if spec.check is not None:
+        spec.check(ds, vars_, clean)
     return clean
 
 
@@ -181,9 +204,18 @@ def validate(spec: AnalysisSpec, ds: Dataset, vars_: dict[str, list[str]], opts:
 
 def run_analysis(session: RSession, ds: Dataset, spec: AnalysisSpec, vars_: dict[str, list[str]],
                  opts: dict[str, Any] | None = None, internal: dict[str, Any] | None = None,
-                 title: str | None = None) -> tuple[AnalysisResult, dict[str, bytes]]:
+                 title: str | None = None, treatments: list[Any] | None = None,
+                 ) -> tuple[AnalysisResult, dict[str, bytes]]:
     """`internal` holds program-built options that never come from the UI (e.g. an explicit
-    model formula from the discovery engine); values must be built from validated aliases."""
+    model formula from the discovery engine); values must be built from validated aliases.
+    `treatments` are analysis-specific encodings (measurement.VariableTreatment): this
+    analysis sees a view of the dataset; the project metadata is not changed."""
+    from .measurement import TreatmentError, apply_treatments, as_treatments, record
+
+    try:
+        ds = apply_treatments(ds, as_treatments(treatments))
+    except TreatmentError as e:
+        raise AnalysisInputError(str(e)) from None
     clean = validate(spec, ds, vars_, opts or {})
     clean.update(internal or {})
     plot_paths = [session.new_plot_path() for _ in range(spec.n_plots)]
@@ -200,6 +232,7 @@ def run_analysis(session: RSession, ds: Dataset, spec: AnalysisSpec, vars_: dict
     result, raw = session.run(ds, kind=spec.key, title=title or spec.label, body=body,
                               packages=spec.packages, inputs=inputs)
     result.missing_data = spec.missing_data
+    record(result, ds)
     if dependence and raw is not None:
         result.messages.append(f"Check: {dependence}")
         if result.status is Status.OK:

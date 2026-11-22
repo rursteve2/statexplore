@@ -10,7 +10,7 @@ from ..core.dataset import Dataset
 from ..core.schema import AnalysisResult, Status
 from ..core.variables import Role
 from ..rbridge.codegen import alias, r_num, r_str, r_vec
-from .models import ModelCheckError, ModelSpec, check_model
+from .models import ModelCheckError, ModelSpec, check_model, model_view
 from .session import RSession
 
 R_VALIDATION_HELPERS = r"""# ---- StatExplore: validation helpers ----
@@ -77,8 +77,11 @@ def _finish(session: RSession, ds: Dataset, kind: str, title: str, body: str, in
             packages: list[str]) -> tuple[AnalysisResult, dict[str, bytes], Any]:
     from .framework import _alias_map, _as_list, _parse_table
 
+    from .measurement import record
+
     result, raw = session.run(ds, kind=kind, title=title, body=R_VALIDATION_HELPERS + body, packages=packages,
                               inputs=inputs)
+    record(result, ds)
     artifacts: dict[str, bytes] = {}
     if raw is None:
         return result, artifacts, None
@@ -98,6 +101,7 @@ def _finish(session: RSession, ds: Dataset, kind: str, title: str, body: str, in
 
 def cross_validate(session: RSession, ds: Dataset, m: ModelSpec, scheme: str = "kfold", k: int = 5,
                    seed: int = 1) -> tuple[AnalysisResult, dict[str, bytes]]:
+    ds = model_view(ds, m)
     if scheme not in SCHEMES:
         raise ValidationInputError("Unknown cross-validation scheme.")
     idv, tv = _id_var(ds), _time_var(ds)
@@ -170,6 +174,7 @@ def cross_validate(session: RSession, ds: Dataset, m: ModelSpec, scheme: str = "
 # ---- holdout ----------------------------------------------------------------------------
 
 def holdout_evaluate(session: RSession, ds: Dataset, m: ModelSpec) -> tuple[AnalysisResult, dict[str, bytes]]:
+    ds = model_view(ds, m)
     if ds.holdout is None:
         raise ValidationInputError("No holdout has been reserved.")
     focal = ":".join(alias(ds.var(v).alias) for v in m.focal) if m.focal else None
@@ -343,6 +348,7 @@ def procedure_cv(session: RSession, ds: Dataset, run: Any, rs: ResampleSpec) -> 
 
 def prediction_uncertainty(session: RSession, ds: Dataset, m: ModelSpec, x: str | None = None,
                            conf: float = 0.95) -> tuple[AnalysisResult, dict[str, bytes]]:
+    ds = model_view(ds, m)
     x = x or (m.focal[0] if m.focal else m.variables[0])
     if x not in m.variables:
         raise ValidationInputError("The x variable must be in the model.")

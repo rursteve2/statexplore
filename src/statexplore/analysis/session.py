@@ -14,7 +14,7 @@ import pandas as pd
 from ..core.dataset import Dataset
 from ..core.schema import AnalysisResult, EngineInfo, Status
 from ..core.variables import Storage
-from ..rbridge.codegen import data_load_script
+from ..rbridge.codegen import data_load_parts
 from ..rbridge.worker import RScriptError, RWorker
 
 ANALYSIS_HEADER = "\n# ---- StatExplore: analysis ----\n"
@@ -27,6 +27,7 @@ class RSession:
         self.workdir.mkdir(parents=True, exist_ok=True)
         (self.workdir / "plots").mkdir(exist_ok=True)
         self._signature: str | None = None
+        self._data_signature: str | None = None
         self._generation = -1
         self._load_script = ""
 
@@ -39,19 +40,39 @@ class RSession:
         payload = json.dumps([ds.source.sha256, id(ds.raw), meta, extra], sort_keys=True, default=str)
         return hashlib.sha256(payload.encode()).hexdigest()
 
+    @staticmethod
+    def _data_signature_of(ds: Dataset) -> str:
+        """What the exported CSV depends on: the data, which columns are exported with which
+        storage and user-missing codes, and the holdout split. Measures and treatments are
+        not part of it (they only change the R-side coding)."""
+        base = [[v.alias, v.storage.value, v.missing_values, v.missing_ranges]
+                for v in ds.variables.values() if not ds.is_derived(v.name)]
+        hold = {k: v for k, v in (ds.holdout.to_dict() if ds.holdout else {}).items() if k != "evaluations"}
+        payload = json.dumps([ds.source.sha256, id(ds.raw), base, hold], sort_keys=True, default=str)
+        return hashlib.sha256(payload.encode()).hexdigest()
+
     def export_csv(self, ds: Dataset, path: Path) -> None:
         export_data(ds, path)
 
     def ensure_data(self, ds: Dataset) -> None:
+        """Make the worker's `dat` match `ds` (including any analysis-specific treatment).
+        Two cached steps: the CSV read (data signature) and the coding (metadata signature),
+        so a treatment change re-codes the data without re-reading it."""
         sig = self._metadata_signature(ds)
-        if sig == self._signature and self.worker.alive and self.worker.generation == self._generation:
+        fresh = self.worker.alive and self.worker.generation == self._generation
+        if sig == self._signature and fresh:
             return
         csv_path = self.workdir / "data.csv"
-        self.export_csv(ds, csv_path)
-        script = data_load_script(ds, csv_path.as_posix())
-        self.worker.run(script, timeout=300)
-        self._signature, self._load_script = sig, script
-        self._generation = self.worker.generation
+        dsig = self._data_signature_of(ds)
+        read, prepare = data_load_parts(ds, csv_path.as_posix())
+        if dsig != self._data_signature or not fresh:
+            self.export_csv(ds, csv_path)
+            self.worker.run(read, timeout=300)
+            self._data_signature = dsig
+            self._generation = self.worker.generation
+        self._signature = None
+        self.worker.run(prepare, timeout=300)
+        self._signature, self._load_script = sig, read + prepare
 
     @property
     def load_script(self) -> str:
@@ -60,6 +81,7 @@ class RSession:
 
     def invalidate(self) -> None:
         self._signature = None
+        self._data_signature = None
 
     def new_plot_path(self) -> Path:
         return self.workdir / "plots" / f"{uuid.uuid4().hex[:12]}.png"

@@ -1,10 +1,12 @@
 """Model Comparison (§14): side-by-side fit statistics; nested tests only where valid."""
 from __future__ import annotations
 
+import json
+
 from ..core.dataset import Dataset
 from ..core.schema import AnalysisResult
 from ..rbridge.codegen import alias, r_str, r_vec
-from .models import ModelCheckError, ModelSpec, check_model
+from .models import ModelCheckError, ModelSpec, check_model, model_view
 from .session import RSession
 
 
@@ -126,11 +128,20 @@ def compare(session: RSession, ds: Dataset, models: list[ModelSpec],
     from .framework import _alias_map, _as_list, _parse_table
     from ..core.schema import Status
 
+    keys = {json.dumps(m.treatments, sort_keys=True, default=str) for m in models}
+    if len(keys) > 1:
+        raise ComparisonError("These models encode some variables differently (analysis-specific treatments). "
+                              "Models compared by AIC or nested tests must use the same data coding; use the "
+                              "Likert sensitivity comparison to contrast treatments.")
+    ds = model_view(ds, models[0] if models else None)
     plot = session.new_plot_path()
     body = build(ds, models, common_sample, plot.as_posix())
     result, raw = session.run(ds, kind="model_comparison", title="Model comparison", body=body,
                               packages=["stats", "ggplot2"], inputs={"models": [m.to_dict() for m in models],
                                                           "common_sample": common_sample})
+    from .measurement import record
+
+    record(result, ds)
     result.missing_data = ("Rows complete on every model's variables (common sample)" if common_sample
                            else "Each model uses its own complete cases")
     if raw is None:

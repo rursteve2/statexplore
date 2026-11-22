@@ -13,7 +13,7 @@ from typing import Any
 from ..core.dataset import Dataset
 from ..core.schema import AnalysisResult, Status
 from ..rbridge.codegen import alias, r_num, r_str, r_vec
-from .models import ModelCheckError, ModelSpec, check_model
+from .models import ModelCheckError, ModelSpec, check_model, model_view
 from .session import RSession
 
 BACKENDS = {"ggplot2": "ggplot2 (default)", "base": "Base R graphics", "flexplot": "flexplot (raw data + its own fit)"}
@@ -42,6 +42,7 @@ class PlotSpec:
 
 
 def validate(ds: Dataset, m: ModelSpec, p: PlotSpec) -> None:
+    ds = model_view(ds, m)
     try:
         check_model(ds, m)
     except ModelCheckError as e:
@@ -87,6 +88,7 @@ def _label_r(v: str, how: str) -> str:
 
 
 def build(ds: Dataset, m: ModelSpec, p: PlotSpec, plot_path: str) -> str:
+    ds = model_view(ds, m)
     a = lambda n: alias(ds.var(n).alias)  # noqa: E731
     used = [a(v) for v in [m.outcome] + m.variables]
     extra = [a(v) for v in m.sample_vars if a(v) not in used]
@@ -336,6 +338,7 @@ def _plot_code(ds: Dataset, m: ModelSpec, p: PlotSpec, path: str, x: str, g: str
 # ---- run + interpretation ---------------------------------------------------------------
 
 def run(session: RSession, ds: Dataset, m: ModelSpec, p: PlotSpec) -> tuple[AnalysisResult, dict[str, bytes]]:
+    ds = model_view(ds, m)
     from ..analysis.framework import _alias_map, _as_list, _parse_table
 
     validate(ds, m, p)
@@ -348,6 +351,9 @@ def run(session: RSession, ds: Dataset, m: ModelSpec, p: PlotSpec) -> tuple[Anal
                               packages=pk, inputs=inputs)
     result.missing_data = ("Shared complete-case sample of the source search" if m.sample_vars
                            else "Complete cases on the model variables")
+    from .measurement import record
+
+    record(result, ds)
     artifacts: dict[str, bytes] = {}
     if raw is None:
         return result, artifacts
@@ -385,6 +391,7 @@ def _n(x: float, d: int = 2) -> str:
 
 def interpret(ds: Dataset, m: ModelSpec, p: PlotSpec, result: AnalysisResult, vals: dict[str, Any]) -> str:
     """Three to six sentences from validated templates (§16.4, §23)."""
+    ds = model_view(ds, m)
     dn = lambda v: ds.var(v).display_name  # noqa: E731
     gauss = m.family == "gaussian"
     y = dn(m.outcome)

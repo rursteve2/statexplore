@@ -45,6 +45,7 @@ class MixedSpec:
     n_trajectories: int = 40
     seed: int = 20261121
     force_nlme: bool = False            # comparisons of residual structures fit every variant in nlme
+    treatments: list[dict[str, Any]] = field(default_factory=list)   # analysis-specific encodings (v1.1)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -58,7 +59,18 @@ class MixedSpec:
         return "lme4"
 
 
+def view(ds: Dataset, s: MixedSpec) -> Dataset:
+    """The dataset as this model sees it (analysis-specific treatments applied)."""
+    from .measurement import TreatmentError, apply_treatments, as_treatments
+
+    try:
+        return apply_treatments(ds, as_treatments(s.treatments))
+    except TreatmentError as e:
+        raise MixedInputError(str(e)) from None
+
+
 def validate(ds: Dataset, s: MixedSpec) -> None:
+    ds = view(ds, s)
     v = ds.var(s.outcome)
     if not (v.measure is Measure.CONTINUOUS and v.storage is Storage.NUMERIC):
         raise MixedInputError("The outcome must be continuous (binary mixed models are not available yet).")
@@ -118,6 +130,7 @@ def _fixed_rhs(ds: Dataset, s: MixedSpec) -> str:
 
 
 def build(ds: Dataset, s: MixedSpec, plot_paths: list[str]) -> str:
+    ds = view(ds, s)
     validate(ds, s)
     a = lambda n: alias(ds.var(n).alias)  # noqa: E731
     y, idv = a(s.outcome), a(s.id)
@@ -419,7 +432,9 @@ def _internal_names(ds: Dataset, s: MixedSpec) -> dict[str, str]:
 
 def run(session: RSession, ds: Dataset, s: MixedSpec) -> tuple[AnalysisResult, dict[str, bytes]]:
     from .framework import _alias_map, _as_list, _parse_table
+    from .measurement import record
 
+    ds = view(ds, s)
     paths = [session.new_plot_path() for _ in range(5)]  # 3 trajectory/diagnostic + random effects + ACF
     body = build(ds, s, [p.as_posix() for p in paths])
     pk = {"lme4": ["lme4", "lmerTest", "performance"], "nlme": ["nlme", "performance"], "mmrm": ["mmrm", "car"]}[s.engine]
@@ -429,6 +444,7 @@ def run(session: RSession, ds: Dataset, s: MixedSpec) -> tuple[AnalysisResult, d
                               inputs={"spec": s.to_dict(), "filters": [f.describe() for f in ds.filters]})
     result.missing_data = "All available observations (complete on the model variables within each row); MAR assumed."
     result.seed = s.seed
+    record(result, ds)
     artifacts: dict[str, bytes] = {}
     if raw is None:
         return result, artifacts
@@ -491,7 +507,9 @@ NESTED = {"time": [(0, 1, False), (0, 2, False), (1, 2, False)], "random": [(0, 
 
 def compare_specs(session: RSession, ds: Dataset, base: MixedSpec, which: str) -> tuple[AnalysisResult, dict]:
     from .framework import _alias_map, _as_list, _parse_table
+    from .measurement import record
 
+    ds = view(ds, base)
     variants = comparison_variants(base, which)
     for _, v in variants:
         validate(ds, v)
@@ -536,6 +554,7 @@ def compare_specs(session: RSession, ds: Dataset, base: MixedSpec, which: str) -
     body = "\n".join(L) + "\n"
     result, raw = session.run(ds, kind="mixed_comparison", title=f"Compare {which} specifications", body=body,
                               packages=["lme4", "lmerTest", "nlme", "mmrm"], inputs={"base": base.to_dict(), "which": which})
+    record(result, ds)
     if raw is None:
         return result, {}
     names = _alias_map(ds)

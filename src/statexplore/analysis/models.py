@@ -42,6 +42,7 @@ class ModelSpec:
     sample_vars: list[str] = field(default_factory=list)   # extra variables for a shared complete-case sample
     focal: Term | None = None            # interaction of interest (for plots/interpretation)
     selected_from: int | None = None     # number of candidates searched if it came from discovery
+    treatments: list[dict[str, Any]] = field(default_factory=list)   # analysis-specific encodings (v1.1)
     id: str = field(default_factory=lambda: uuid.uuid4().hex[:10])
 
     def __post_init__(self) -> None:
@@ -78,7 +79,8 @@ class ModelSpec:
     def copy_edited(self, terms: list[Term], label: str = "") -> "ModelSpec":
         return ModelSpec(outcome=self.outcome, terms=terms, family=self.family,
                          label=label or f"{self.label or 'model'} (edited)", source=f"edited from {self.id}",
-                         sample_vars=list(self.sample_vars), focal=None, selected_from=self.selected_from)
+                         sample_vars=list(self.sample_vars), focal=None, selected_from=self.selected_from,
+                         treatments=[dict(t) for t in self.treatments])
 
     def to_dict(self) -> dict[str, Any]:
         d = asdict(self)
@@ -105,7 +107,19 @@ def from_candidate(run: Any, row: dict[str, Any]) -> ModelSpec:
     sample = [s.outcome] + s.candidates + s.required if s.sample == "shared" else []
     return ModelSpec(outcome=s.outcome, terms=terms, family=run.family, label=f"Candidate #{row['idx']}",
                      source=f"discovery {run.id} #{row['idx']}", sample_vars=sample, focal=focal,
-                     selected_from=run.total)
+                     selected_from=run.total, treatments=[dict(t) for t in getattr(s, "treatments", [])])
+
+
+def model_view(ds: Dataset, m: "ModelSpec | None") -> Dataset:
+    """The dataset as this model sees it (its analysis-specific treatments applied)."""
+    from .measurement import TreatmentError, apply_treatments, as_treatments
+
+    if m is None:
+        return ds
+    try:
+        return apply_treatments(ds, as_treatments(m.treatments))
+    except TreatmentError as e:
+        raise ModelCheckError(str(e)) from None
 
 
 # ---- pre-fit checks (§7.2: reject unidentifiable models with a reason) ---------------------
@@ -141,6 +155,7 @@ def variable_problem(ds: Dataset, name: str, frame=None, allow_many_levels: bool
 
 def check_model(ds: Dataset, m: ModelSpec) -> int:
     """Raise ModelCheckError if the model cannot be fitted; return the complete-case n."""
+    ds = model_view(ds, m)
     names = list(dict.fromkeys([m.outcome] + m.variables + m.sample_vars))
     frame = ds.analysis_frame(names).dropna()
     if len(frame) < 5:

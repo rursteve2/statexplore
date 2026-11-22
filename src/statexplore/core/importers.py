@@ -105,7 +105,7 @@ def import_csv(path: str | os.PathLike, options: CsvOptions) -> Dataset:
         raise ImportError_("No columns found.")
     df = _normalise_frame(df)
     variables = [_infer_meta(i, name, df[name]) for i, name in enumerate(df.columns)]
-    return Dataset(df, variables, _source(path, "csv", {"delimiter": delimiter, "encoding": encoding}))
+    return _annotated(Dataset(df, variables, _source(path, "csv", {"delimiter": delimiter, "encoding": encoding})))
 
 
 # ---- Excel ---------------------------------------------------------------
@@ -129,7 +129,7 @@ def import_xlsx(path: str | os.PathLike, sheet: str | int | None = None) -> Data
         raise ImportError_(f"Sheet {sheet!r} is empty.")
     variables = [_infer_meta(i, name, df[name]) for i, name in enumerate(df.columns)]
     sheet_name = sheet if isinstance(sheet, str) else sheets[sheet]
-    return Dataset(df, variables, _source(path, "xlsx", {"sheet": sheet_name}))
+    return _annotated(Dataset(df, variables, _source(path, "xlsx", {"sheet": sheet_name})))
 
 
 # ---- SPSS ----------------------------------------------------------------
@@ -170,10 +170,18 @@ def import_sav(path: str | os.PathLike) -> Dataset:
             label=labels.get(name) or "", value_labels=vl,
             missing_values=discrete, missing_ranges=ranges, source_measure=declared,
         ))
-    return Dataset(df, variables, _source(path, "sav", {}))
+    return _annotated(Dataset(df, variables, _source(path, "sav", {})))
 
 
 # ---- shared helpers ------------------------------------------------------
+
+def _annotated(ds: Dataset) -> Dataset:
+    """Attach measurement-level suggestions (§4). Metadata only: nothing is reclassified."""
+    from ..analysis.measurement import annotate
+
+    annotate(ds)
+    return ds
+
 
 def _normalise_frame(df: pd.DataFrame) -> pd.DataFrame:
     """Unique string column names; integer columns stored as float (NaN-capable);

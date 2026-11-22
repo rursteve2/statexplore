@@ -22,12 +22,23 @@ PLOT_KINDS = {
     "boxplot": "Boxplot",
     "violin": "Violin plot",
     "scatter": "Scatterplot",
-    "bar": "Bar chart",
+    "bar": "Bar chart (counts)",
+    "bar_percent": "Bar chart (percentages)",
+    "bar_horizontal": "Horizontal bar chart",
+    "bar_clustered": "Clustered bar chart (by group)",
+    "bar_stacked": "Stacked bar chart (by group)",
+    "bar_stacked100": "100% stacked bar chart (by group)",
+    "mosaic": "Mosaic plot (by group)",
+    "ordinal_dist": "Ordinal response distribution",
     "pairs": "Scatterplot matrix (psych::pairs.panels)",
     "correlation": "Correlation heatmap",
     "missing": "Missing data (% per variable)",
 }
 MAX_MATRIX_VARS = 10
+CATEGORICAL_PLOTS = ("bar", "bar_percent", "bar_horizontal", "bar_clustered", "bar_stacked", "bar_stacked100",
+                     "mosaic", "ordinal_dist")
+GROUPED_PLOTS = ("bar_clustered", "bar_stacked", "bar_stacked100", "mosaic")
+MAX_CATEGORIES = 60
 
 
 class AnalysisInputError(ValueError):
@@ -45,6 +56,12 @@ def _check_categorical(ds: Dataset, name: str) -> None:
     v = ds.var(name)
     if not v.is_categorical:
         raise AnalysisInputError(f"{v.display_name} is not categorical (nominal/ordinal).")
+
+
+def _record(result: AnalysisResult, ds: Dataset) -> None:
+    from .measurement import record
+
+    record(result, ds)
 
 
 def _inputs(ds: Dataset, **named: Any) -> dict[str, Any]:
@@ -85,6 +102,7 @@ def describe(session: RSession, ds: Dataset, names: list[str], group: str | None
     body = "\n".join(lines) + "\n"
     result, raw = session.run(ds, kind="describe", title=title, body=body,
                               packages=["psych"], inputs=_inputs(ds, variables=names, group=group))
+    _record(result, ds)
     if raw is None:
         return result
     tbl = raw["table"]
@@ -100,6 +118,178 @@ def describe(session: RSession, ds: Dataset, names: list[str], group: str | None
     result.tables.append(Table(name="describe", columns=DESCRIBE_COLUMNS, rows=rows, row_names=row_names,
                                notes=DESCRIBE_NOTE))
     result.missing_data = "Available-case per variable (psych::describe default)."
+    return result
+
+
+# ---- categorical descriptives (v1.1 §8.2, §8.4) ---------------------------------------------
+
+def category_codes(ds: Dataset, name: str) -> tuple[list[Any], list[str]]:
+    """Codes and labels in the variable's category order (explicit order, else sorted codes)."""
+    from ..rbridge.codegen import level_labels
+
+    levels = ds.levels(name)
+    return levels, level_labels(ds, name, levels)
+
+
+def _ordered_factor_line(ds: Dataset, var: str, target: str) -> str:
+    """Re-level a categorical column to its category order (a reference level may have moved
+    a level first for modelling; tables and plots use the category order)."""
+    _codes, labels = category_codes(ds, var)
+    return f"{target} <- factor(as.character({target}), levels = {r_vec(labels)})"
+
+
+FREQ_R = r"""sx_freq <- function(x, codes, ordinal) {
+  n_total <- length(x); n_miss <- sum(is.na(x)); n_valid <- n_total - n_miss
+  tab <- table(x, useNA = "no")
+  df <- data.frame(code = codes, category = names(tab), n = as.numeric(tab), stringsAsFactors = FALSE)
+  df$percent <- 100 * df$n / n_total
+  df$valid_percent <- if (n_valid > 0) 100 * df$n / n_valid else NA_real_
+  if (ordinal) df$cumulative_valid_percent <- cumsum(df$valid_percent)
+  miss <- df[1, , drop = FALSE]; miss[1, ] <- NA
+  miss$category <- "Missing"; miss$n <- n_miss; miss$percent <- 100 * n_miss / n_total
+  tot <- miss; tot$category <- "Total"; tot$n <- n_total; tot$percent <- 100
+  df <- rbind(df, miss, tot)
+  modes <- if (n_valid > 0) names(tab)[tab == max(tab)] else character()
+  med <- NA_character_
+  if (ordinal && n_valid > 0) med <- names(tab)[which(cumsum(as.numeric(tab)) >= n_valid / 2)[1]]
+  list(table = df, summary = data.frame(n_total = n_total, n_valid = n_valid, n_missing = n_miss,
+       percent_missing = 100 * n_miss / n_total, categories = length(tab), observed_categories = sum(tab > 0),
+       mode = paste(modes, collapse = " / "), median_category = med, stringsAsFactors = FALSE))
+}
+"""
+
+
+def _check_categorical_any(ds: Dataset, names: list[str]) -> None:
+    for n in names:
+        v = ds.var(n)
+        if not v.is_categorical:
+            raise AnalysisInputError(f"{v.display_name} is not categorical. Frequencies are for nominal, ordinal and "
+                                     "binary variables; use Describe for continuous variables.")
+        k = len(ds.levels(n))
+        if k > MAX_CATEGORIES:
+            raise AnalysisInputError(f"{v.display_name} has {k} categories (limit {MAX_CATEGORIES}).")
+
+
+def frequencies(session: RSession, ds: Dataset, names: list[str]) -> AnalysisResult:
+    """Counts, total %, valid %, missing, mode, number of categories (cumulative % and median
+    category for ordinal variables). No means are computed for categorical variables."""
+    if not names:
+        raise AnalysisInputError("Select at least one categorical variable.")
+    _check_categorical_any(ds, names)
+    L = [FREQ_R, "sx_tabs <- list(); sx_sum <- list()"]
+    for n in names:
+        a = alias(ds.var(n).alias)
+        codes, _labels = category_codes(ds, n)
+        ordinal = ds.var(n).measure is Measure.ORDINAL
+        L += [
+            f"sx_x <- dat${a}",
+            _ordered_factor_line(ds, n, "sx_x"),
+            f"sx_f <- sx_freq(sx_x, codes = {r_vec([_code_text(c) for c in codes])}, ordinal = {'TRUE' if ordinal else 'FALSE'})",
+            f"sx_tabs[[length(sx_tabs) + 1]] <- sx_table(paste0(\"Frequencies: \", sx_names[[{r_str(a)}]]), sx_f$table,",
+            f"  notes = {r_str(_freq_note(ds, n))})",
+            f"sx_sum[[length(sx_sum) + 1]] <- cbind(variable = sx_names[[{r_str(a)}]], level = {r_str(ds.var(n).measure.value)}, sx_f$summary)",
+        ]
+    L += [
+        "sx_tabs <- c(list(sx_table(\"Categorical summary\", do.call(rbind, sx_sum),",
+        "  notes = \"Valid % excludes missing values. Mode = most frequent category (ties listed). Median category for ordinal variables only; no means are computed for categorical codes.\")), sx_tabs)",
+        "sx_result <- list(tables = sx_tabs, n_used = nrow(dat))",
+    ]
+    body = "\n".join(L) + "\n"
+    from .framework import _alias_map, _parse_table
+
+    result, raw = session.run(ds, kind="frequencies", title="Frequencies: " + ", ".join(ds.var(n).display_name for n in names),
+                              body=body, packages=[], inputs=_inputs(ds, variables=names))
+    result.missing_data = "Each variable: all rows; missing values counted separately (valid % excludes them)."
+    if raw is not None:
+        names_map = _alias_map(ds)
+        for t in raw.get("tables") or []:
+            result.tables.append(_parse_table(t, names_map))
+        result.n_used = raw.get("n_used")
+    return result
+
+
+def _code_text(c: Any) -> str:
+    return str(int(c)) if isinstance(c, float) and c.is_integer() else str(c)
+
+
+def _freq_note(ds: Dataset, name: str) -> str:
+    v = ds.var(name)
+    order = "approved category order" if v.category_order else "code order"
+    note = f"Categories in {order}; percent = of all rows, valid percent = of non-missing rows."
+    if v.measure is Measure.ORDINAL:
+        note += " Cumulative % follows the category order."
+        if v.coding_direction:
+            note += f" Direction: {v.coding_direction}."
+    return note
+
+
+CROSSTAB_R = r"""sx_xtab <- function(r, c) {
+  tab <- table(r, c)
+  rs <- rowSums(tab); cs <- colSums(tab); N <- sum(tab)
+  keep_r <- rs > 0; keep_c <- cs > 0
+  t2 <- tab[keep_r, keep_c, drop = FALSE]
+  exp <- outer(rowSums(t2), colSums(t2)) / sum(t2)
+  m <- function(x) { d <- as.data.frame.matrix(x); d$Total <- rowSums(x); d }
+  obs <- m(tab); obs <- rbind(obs, Total = c(cs, N))
+  pct <- function(x) as.data.frame.matrix(x)
+  rowp <- pct(100 * prop.table(tab, 1)); rowp$Total <- ifelse(rs > 0, 100, NA)
+  colp <- pct(100 * prop.table(tab, 2)); colp <- rbind(colp, Total = ifelse(cs > 0, 100, NA))
+  totp <- m(100 * tab / N); totp <- rbind(totp, Total = c(100 * cs / N, 100))
+  list(tab = tab, t2 = t2, obs = obs, rowp = rowp, colp = colp, totp = totp, exp = as.data.frame.matrix(exp), N = N)
+}
+"""
+
+
+def crosstab(session: RSession, ds: Dataset, row: str, col: str) -> AnalysisResult:
+    """Contingency table with row/column/total percentages, expected counts, the Pearson
+    chi-square test (no continuity correction) and an exact-test suggestion."""
+    if row == col:
+        raise AnalysisInputError("Choose two different variables.")
+    _check_categorical_any(ds, [row, col])
+    ra, ca = alias(ds.var(row).alias), alias(ds.var(col).alias)
+    L = [
+        CROSSTAB_R,
+        f"sx_d <- dat[stats::complete.cases(dat[, {r_vec([ra, ca])}]), {r_vec([ra, ca])}, drop = FALSE]",
+        _ordered_factor_line(ds, row, f"sx_d${ra}"),
+        _ordered_factor_line(ds, col, f"sx_d${ca}"),
+        f"sx_x <- sx_xtab(sx_d${ra}, sx_d${ca})",
+        "sx_chi <- if (all(dim(sx_x$t2) >= 2)) suppressWarnings(stats::chisq.test(sx_x$t2, correct = FALSE)) else NULL",
+        "sx_minexp <- if (length(sx_x$exp)) min(as.matrix(sx_x$exp)) else NA_real_",
+        "sx_small <- if (length(sx_x$exp)) mean(as.matrix(sx_x$exp) < 5) else NA_real_",
+        "sx_k <- min(dim(sx_x$t2))",
+        "sx_v <- if (!is.null(sx_chi) && sx_k > 1) sqrt(unname(sx_chi$statistic) / (sx_x$N * (sx_k - 1))) else NA_real_",
+        "sx_test <- data.frame(test = \"Pearson chi-square (no continuity correction)\",",
+        "  statistic = if (is.null(sx_chi)) NA_real_ else unname(sx_chi$statistic),",
+        "  df = if (is.null(sx_chi)) NA_real_ else unname(sx_chi$parameter),",
+        "  p = if (is.null(sx_chi)) NA_real_ else sx_chi$p.value, cramers_v = sx_v, n = sx_x$N,",
+        "  min_expected = sx_minexp, percent_cells_expected_below_5 = 100 * sx_small)",
+        "sx_advice <- if (is.null(sx_chi)) \"A test needs at least two observed categories in each variable.\" else",
+        "  if (sx_minexp < 1 || sx_small > 0.2) \"Some expected counts are small (below 5 in more than 20% of cells, or below 1): the chi-square approximation may be poor. Use Fisher's exact test (Analysis Builder > Categorical Association).\" else",
+        "  \"Expected counts are adequate for the chi-square approximation (all >= 1 and at most 20% below 5).\"",
+        "sx_result <- list(tables = list(",
+        f"  sx_table(\"Observed counts\", sx_x$obs, row_names = rownames(sx_x$obs), notes = paste0(\"Rows: \", sx_names[[{r_str(ra)}]], \"; columns: \", sx_names[[{r_str(ca)}]], \".\")),",
+        "  sx_table(\"Row percentages\", sx_x$rowp, row_names = rownames(sx_x$rowp)),",
+        "  sx_table(\"Column percentages\", sx_x$colp, row_names = rownames(sx_x$colp)),",
+        "  sx_table(\"Total percentages\", sx_x$totp, row_names = rownames(sx_x$totp)),",
+        "  sx_table(\"Expected counts (under independence)\", sx_x$exp, row_names = rownames(sx_x$exp),",
+        "    notes = \"Categories with no observations are left out of the expected counts and the test.\"),",
+        "  sx_table(\"Chi-square test of independence\", sx_test, notes = sx_advice)),",
+        "  n_used = sx_x$N, n_excluded = nrow(dat) - sx_x$N, notes = sx_advice)",
+    ]
+    body = "\n".join(L) + "\n"
+    from .framework import _alias_map, _parse_table
+
+    title = f"Cross-tabulation: {ds.var(row).display_name} × {ds.var(col).display_name}"
+    result, raw = session.run(ds, kind="crosstab", title=title, body=body, packages=[],
+                              inputs=_inputs(ds, row=row, col=col))
+    result.missing_data = "Complete cases on both variables."
+    if raw is not None:
+        names_map = _alias_map(ds)
+        for t in raw.get("tables") or []:
+            result.tables.append(_parse_table(t, names_map))
+        result.n_used = raw.get("n_used")
+        result.values["n_excluded"] = raw.get("n_excluded")
+        result.values["notes"] = [str(raw.get("notes") or "")]
     return result
 
 
@@ -131,10 +321,17 @@ def _validate_plot(ds: Dataset, req: PlotRequest) -> None:
         if len(vs) != 2:
             raise AnalysisInputError("Choose two continuous variables (x then y).")
         _check_continuous(ds, vs)
-    elif k == "bar":
+    elif k in CATEGORICAL_PLOTS:
         if len(vs) != 1:
-            raise AnalysisInputError("Choose one categorical variable.")
-        _check_categorical(ds, vs[0])
+            raise AnalysisInputError("Choose one categorical variable (and a grouping variable where needed).")
+        _check_categorical_any(ds, vs)
+        if k in GROUPED_PLOTS and req.group is None:
+            raise AnalysisInputError(f"A {PLOT_KINDS[k].lower()} needs a categorical grouping variable (Group by).")
+        if k == "ordinal_dist" and ds.var(vs[0]).measure is not Measure.ORDINAL:
+            raise AnalysisInputError(f"{ds.var(vs[0]).display_name} is not ordinal. Approve an ordinal level in "
+                                     "Dataset Explorer ▸ Measurement Review, or use a bar chart.")
+        if req.group is not None:
+            _check_categorical_any(ds, [req.group])
     elif k == "missing":
         if not 1 <= len(vs) <= 60:
             raise AnalysisInputError("Choose 1 to 60 variables.")
@@ -174,6 +371,8 @@ def plot_body(ds: Dataset, req: PlotRequest, png_path: str) -> tuple[str, list[s
     else:
         L.append("sx_df <- dat[stats::complete.cases(dat[, sx_used, drop = FALSE]), sx_used, drop = FALSE]")
         L.append("sx_n <- nrow(sx_df)")
+    if req.kind in CATEGORICAL_PLOTS:
+        return _categorical_plot(ds, req, L, a[0], g, title)
     gg = "ggplot2::"
     lab_g = f", {('fill' if req.kind in ('histogram', 'density', 'bar', 'boxplot', 'violin') else 'colour')} = sx_names[[{r_str(g)}]]" if g else ""
     if req.kind == "histogram":
@@ -244,6 +443,80 @@ def plot_body(ds: Dataset, req: PlotRequest, png_path: str) -> tuple[str, list[s
     return "\n".join(L) + "\n", packages
 
 
+def _categorical_plot(ds: Dataset, req: PlotRequest, L: list[str], x: str, g: str | None,
+                      title: str) -> tuple[str, list[str]]:
+    """Categorical plots draw a count table computed in R (returned as "Plotted counts", so the
+    plot can be checked against the frequency table). Categories keep their category order."""
+    gg = "ggplot2::"
+    k = req.kind
+    L.append(_ordered_factor_line(ds, req.variables[0], f"sx_df${x}"))
+    if g:
+        L.append(_ordered_factor_line(ds, req.group, f"sx_df${g}"))
+        L += [
+            f"sx_cnt <- as.data.frame(table(x = sx_df${x}, g = sx_df${g}), responseName = \"n\")",
+            "sx_tot <- stats::ave(sx_cnt$n, sx_cnt$g, FUN = sum)",
+            "sx_cnt$percent <- ifelse(sx_tot > 0, 100 * sx_cnt$n / sx_tot, 0)  # % within each group",
+        ]
+    else:
+        L += [
+            f"sx_cnt <- as.data.frame(table(x = sx_df${x}), responseName = \"n\")",
+            "sx_cnt$percent <- if (sum(sx_cnt$n) > 0) 100 * sx_cnt$n / sum(sx_cnt$n) else 0",
+        ]
+    xl = f"sx_names[[{r_str(x)}]]"
+    gl = f"sx_names[[{r_str(g)}]]" if g else "NULL"
+    pct_lab = "\"% of valid responses\"" + (" # within each group" if g else "")
+    if k == "mosaic":
+        L += [
+            f"sx_tab <- table(sx_df${x}, sx_df${g}, dnn = c({xl}, {gl}))  # categories down the side, groups across",
+            "grDevices::png(sx_plot_file, width = 8.5, height = 6, units = \"in\", res = 110)",
+            f"vcd::mosaic(sx_tab, shade = TRUE, legend = TRUE, main = {r_str(title)},",
+            "             labeling = vcd::labeling_border(rot_labels = c(0, 0, 0, 0), just_labels = c(\"center\", \"center\", \"center\", \"right\"),",
+            "                                             offset_varnames = c(0, 0, 0, 6), offset_labels = c(0, 0, 0, 0.5)),",
+            "             margins = c(3, 3, 3, 9))",
+            "invisible(grDevices::dev.off())",
+        ]
+        packages = ["vcd"]
+    else:
+        fill_g = ", fill = g" if g else ""
+        if k == "bar":
+            L.append(f"sx_plot <- {gg}ggplot(sx_cnt, {gg}aes(x = x, y = n{fill_g})) + {gg}geom_col(position = {gg}position_dodge()) +")
+            L.append(f"  {gg}labs(x = {xl}, y = \"Count\", fill = {gl})")
+        elif k == "bar_percent":
+            L.append(f"sx_plot <- {gg}ggplot(sx_cnt, {gg}aes(x = x, y = percent{fill_g})) + {gg}geom_col(position = {gg}position_dodge()) +")
+            L.append(f"  {gg}labs(x = {xl}, y = {pct_lab.split(' #')[0]}, fill = {gl})")
+        elif k == "bar_horizontal":
+            L.append(f"sx_plot <- {gg}ggplot(sx_cnt, {gg}aes(x = x, y = n{fill_g})) + {gg}geom_col(position = {gg}position_dodge()) +")
+            L.append(f"  {gg}scale_x_discrete(limits = rev(levels(sx_cnt$x))) + {gg}coord_flip() +")
+            L.append(f"  {gg}labs(x = {xl}, y = \"Count\", fill = {gl})")
+        elif k == "bar_clustered":
+            L.append(f"sx_plot <- {gg}ggplot(sx_cnt, {gg}aes(x = x, y = n, fill = g)) + {gg}geom_col(position = {gg}position_dodge()) +")
+            L.append(f"  {gg}labs(x = {xl}, y = \"Count\", fill = {gl})")
+        elif k == "bar_stacked":
+            L.append(f"sx_plot <- {gg}ggplot(sx_cnt, {gg}aes(x = g, y = n, fill = x)) + {gg}geom_col(position = {gg}position_stack(reverse = TRUE)) +")
+            L.append(f"  {gg}labs(x = {gl}, y = \"Count\", fill = {xl})")
+        elif k == "bar_stacked100":
+            L.append(f"sx_plot <- {gg}ggplot(sx_cnt, {gg}aes(x = g, y = percent, fill = x)) + {gg}geom_col(position = {gg}position_stack(reverse = TRUE)) +")
+            L.append(f"  {gg}labs(x = {gl}, y = \"% within group\", fill = {xl})")
+        elif k == "ordinal_dist":
+            if not g:
+                L.append("sx_cnt$g <- factor(\"All\")")
+            L += [
+                f"sx_plot <- {gg}ggplot(sx_cnt, {gg}aes(x = g, y = percent, fill = x)) +",
+                f"  {gg}geom_col(position = {gg}position_stack(reverse = TRUE), colour = \"white\") +",
+                f"  {gg}geom_text({gg}aes(label = ifelse(percent >= 5, sprintf(\"%.0f%%\", percent), \"\")),",
+                f"    position = {gg}position_stack(vjust = 0.5, reverse = TRUE), size = 3) +",
+                f"  {gg}scale_fill_brewer(palette = \"RdYlBu\", direction = 1) + {gg}coord_flip() +",
+                f"  {gg}labs(x = {gl if g else 'NULL'}, y = \"% of valid responses\", fill = {xl}) +",
+                f"  {gg}guides(fill = {gg}guide_legend(reverse = FALSE))",
+            ]
+        L.append(f"sx_plot <- sx_plot + {gg}labs(title = {r_str(title)}, subtitle = paste0(\"n = \", sx_n, \" complete cases\")) + {gg}theme_minimal()")
+        L.append(f"{gg}ggsave(sx_plot_file, sx_plot, width = 7.5, height = 4.8, dpi = 120)")
+        packages = ["ggplot2"]
+    L.append("sx_result <- list(plot = sx_plot_file, n = sx_n, tables = list(sx_table(\"Plotted counts\", sx_cnt,")
+    L.append("  notes = \"Counts and percentages drawn in the plot (percent within group when grouped).\")))")
+    return "\n".join(L) + "\n", packages
+
+
 def _default_title(ds: Dataset, req: PlotRequest) -> str:
     names = [ds.var(n).display_name for n in req.variables]
     base = f"{PLOT_KINDS[req.kind]}: {', '.join(names)}"
@@ -260,6 +533,7 @@ def plot(session: RSession, ds: Dataset, req: PlotRequest) -> tuple[AnalysisResu
         ds, kind="eda_plot", title=req.title or _default_title(ds, req), body=body, packages=packages,
         inputs=_inputs(ds, plot=req.kind, variables=req.variables, group=req.group),
     )
+    _record(result, ds)
     artifacts: dict[str, bytes] = {}
     if raw is not None:
         if not png.is_file():
@@ -270,6 +544,10 @@ def plot(session: RSession, ds: Dataset, req: PlotRequest) -> tuple[AnalysisResu
             artifacts[key] = png.read_bytes()
             result.plots.append(key)
             result.n_used = int(raw["n"])
+            if raw.get("tables"):
+                from .framework import _alias_map, _parse_table
+
+                result.tables = [_parse_table(t, _alias_map(ds)) for t in raw["tables"]]
             result.missing_data = ("All rows" if req.kind == "missing" else
                                    "Pairwise deletion; n used = rows complete on every variable"
                                    if req.kind in ("pairs", "correlation")

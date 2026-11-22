@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QCheckBox, QComboBox, QDoubleSpinBox, QFormLayout, QGroupBox, QHBoxLayout, QLabel, QLineEdit,
     QListWidget, QListWidgetItem, QMessageBox, QPushButton, QScrollArea, QSpinBox, QSplitter,
@@ -11,52 +11,53 @@ from PySide6.QtWidgets import (
 )
 
 from ...analysis.builders import BY_KEY, SPECS
-from ...analysis.framework import KIND_LABELS, AnalysisInputError, AnalysisSpec, eligible, run_analysis, validate
+from ...analysis.framework import (
+    KIND_LABELS, AnalysisInputError, AnalysisSpec, eligible, run_analysis, treatable, validate,
+)
+from ...analysis.measurement import TreatmentError, apply_treatments
 from ...core.schema import AnalysisResult
 from ..result_view import render
 from ..state import AppState
+from ..widgets.treatment_panel import TreatmentPanel
+from ..widgets.variable_selector import VariableSelector
 from .eda import CodeDialog
 
 
 class SlotWidget(QWidget):
-    """Variable chooser for one role: a combo (single) or a checkable list (multiple)."""
+    """Variable chooser for one role: a combo (single) or the standard variable selector (multiple)."""
+    changed = Signal()
 
-    def __init__(self, slot, names: list[tuple[str, str]]):
+    def __init__(self, slot, names: list[tuple[str, str]], ds=None):
         super().__init__()
         self.slot = slot
         lay = QVBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
         self.multi = slot.max > 1
         if self.multi:
-            self.list = QListWidget()
-            self.list.setMaximumHeight(150)
-            for name, display in names:
-                it = QListWidgetItem(display)
-                it.setData(Qt.UserRole, name)
-                it.setFlags(it.flags() | Qt.ItemIsUserCheckable)
-                it.setCheckState(Qt.Unchecked)
-                self.list.addItem(it)
-            lay.addWidget(self.list)
+            self.selector = VariableSelector(max_height=230)
+            labels = dict(names)
+            self.selector.set_variables(ds, [n for n, _ in names], keep=False,
+                                        decorate=lambda n: labels[n][len(ds.var(n).display_name):] if ds else "")
+            self.list = self.selector.list
+            self.selector.changed.connect(self.changed.emit)
+            lay.addWidget(self.selector)
         else:
             self.combo = QComboBox()
             self.combo.addItem("(none)" if slot.min == 0 else "— choose —", None)
             for name, display in names:
                 self.combo.addItem(display, name)
+            self.combo.currentIndexChanged.connect(lambda _i: self.changed.emit())
             lay.addWidget(self.combo)
 
     def values(self) -> list[str]:
         if self.multi:
-            return [self.list.item(i).data(Qt.UserRole) for i in range(self.list.count())
-                    if self.list.item(i).checkState() == Qt.Checked]
+            return self.selector.selected()
         v = self.combo.currentData()
         return [v] if v else []
 
     def apply_filter(self, text: str) -> None:
         if self.multi:
-            t = text.lower()
-            for i in range(self.list.count()):
-                it = self.list.item(i)
-                it.setHidden(bool(t) and t not in it.text().lower() and it.checkState() != Qt.Checked)
+            self.selector.set_filter(text)
 
 
 class AnalysisBuilderPage(QWidget):
@@ -91,7 +92,7 @@ class AnalysisBuilderPage(QWidget):
         mid = QWidget()
         ml = QVBoxLayout(mid)
         self.filter = QLineEdit()
-        self.filter.setPlaceholderText("Filter variable lists…")
+        self.filter.setPlaceholderText("Search all variable lists…")
         self.filter.textChanged.connect(self._apply_filter)
         ml.addWidget(self.filter)
         ml.addWidget(scroll, 1)
@@ -170,11 +171,13 @@ class AnalysisBuilderPage(QWidget):
         desc.setWordWrap(True)
         self.form_layout.addWidget(desc)
         for slot in self.spec.slots:
-            names = [(n, ds.var(n).display_name) for n in eligible(ds, slot)]
+            names = [(n, ds.var(n).display_name + ("  · categorical codes" if slot.kind == "continuous"
+                                                   and treatable(ds, n) else ""))
+                     for n in eligible(ds, slot, offer_treatment=True)]
             box = QGroupBox(f"{slot.label} — {KIND_LABELS[slot.kind]}"
                             + ("" if slot.max == 1 else f" ({slot.min}–{slot.max})"))
             bl = QVBoxLayout(box)
-            w = SlotWidget(slot, names)
+            w = SlotWidget(slot, names, ds)
             if slot.help:
                 h = QLabel(slot.help)
                 h.setWordWrap(True)
@@ -183,7 +186,11 @@ class AnalysisBuilderPage(QWidget):
             bl.addWidget(w)
             self.slot_widgets[slot.key] = w
             self._restore(w, old.get(slot.key, []))
+            w.changed.connect(self._update_treatments)
             self.form_layout.addWidget(box)
+        self.treatment_panel = TreatmentPanel()
+        self.form_layout.addWidget(self.treatment_panel)
+        self._update_treatments()
         if self.spec.options:
             box = QGroupBox("Options")
             form = QFormLayout(box)
@@ -194,12 +201,14 @@ class AnalysisBuilderPage(QWidget):
         for w in self.slot_widgets.values():
             w.apply_filter(self.filter.text())
 
+    def _update_treatments(self) -> None:
+        names = [n for w in self.slot_widgets.values() for n in w.values()]
+        self.treatment_panel.set_variables(self.state.dataset, names)
+
     @staticmethod
     def _restore(w: SlotWidget, values: list[str]) -> None:
         if w.multi:
-            for i in range(w.list.count()):
-                if w.list.item(i).data(Qt.UserRole) in values:
-                    w.list.item(i).setCheckState(Qt.Checked)
+            w.selector.set_selected([v for v in values if v in w.selector.names()])
         elif values:
             idx = w.combo.findData(values[0])
             if idx >= 0:
@@ -247,13 +256,15 @@ class AnalysisBuilderPage(QWidget):
         if ds is None or spec is None:
             return
         vars_, opts = self._values()
+        treatments = self.treatment_panel.treatments()
         try:
-            validate(spec, ds, vars_, opts)
-        except AnalysisInputError as e:
+            validate(spec, apply_treatments(ds, treatments), vars_, opts)
+        except (AnalysisInputError, TreatmentError) as e:
             QMessageBox.information(self, spec.label, str(e))
             return
         self.output.setHtml("<p>Running in R…</p>")
-        self.state.run_r(lambda s: run_analysis(s, ds, spec, vars_, opts), self._done, self._error)
+        self.state.run_r(lambda s: run_analysis(s, ds, spec, vars_, opts, treatments=treatments),
+                         self._done, self._error)
 
     def _done(self, out) -> None:
         result, artifacts = out

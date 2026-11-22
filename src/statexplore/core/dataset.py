@@ -221,9 +221,14 @@ class Dataset:
         values = set(col.unique().tolist())
         values.update(k for k in v.value_labels if not self.is_user_missing_value(v, k))
         try:
-            return sorted(values)
+            out = sorted(values)
         except TypeError:
-            return sorted(values, key=str)
+            out = sorted(values, key=str)
+        if v.category_order:
+            # explicit (user-approved) order first; any other observed codes keep sorted order after it
+            first = [c for c in v.category_order if c in values]
+            out = first + [c for c in out if c not in first]
+        return out
 
     @staticmethod
     def is_user_missing_value(v: VariableMeta, value: Any) -> bool:
@@ -254,6 +259,15 @@ class Dataset:
                 raise DatasetError(f"Display name {new!r} is already used by {clash[0].name!r}.")
         if field_name == "reference_level" and new is not None and new not in self.levels(name):
             raise DatasetError(f"{new!r} is not a level of {name!r}.")
+        if field_name == "measure":
+            if new is Measure.CONTINUOUS and v.storage is Storage.STRING:
+                raise DatasetError(f"{v.display_name} holds text values; text cannot be continuous.")
+            if new is Measure.BINARY and self.analysis_column(name).dropna().nunique() > 2:
+                raise DatasetError(f"{v.display_name} has more than two categories; it cannot be binary.")
+        if field_name == "category_order" and new is not None:
+            new = list(new)
+            if sorted(map(str, new)) != sorted(map(str, self.levels(name))):
+                raise DatasetError("The category order must list every category exactly once.")
         old = getattr(v, field_name)
         if old == new:
             return

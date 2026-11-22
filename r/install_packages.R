@@ -1,14 +1,17 @@
 # Installs the R packages StatExplore needs into the project-local library (r/library).
 # Usage (from the project root):  Rscript r/install_packages.R [phase]
 args <- commandArgs(trailingOnly = TRUE)
-phase <- if (length(args)) as.integer(args[[1]]) else 5L
+phase <- if (length(args)) as.integer(args[[1]]) else 11L
 
 packages <- list(
   `1` = c("jsonlite", "psych", "ggplot2"),
   `2` = c("car", "afex", "emmeans", "effectsize", "ppcor", "lmtest", "detectseparation"),
   `3` = character(),
   `4` = character(),
-  `5` = c("lme4", "lmerTest", "nlme", "mmrm", "performance")
+  `5` = c("lme4", "lmerTest", "nlme", "mmrm", "performance"),
+  `6` = character(), `7` = character(), `8` = character(), `9` = character(), `10` = character(),
+  # v1.1: ordinal/multinomial models, GEE, survey analysis, mosaic plots, Kenward-Roger df
+  `11` = c("ordinal", "nnet", "mclogit", "geepack", "survey", "vcd", "pbkrtest")
   # Optional, GitHub-only: remotes::install_github("dustinfife/flexplot", lib = "r/library")
 )
 wanted <- unique(unlist(packages[as.character(seq_len(phase))]))

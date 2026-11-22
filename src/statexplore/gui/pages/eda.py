@@ -1,10 +1,12 @@
 """Exploratory Data Analysis workspace: psych descriptives and basic plots."""
 from __future__ import annotations
 
+import html
+
 from PySide6.QtCore import QSortFilterProxyModel, Qt
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
-    QAbstractItemView, QComboBox, QDialog, QDialogButtonBox, QFormLayout, QHBoxLayout, QLabel,
+    QAbstractItemView, QComboBox, QDialog, QDialogButtonBox, QFormLayout, QGridLayout, QHBoxLayout, QLabel,
     QLineEdit, QListWidget, QListWidgetItem, QMessageBox, QPlainTextEdit, QPushButton, QTextBrowser,
     QSplitter, QTableView, QTabWidget, QVBoxLayout, QWidget,
 )
@@ -12,12 +14,15 @@ from PySide6.QtWidgets import (
 from ...analysis import eda
 from ...analysis.builders import BY_KEY
 from ...analysis.framework import AnalysisInputError, run_analysis, validate
+from ...analysis.measurement import TreatmentError, apply_treatments
 from ...core.overview import suggest_plots
 from ...core.schema import AnalysisResult, Status
-from ...core.variables import Role, Storage
+from ...core.variables import Measure, Role, Storage
 from ..models import FrameModel, table_to_frame
 from ..result_view import render
 from ..state import AppState
+from ..widgets.treatment_panel import TreatmentPanel
+from ..widgets.variable_selector import VariableSelector
 
 
 class CodeDialog(QDialog):
@@ -76,20 +81,14 @@ class EdaPage(QWidget):
         super().__init__()
         self.state = state
         self.last_result: AnalysisResult | None = None
-        self._order: list[str] = []
 
         # left: controls
         left = QWidget()
         ll = QVBoxLayout(left)
-        self.filter = QLineEdit()
-        self.filter.setPlaceholderText("Filter variables…")
-        self.filter.textChanged.connect(self._filter_vars)
-        self.vars = QListWidget()
-        self.vars.setSelectionMode(QAbstractItemView.ExtendedSelection)
-        self.vars.itemSelectionChanged.connect(self._update_suggestion)
-        ll.addWidget(QLabel("Variables (select in order: x, then y)"))
-        ll.addWidget(self.filter)
-        ll.addWidget(self.vars, 1)
+        ll.addWidget(QLabel("Variables (check in order: x, then y)"))
+        self.selector = VariableSelector()
+        self.selector.changed.connect(self._selection_changed)
+        ll.addWidget(self.selector, 1)
         form = QFormLayout()
         self.group = QComboBox()
         self.kind = QComboBox()
@@ -97,28 +96,42 @@ class EdaPage(QWidget):
             self.kind.addItem(label, key)
         self.title_edit = QLineEdit()
         self.title_edit.setPlaceholderText("(automatic)")
+        self.method = QComboBox()
+        self.method.addItem("Pearson", "pearson")
+        self.method.addItem("Spearman (ordinal allowed)", "spearman")
         form.addRow("Group by", self.group)
         form.addRow("Plot type", self.kind)
         form.addRow("Title", self.title_edit)
+        form.addRow("Correlation", self.method)
         ll.addLayout(form)
+        self.treatment_panel = TreatmentPanel()
+        ll.addWidget(self.treatment_panel)
         self.suggestion = QLabel()
         self.suggestion.setWordWrap(True)
         self.suggestion.setObjectName("hint")
         ll.addWidget(self.suggestion)
-        row = QHBoxLayout()
+        grid = QGridLayout()
         self.plot_btn = QPushButton("Draw plot")
         self.plot_btn.clicked.connect(self._plot)
-        self.desc_btn = QPushButton("Describe (psych)")
+        self.desc_btn = QPushButton("Describe")
+        self.desc_btn.setToolTip("Continuous: psych::describe. Categorical: frequency tables (no means).")
         self.desc_btn.clicked.connect(self._describe)
+        self.freq_btn = QPushButton("Frequencies")
+        self.freq_btn.setToolTip("Counts, %, valid %, missing, mode and number of categories")
+        self.freq_btn.clicked.connect(self._frequencies)
+        self.xtab_btn = QPushButton("Cross-tabulation")
+        self.xtab_btn.setToolTip("Two categorical variables (or one + Group by): counts, row/column/total %, "
+                                 "expected counts, chi-square with exact-test advice")
+        self.xtab_btn.clicked.connect(self._crosstab)
         self.corr_btn = QPushButton("Correlation tests")
-        self.corr_btn.setToolTip("psych::corr.test on the selected continuous variables: r, n, raw and Holm-adjusted p")
+        self.corr_btn.setToolTip("psych::corr.test: r, n, raw and Holm-adjusted p (Spearman ranks ordinal categories)")
         self.corr_btn.clicked.connect(self._corr_tests)
         self.code_btn = QPushButton("View Code")
         self.code_btn.setEnabled(False)
         self.code_btn.clicked.connect(self._view_code)
-        for b in (self.plot_btn, self.desc_btn, self.corr_btn, self.code_btn):
-            row.addWidget(b)
-        ll.addLayout(row)
+        for i, b in enumerate((self.plot_btn, self.desc_btn, self.freq_btn, self.xtab_btn, self.corr_btn, self.code_btn)):
+            grid.addWidget(b, i // 3, i % 3)
+        ll.addLayout(grid)
 
         # right: output
         self.out_tabs = QTabWidget()
@@ -139,8 +152,9 @@ class EdaPage(QWidget):
         dl.addWidget(dv)
         dl.addWidget(self.desc_note)
         self.out_tabs.addTab(dw, "Descriptives")
-        self.corr_view = QTextBrowser()
-        self.out_tabs.addTab(self.corr_view, "Correlation tests")
+        self.result_view = QTextBrowser()
+        self.out_tabs.addTab(self.result_view, "Tables && tests")
+        self.corr_view = self.result_view
         self.messages = QLabel()
         self.messages.setWordWrap(True)
         self.messages.setTextInteractionFlags(Qt.TextSelectableByMouse)
@@ -152,7 +166,7 @@ class EdaPage(QWidget):
         split = QSplitter()
         split.addWidget(left)
         split.addWidget(right)
-        split.setSizes([320, 800])
+        split.setSizes([360, 800])
         lay = QVBoxLayout(self)
         t = QLabel("Exploratory Data Analysis")
         t.setObjectName("pageTitle")
@@ -168,37 +182,29 @@ class EdaPage(QWidget):
     # ---- variable lists ---------------------------------------------
     def reload(self) -> None:
         ds = self.state.dataset
-        selected = set(self._selected())
-        self.vars.clear()
         self.group.clear()
         self.group.addItem("(none)", None)
         if ds is None:
+            self.selector.set_variables(None, [], keep=False)
             return
+        names = [v.name for v in ds.variables.values()
+                 if v.role is not Role.EXCLUDED and v.storage is not Storage.DATETIME]
+        self.selector.set_variables(ds, names, decorate=lambda n: f"  ·  {ds.var(n).measure.value}")
         for v in ds.variables.values():
-            if v.role is Role.EXCLUDED or v.storage is Storage.DATETIME:
-                continue
-            item = QListWidgetItem(f"{v.display_name}  ·  {v.measure.value}")
-            item.setData(Qt.UserRole, v.name)
-            item.setToolTip(v.label or v.name)
-            self.vars.addItem(item)
-            item.setSelected(v.name in selected)
             if v.is_categorical and len(ds.levels(v.name)) <= 30:
                 self.group.addItem(v.display_name, v.name)
-        self._filter_vars(self.filter.text())
-
-    def _filter_vars(self, text: str) -> None:
-        t = text.lower()
-        for i in range(self.vars.count()):
-            it = self.vars.item(i)
-            it.setHidden(bool(t) and t not in it.text().lower() and t not in it.toolTip().lower())
 
     def _selected(self) -> list[str]:
-        """Selected variables in the order the user picked them (x, then y)."""
-        current = {it.data(Qt.UserRole) for it in self.vars.selectedItems()}
-        kept = [n for n in self._order if n in current]
-        added = [it.data(Qt.UserRole) for it in self.vars.selectedItems() if it.data(Qt.UserRole) not in kept]
-        self._order = kept + added
-        return list(self._order)
+        """Checked variables in the order the user checked them (x, then y)."""
+        return self.selector.selected()
+
+    def _view(self):
+        """The dataset with this page's "treat as continuous" choices applied (analysis only)."""
+        return apply_treatments(self.state.dataset, self.treatment_panel.treatments())
+
+    def _selection_changed(self) -> None:
+        self.treatment_panel.set_variables(self.state.dataset, self._selected())
+        self._update_suggestion()
 
     def _update_suggestion(self) -> None:
         ds = self.state.dataset
@@ -206,11 +212,18 @@ class EdaPage(QWidget):
         if ds is None or not names:
             self.suggestion.setText("")
             return
-        measures = ["continuous" if not ds.var(n).is_categorical else "categorical" for n in names]
+        try:
+            view = self._view()
+        except TreatmentError:
+            view = ds
+        measures = ["continuous" if not view.var(n).is_categorical else "categorical" for n in names]
         kinds = suggest_plots(measures)
         if len(names) == 2 and measures.count("categorical") == 1 and kinds:
             self.suggestion.setText("Suggested: boxplot or violin — select the continuous variable and "
                                     "set the categorical one as 'Group by'.")
+        elif len(names) == 2 and measures.count("categorical") == 2:
+            self.suggestion.setText("Two categorical variables: Cross-tabulation, or a clustered / stacked / mosaic "
+                                    "plot of the first with the second as 'Group by'.")
         elif kinds:
             self.suggestion.setText("Suggested: " + ", ".join(eda.PLOT_KINDS[k] for k in kinds))
             idx = self.kind.findData(kinds[0])
@@ -221,13 +234,20 @@ class EdaPage(QWidget):
 
     # ---- actions ----------------------------------------------------
     def _busy(self, busy: bool) -> None:
-        for b in (self.plot_btn, self.desc_btn, self.corr_btn):
+        for b in (self.plot_btn, self.desc_btn, self.freq_btn, self.xtab_btn, self.corr_btn):
             b.setEnabled(not busy)
         if busy:
             self.messages.setText("Running in R…")
 
+    def _checked_view(self, title: str):
+        try:
+            return self._view()
+        except TreatmentError as e:
+            QMessageBox.information(self, title, str(e))
+            return None
+
     def _plot(self) -> None:
-        ds = self.state.dataset
+        ds = self.state.dataset and self._checked_view("Plot")
         if ds is None:
             return
         names = self._selected()
@@ -239,6 +259,9 @@ class EdaPage(QWidget):
             if len(cats) == 1:
                 req.group = cats[0]
                 req.variables = [n for n in names if n != cats[0]]
+        # Grouped categorical plot of two checked categorical variables: the second is the group.
+        if req.kind in eda.CATEGORICAL_PLOTS and len(names) == 2 and req.group is None:
+            req.variables, req.group = names[:1], names[1]
         try:
             eda._validate_plot(ds, req)
         except eda.AnalysisInputError as e:
@@ -257,35 +280,75 @@ class EdaPage(QWidget):
             self.out_tabs.setCurrentIndex(0)
 
     def _describe(self) -> None:
-        ds = self.state.dataset
+        ds = self.state.dataset and self._checked_view("Describe")
         if ds is None:
             return
         names = [n for n in self._selected() if not ds.var(n).is_categorical]
+        cats = [n for n in self._selected() if ds.var(n).is_categorical]
         group = self.group.currentData()
-        if not names:
-            QMessageBox.information(self, "Describe", "Select at least one continuous variable.")
+        if not names and not cats:
+            QMessageBox.information(self, "Describe", "Check at least one variable.")
             return
-        self.state.run_r(lambda s: eda.describe(s, ds, names, group), self._describe_done, self._error)
+        if names:
+            self.state.run_r(lambda s: eda.describe(s, ds, names, group), self._describe_done, self._error)
+        if cats:
+            self.state.run_r(lambda s: eda.frequencies(s, ds, cats), self._tables_done, self._error)
+
+    def _frequencies(self) -> None:
+        ds = self.state.dataset and self._checked_view("Frequencies")
+        if ds is None:
+            return
+        cats = [n for n in self._selected() if ds.var(n).is_categorical]
+        if not cats:
+            QMessageBox.information(self, "Frequencies", "Check at least one categorical (nominal, ordinal or "
+                                    "binary) variable.")
+            return
+        self.state.run_r(lambda s: eda.frequencies(s, ds, cats), self._tables_done, self._error)
+
+    def _crosstab(self) -> None:
+        ds = self.state.dataset and self._checked_view("Cross-tabulation")
+        if ds is None:
+            return
+        cats = [n for n in self._selected() if ds.var(n).is_categorical]
+        if len(cats) == 1 and self.group.currentData() and self.group.currentData() != cats[0]:
+            cats.append(self.group.currentData())
+        if len(cats) != 2:
+            QMessageBox.information(self, "Cross-tabulation", "Check exactly two categorical variables (rows, then "
+                                    "columns), or one plus a 'Group by' variable.")
+            return
+        self.state.run_r(lambda s: eda.crosstab(s, ds, cats[0], cats[1]), self._tables_done, self._error)
 
     def _corr_tests(self) -> None:
-        ds = self.state.dataset
+        ds = self.state.dataset and self._checked_view("Correlation tests")
         if ds is None:
             return
-        names = [n for n in self._selected() if not ds.var(n).is_categorical]
+        method = self.method.currentData()
+        names = [n for n in self._selected() if not ds.var(n).is_categorical
+                 or (method == "spearman" and ds.var(n).measure is Measure.ORDINAL)
+                 or (method == "pearson" and ds.var(n).measure is Measure.ORDINAL)]
         spec = BY_KEY["cor_matrix"]
+        opts = {"method": method}
+        treatments = self.treatment_panel.treatments()
         try:
-            validate(spec, ds, {"variables": names}, {})
+            validate(spec, ds, {"variables": names}, opts)
         except AnalysisInputError as e:
             QMessageBox.information(self, "Correlation tests", str(e))
             return
-        self.state.run_r(lambda s: run_analysis(s, ds, spec, {"variables": names}, {}),
+        base = self.state.dataset
+        self.state.run_r(lambda s: run_analysis(s, base, spec, {"variables": names}, opts, treatments=treatments),
                          self._corr_done, self._error)
 
     def _corr_done(self, out) -> None:
         result, artifacts = out
         self.state.add_result(result, artifacts)
         self._show_result(result)
-        render(self.corr_view, result, artifacts)
+        render(self.result_view, result, artifacts)
+        self.out_tabs.setCurrentIndex(2)
+
+    def _tables_done(self, result: AnalysisResult) -> None:
+        self.state.add_result(result, {})
+        self._show_result(result)
+        render(self.result_view, result, {})
         self.out_tabs.setCurrentIndex(2)
 
     def _describe_done(self, result: AnalysisResult) -> None:
@@ -300,14 +363,16 @@ class EdaPage(QWidget):
     def _show_result(self, result: AnalysisResult) -> None:
         self.last_result = result
         self.code_btn.setEnabled(True)
-        parts = [f"<b>{result.title}</b> — status: {result.status.value}"]
+        parts = [f"<b>{html.escape(result.title)}</b> — status: {result.status.value}"]
         if result.n_used is not None:
-            parts.append(f"n used = {result.n_used:,} ({result.missing_data})")
+            parts.append(f"n used = {result.n_used:,} ({html.escape(result.missing_data)})")
         elif result.missing_data:
-            parts.append(result.missing_data)
-        parts.append(f"engine: {result.engine.version}")
+            parts.append(html.escape(result.missing_data))
+        parts.append(f"engine: {html.escape(result.engine.version)}")
+        for t in result.inputs.get("treatments") or []:
+            parts.append(f"<br><i>{html.escape(t.get('description', ''))}</i>")
         color = "#c62828" if result.status is Status.FAILED else "#8d6e00"
-        msgs = "".join(f"<br><span style='color:{color}'>{m}</span>" for m in result.messages)
+        msgs = "".join(f"<br><span style='color:{color}'>{html.escape(m)}</span>" for m in result.messages)
         self.messages.setText(" · ".join(parts) + msgs)
 
     def _view_code(self) -> None:
@@ -315,5 +380,5 @@ class EdaPage(QWidget):
             CodeDialog(self.last_result, self).exec()
 
     def _error(self, message: str) -> None:
-        self.messages.setText(f"<span style='color:#c62828'>{message}</span>")
+        self.messages.setText(f"<span style='color:#c62828'>{html.escape(message)}</span>")
         QMessageBox.warning(self, "R engine", message)

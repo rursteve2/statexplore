@@ -209,3 +209,45 @@ User hit: `Interaction plot: HHIDPN ~ HHID * PN + HHID * ADVTR_MATCHED * …` �
   3. Old stdout reader thread pushed its EOF into the restarted worker's queue → false "worker exited". Each process now has its own queue.
 - UI fixes: plot scales to panel; correlation subtitle no longer implies a single n for pairwise rs.
 - Data note (HRS): `R_CESDM` = number of *missing* CES-D items, not a depression score; no CES-D total in file (needs derived variable, Phase 2). Activity frequency vars are declared nominal in the .sav but are ordinal; `R_COMP` code 7 "Don't do" isn't declared user-missing.
+
+---
+
+# v1.1 Upgrade (spec: `E:\Downloads\StatExplore_v1.1_Upgrade_Prompt.pdf`, started 2026-11-21)
+
+Baseline: local repo at tag-equivalent commit `eb80db6` (= GitHub v1.0.0; no source zip supplied, so the repo is the baseline).
+The supplied `hrs_least_missing_1000 (1).sav` is byte-identical to the v1.0 fixture.
+
+## Design decisions (v1.1)
+| # | Decision | Why |
+|---|----------|-----|
+| E1 | **Analysis treatments = a dataset *view*.** `measurement.apply_treatments(ds, treatments)` returns a shallow Dataset copy whose `VariableMeta` objects carry the *effective* measure for that analysis. Raw data, source metadata and project metadata are untouched. | Every existing validator, builder and the R load script already key off `measure`; the view makes them honour the treatment with no per-module special cases. |
+| E2 | The R session signature already hashes variable metadata → a treatment change rebuilds R preparation state automatically. Split into two cached steps: CSV read (data signature) and coding (metadata signature). | §6.3 cache invalidation, without re-reading the CSV on every treatment switch. |
+| E3 | Continuous treatment uses the stored numeric codes (no `factor()` line is emitted), never factor indexes. Load script lists every override as a comment block. | §5.1, §6.3, Test D. |
+| E4 | Ordinal predictors keep treatment (dummy) contrasts as in v1.0; ordered factors are built only for ordinal *outcomes* (clm/clmm). | v1.0 results must not silently change (Test P). |
+| E5 | Project measurement level stays in `VariableMeta.measure` (user-approved); `source_measure` is the file's level; new fields: `suggested_measure`, `suggestion_reasons`, `measure_status`, `category_order`, `coding_direction`. New `Measure.BINARY`. Old projects load with defaults. | §3.2, §18. |
+| E6 | Continuous treatment of a project-*nominal* variable needs a second explicit confirmation ("codes are meaningful numbers"); strings can never be continuous. | §6 nominal rule, Test A. |
+| E7 | R Console runs in its own Rscript process(es) (`console_worker.R`), never the analysis workers. Clean mode = fresh process per run. | §14.3/14.4 isolation. |
+| E8 | User R packages go to `%LOCALAPPDATA%\StatExplore\R\user-library`; console libPaths = core library first, then user library; installing a package that shadows a core package is refused. Install from local .zip only (`repos = NULL`). | §15.2 core preservation, offline. |
+| E9 | Multinomial mixed models: `mclogit::mblogit` (PQL), labelled approximate. GEE: `geepack::geeglm`. KR df: `lmerTest` + `pbkrtest`. | §11. |
+| E10 | Packages added: ordinal, nnet, mclogit, geepack, survey, vcd, pbkrtest. Not added (base R suffices / not implemented): janitor, srvyr, gtsummary, marginaleffects, interactions, sandwich, clubSandwich. | §16: only ship what is implemented and tested. |
+
+## Phases
+- [x] P1 Measurement architecture: metadata fields + suggestions, approval, treatments view, codegen, R cache, project serialization; Measurement Review panel
+- [x] P2 Variable selector widget (Analysis Builder, EDA; Discovery/Mixed/Survey in their phases) + categorical EDA (frequencies, crosstabs, 8 categorical plots, Spearman/Pearson rules)
+- [ ] P3 Categorical Association analyses (χ², Fisher, OR/RR/RD, phi, Cramér's V, reference controls)
+- [ ] P4 Discovery: explicit outcome family (gaussian/binomial/ordinal/multinomial), treatments, LR focal tests
+- [ ] P5 Mixed: glmer, clmm, mblogit, GEE, lmerTest inference setting
+- [ ] P6 Longitudinal preflight + Survey Analysis page
+- [ ] P7 R Console
+- [ ] P8 R Package Manager
+- [ ] P9 Research extras (Likert sensitivity, teaching finder), migrations, docs, packaging, release audit
+
+### Baseline (2026-11-21): 152/152 v1.0 tests pass.
+
+### Review (P1 + P2)
+- 187/187 tests pass (152 baseline + 35 new: test_measurement 12, test_eda_categorical 20, test_gui_v11 3).
+- New: `analysis/measurement.py` (suggestion rules, approval, `VariableTreatment`, `apply_treatments` view), `gui/widgets/{treatment_panel,variable_selector}.py`, `gui/pages/measurement_review.py`.
+- Changed: `core/variables.py` (fields, Measure.BINARY), `core/dataset.py` (category order, measure guards), `core/importers.py` (annotate), `rbridge/codegen.py` (read/prepare split + treatment comments), `analysis/session.py` (two-level cache), framework/models/mixed/teaching/validation/comparison (treatments), builders (rankable slots, Pearson rule), eda (frequencies, crosstab, categorical plots), EDA + Analysis Builder + Dataset Explorer pages.
+- Numerical checks: R_LTACTX/R_SHLT continuous-treatment regressions == numpy OLS on raw codes (1e-8); frequencies == pandas; crosstab chi²/expected/Cramér's V == scipy (1e-10); Spearman on ordinal == scipy; reversed category order flips rho; recorded script re-run == result (1e-12).
+- HRS suggestion audit: 25 activity/health/satisfaction/agreement/difficulty/education scales flagged ordinal (with direction); special codes called out (R_COMP 7 "Don't do", R_DRINKN 99 "All day"); identifiers kept nominal; RAEDYRS/RAMEDUC/RAFEDUC flagged continuous.
+- Deviation: ordinal predictors keep dummy coding (E4) so v1.0 results do not change.
