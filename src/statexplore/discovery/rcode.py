@@ -21,10 +21,17 @@ sx_discover_one <- function(full, reduced, focal, vars, focal_vars) {
   for (v in vars) if (is.factor(d[[v]]) && nlevels(d[[v]]) < 2)
     return(invalid(paste0(sx_names[[v]], " has fewer than 2 levels in the analysed rows")))
   if (sx_disc_family == "binomial" && length(unique(d$sx_y)) < 2) return(invalid("outcome has one value"))
+  K <- if (is.factor(d$sx_y)) nlevels(d$sx_y) else NA_integer_
+  if (sx_disc_family %in% c("ordinal", "multinomial") && K < 3)
+    return(invalid(sprintf("only %d outcome categories observed in the analysed rows", K)))
+  if (sx_disc_family == "multinomial" && !(sx_disc_ref %in% levels(d$sx_y)))
+    return(invalid("the reference outcome category is not observed in the analysed rows"))
   f1 <- stats::reformulate(full, response = "sx_y")
   f0 <- stats::reformulate(reduced, response = "sx_y")
   X <- stats::model.matrix(f1, d)
-  k <- ncol(X); res$n_params <- k
+  # parameters: lm/glm = columns of X; ordinal = slopes + (K - 1) thresholds; multinomial = (K - 1) x columns
+  k <- switch(sx_disc_family, ordinal = ncol(X) - 1 + (K - 1), multinomial = (K - 1) * ncol(X), ncol(X))
+  res$n_params <- k
   if (k > sx_disc_max_params) return(invalid(sprintf("%d parameters exceed the limit of %d", k, sx_disc_max_params)))
   if (n - k < 1) return(invalid("no residual degrees of freedom"))
   fv <- focal_vars[vapply(d[focal_vars], is.factor, logical(1))]
@@ -34,7 +41,7 @@ sx_discover_one <- function(full, reduced, focal, vars, focal_vars) {
     if (min(cells) < 5) res$flags <- c(res$flags, sprintf("sparse focal cells (min n = %d)", min(cells)))
   }
   # (checked after empty cells, which are the more specific explanation)
-  if (qr(X)$rank < k) return(invalid("design matrix is rank-deficient (not identifiable)"))
+  if (qr(X)$rank < ncol(X)) return(invalid("design matrix is rank-deficient (not identifiable)"))
   cv <- vars[vapply(d[vars], is.numeric, logical(1))]
   if (length(cv) >= 2) {
     r <- abs(stats::cor(d[cv])); diag(r) <- 0
@@ -67,6 +74,32 @@ sx_discover_one <- function(full, reduced, focal, vars, focal_vars) {
     res$partial_eta2 <- ss / (ss + a$RSS[2])
     res$r2 <- summary(m1)$r.squared
     crit <- stats::qt(1 - (1 - sx_disc_conf) / 2, m1$df.residual)
+  } else if (sx_disc_family == "ordinal") {
+    m1 <- ordinal::clm(f1, data = d, link = "logit"); m0 <- ordinal::clm(f0, data = d, link = "logit")
+    for (m in list(m1, m0)) if (!identical(as.integer(m$convergence$code), 0L))
+      res$flags <- c(res$flags, paste("did not converge:", paste(m$convergence$messages, collapse = " ")))
+    lr <- 2 * (as.numeric(stats::logLik(m1)) - as.numeric(stats::logLik(m0)))
+    res$df1 <- attr(stats::logLik(m1), "df") - attr(stats::logLik(m0), "df")
+    mn <- ordinal::clm(sx_y ~ 1, data = d, link = "logit")
+    res$statistic <- lr; res$p <- stats::pchisq(max(lr, 0), res$df1, lower.tail = FALSE)
+    res$effect <- lr / (-2 * as.numeric(stats::logLik(mn)))              # delta McFadden pseudo-R2
+    res$r2 <- 1 - as.numeric(stats::logLik(m1)) / as.numeric(stats::logLik(mn))
+    small <- min(table(d$sx_y))
+    if (small < 10) res$flags <- c(res$flags, sprintf("smallest outcome category has %d rows", small))
+    crit <- stats::qnorm(1 - (1 - sx_disc_conf) / 2)
+  } else if (sx_disc_family == "multinomial") {
+    fit <- function(f) nnet::multinom(f, data = d, trace = FALSE, maxit = 1000, model = FALSE)
+    m1 <- fit(f1); m0 <- fit(f0); mn <- fit(sx_y ~ 1)
+    if (m1$convergence != 0 || m0$convergence != 0) res$flags <- c(res$flags, "did not converge (iteration limit)")
+    lr <- m0$deviance - m1$deviance
+    if (lr < -1e-6) res$flags <- c(res$flags, "optimizer: the reduced model fitted better than the full model")
+    res$df1 <- m1$edf - m0$edf
+    res$statistic <- lr; res$p <- stats::pchisq(max(lr, 0), res$df1, lower.tail = FALSE)
+    res$effect <- lr / mn$deviance                                       # delta McFadden pseudo-R2
+    res$r2 <- 1 - m1$deviance / mn$deviance
+    small <- min(table(d$sx_y))
+    if (small < 10) res$flags <- c(res$flags, sprintf("smallest outcome category has %d rows", small))
+    crit <- stats::qnorm(1 - (1 - sx_disc_conf) / 2)
   } else {
     m1 <- stats::glm(f1, data = d, family = stats::binomial())
     m0 <- stats::glm(f0, data = d, family = stats::binomial())
@@ -83,7 +116,7 @@ sx_discover_one <- function(full, reduced, focal, vars, focal_vars) {
     crit <- stats::qnorm(1 - (1 - sx_disc_conf) / 2)
   }
   res$aic <- stats::AIC(m1); res$bic <- stats::BIC(m1)
-  if (isTRUE(res$df1 == 1)) {
+  if (isTRUE(res$df1 == 1) && sx_disc_family != "multinomial") {
     col <- colnames(X)[attr(X, "assign") == match(focal, attr(stats::terms(f1), "term.labels"))]
     ctab <- if (sx_disc_family == "lmm") co_tab(m1) else stats::coef(summary(m1))
     if (length(col) == 1 && col %in% rownames(ctab)) {
@@ -114,6 +147,10 @@ sx_discover_batch <- function(batch) lapply(batch, function(s) {
 
 
 def setup_script(ds: Dataset, s: SearchSettings, family: str) -> str:
+    from ..analysis.eda import category_codes
+    from .space import binomial_levels, view
+
+    ds = view(ds, s)
     a = lambda n: alias(ds.var(n).alias)  # noqa: E731
     vars_ = [a(n) for n in [s.outcome] + s.candidates + s.required + ([s.participant] if s.participant else [])]
     y = a(s.outcome)
@@ -130,13 +167,28 @@ def setup_script(ds: Dataset, s: SearchSettings, family: str) -> str:
     ]
     if s.participant:
         lines.append(f"sx_dd$sx_gid <- factor(sx_dd${a(s.participant)})  # participant (random intercept)")
+    v = ds.var(s.outcome)
     if family in ("gaussian", "lmm"):
         lines.append(f"sx_dd$sx_y <- sx_dd${y}")
+    elif family == "binomial":
+        event, ref = binomial_levels(ds, s)
+        if v.is_categorical:
+            ev, rf = ds.level_label(s.outcome, event), ds.level_label(s.outcome, ref)
+            lines.append(f"sx_dd$sx_y <- as.integer(as.character(sx_dd${y}) == {r_str(ev)})  "
+                         f"# event = {r_str(ev)}; reference = {r_str(rf)}")
+        else:
+            lines.append(f"sx_dd$sx_y <- as.integer(sx_dd${y} == {r_num(event)})  # event = {r_num(event)}; reference = {r_num(ref)}")
     else:
-        lines += [
-            f"sx_lv <- if (is.factor(sx_dd${y})) levels(sx_dd${y}) else sort(unique(stats::na.omit(sx_dd${y})))",
-            f"sx_dd$sx_y <- as.integer(sx_dd${y} == sx_lv[2])  # event = second (non-reference) level",
-        ]
+        _codes, labels = category_codes(ds, s.outcome)
+        if family == "ordinal":
+            lines.append(f"sx_dd$sx_y <- factor(as.character(sx_dd${y}), levels = {r_vec(labels)}, ordered = TRUE)"
+                         "  # ordered categories, lowest first")
+        else:
+            ref = s.reference if s.reference is not None else ds.levels(s.outcome)[0]
+            lab = ds.level_label(s.outcome, ref)
+            lines += [f"sx_disc_ref <- {r_str(lab)}",
+                      f"sx_dd$sx_y <- stats::relevel(factor(as.character(sx_dd${y}), levels = {r_vec(labels)}), "
+                      "ref = sx_disc_ref)  # unordered; baseline = reference category"]
     lines.append("sx_result <- list(n = nrow(sx_dd), n_complete = sum(stats::complete.cases(sx_dd)))")
     return "\n".join(lines) + "\n"
 

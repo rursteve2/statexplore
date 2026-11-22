@@ -1,6 +1,7 @@
 """Analysis Builder: pick an analysis, assign variables to roles, set options, run."""
 from __future__ import annotations
 
+import html
 from typing import Any
 
 from PySide6.QtCore import Qt, Signal
@@ -21,6 +22,10 @@ from ..state import AppState
 from ..widgets.treatment_panel import TreatmentPanel
 from ..widgets.variable_selector import VariableSelector
 from .eda import CodeDialog
+
+
+def fmt_code(code) -> str:
+    return str(int(code)) if isinstance(code, float) and code.is_integer() else str(code)
 
 
 class SlotWidget(QWidget):
@@ -197,9 +202,54 @@ class AnalysisBuilderPage(QWidget):
             for o in self.spec.options:
                 form.addRow(o.label, self._option_widget(o))
             self.form_layout.addWidget(box)
+        self.preview = QLabel()
+        self.preview.setTextFormat(Qt.RichText)
+        self.preview.setWordWrap(True)
+        self.preview.setVisible(self.spec.key == "assoc_2x2")
+        self.form_layout.addWidget(self.preview)
+        for o in self.spec.options:
+            if o.kind == "level":
+                self._fill_levels(o)
+                self.slot_widgets[o.slot].changed.connect(lambda o=o: self._fill_levels(o))
+                self.option_widgets[o.key].currentIndexChanged.connect(lambda _i: self._update_preview())
+        self._update_preview()
         self.form_layout.addStretch()
         for w in self.slot_widgets.values():
             w.apply_filter(self.filter.text())
+
+    def _fill_levels(self, o) -> None:
+        """Category choices for a 'level' option follow the variable chosen in its slot."""
+        w = self.option_widgets[o.key]
+        ds = self.state.dataset
+        keep = w.currentData()
+        w.blockSignals(True)
+        w.clear()
+        w.addItem("— choose —", None)
+        chosen = self.slot_widgets[o.slot].values()
+        if ds is not None and chosen:
+            for code in ds.levels(chosen[0])[:200]:
+                w.addItem(f"{fmt_code(code)} = {ds.level_label(chosen[0], code)}", code)
+        idx = w.findData(keep) if keep is not None else -1
+        w.setCurrentIndex(max(idx, 0))
+        w.blockSignals(False)
+        self._update_preview()
+
+    def _update_preview(self) -> None:
+        if self.spec is None or self.spec.key != "assoc_2x2" or not hasattr(self, "preview"):
+            return
+        from ...analysis.builders import preview_2x2
+
+        vars_, opts = self._values()
+        tab = preview_2x2(self.state.dataset, vars_, opts) if self.state.dataset is not None else None
+        if tab is None:
+            self.preview.setText("<i>Choose both variables and all four categories to see the 2 × 2 table.</i>")
+            return
+        head = "".join(f"<th>{html.escape(c)}</th>" for c in [""] + list(tab.columns))
+        rows = "".join("<tr><td><b>" + html.escape(str(i)) + "</b></td>"
+                       + "".join(f"<td align='right'>{v:,}</td>" for v in r) + "</tr>"
+                       for i, r in zip(tab.index, tab.to_numpy().tolist()))
+        self.preview.setText("<b>2 × 2 table (complete cases)</b><table border='1' cellspacing='0' cellpadding='3'>"
+                             f"<tr>{head}</tr>{rows}</table>")
 
     def _update_treatments(self) -> None:
         names = [n for w in self.slot_widgets.values() for n in w.values()]
@@ -215,7 +265,10 @@ class AnalysisBuilderPage(QWidget):
                 w.combo.setCurrentIndex(idx)
 
     def _option_widget(self, o) -> QWidget:
-        if o.kind == "choice":
+        if o.kind == "level":
+            w = QComboBox()
+            w.addItem("— choose —", None)
+        elif o.kind == "choice":
             w = QComboBox()
             for val, label in o.choices or []:
                 w.addItem(label, val)

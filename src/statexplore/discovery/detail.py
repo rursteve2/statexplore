@@ -31,9 +31,16 @@ def full_analysis(session: RSession, ds: Dataset, run: DiscoveryRun,
         internal = {"rhs": rhs, "focal": [a(v) for v in c.focal]}
     if s.sample == "shared":
         internal["complete_on"] = [a(n) for n in [s.outcome] + s.candidates + s.required]
-    spec = BY_KEY["lm" if run.family == "gaussian" else "logistic"]
+    key = {"gaussian": "lm", "binomial": "logistic", "ordinal": "ordinal_reg", "multinomial": "multinom_reg"}[run.family]
+    spec = BY_KEY[key]
     vars_ = {"dependent": [s.outcome], "predictors": list(c.variables)}
+    opts: dict[str, Any] = {"conf": s.conf}
+    if run.family == "binomial" and getattr(s, "event", None) is not None:
+        opts["event"] = s.event
+    if run.family == "multinomial" and getattr(s, "reference", None) is not None:
+        opts["reference"] = s.reference
     title = f"Discovery candidate #{c.index}: " + " × ".join(ds.var(v).display_name for v in c.focal)
-    result, artifacts = run_analysis(session, ds, spec, vars_, {"conf": s.conf}, internal, title)
+    result, artifacts = run_analysis(session, ds, spec, vars_, opts, internal, title,
+                                     treatments=getattr(s, "treatments", None))
     result.values["discovery"] = {"run": run.id, "candidate": c.index}
     return result, artifacts

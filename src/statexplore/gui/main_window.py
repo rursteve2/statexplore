@@ -279,5 +279,5 @@ class MainWindow(QMainWindow):
             e.ignore()
             return
         self.state.wait_idle(5000)
-        self.state.shutdown_r()
+        self.state.cleanup()
         e.accept()

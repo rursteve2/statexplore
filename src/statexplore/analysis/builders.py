@@ -11,7 +11,7 @@ from __future__ import annotations
 from typing import Any
 
 from ..core.variables import Measure
-from ..rbridge.codegen import r_str, r_vec
+from ..rbridge.codegen import r_num, r_str, r_vec
 from .framework import (
     ADJUST, ALTERNATIVE, CONF, INTERACTIONS, AnalysisInputError, AnalysisSpec, Ctx, Option, Slot,
 )
@@ -523,6 +523,132 @@ def _names_joined(aliases: list[str]) -> str:
     return "paste(sx_names[" + r_vec(aliases) + "], collapse = \", \")"
 
 
+def _event_lines(ctx: Ctx, y: str) -> list[str]:
+    """Binary outcome coding: the user's event category, else the second category (v1.0 default)."""
+    ev = ctx.opts.get("event")
+    if ev is None:
+        return ["sx_d$sx_event <- as.integer(sx_y == sx_lv[2])  # event = second category (default)",
+                "sx_event_label <- as.character(sx_lv[2])"]
+    name = ctx.vars["dependent"][0]
+    if ctx.ds.var(name).is_categorical:
+        lab = ctx.ds.level_label(name, ev)
+        return [f"sx_event_label <- {r_str(lab)}  # event chosen by the user",
+                "sx_d$sx_event <- as.integer(as.character(sx_y) == sx_event_label)"]
+    return [f"sx_d$sx_event <- as.integer(sx_y == {r_num(ev)})  # event chosen by the user",
+            f"sx_event_label <- {r_str(_fmt_code(ev))}"]
+
+
+def _fmt_code(c: Any) -> str:
+    return str(int(c)) if isinstance(c, float) and c.is_integer() else str(c)
+
+
+def _ordinal_reg(ctx: Ctx) -> str:
+    """Cumulative-logit (proportional odds) model, ordinal::clm. P(Y <= j) = logit^-1(theta_j - x'b),
+    so a positive coefficient shifts responses towards HIGHER categories."""
+    from .eda import category_codes
+
+    y = ctx.one("dependent")
+    rhs = _rhs(ctx)
+    conf = ctx.num("conf")
+    _codes, labels = category_codes(ctx.ds, ctx.vars["dependent"][0])
+    direction = ctx.ds.var(ctx.vars["dependent"][0]).coding_direction
+    L = _prologue(ctx, "dependent", "predictors") + [
+        f"sx_d${y} <- droplevels(factor(as.character(sx_d${y}), levels = {r_vec(labels)}, ordered = TRUE))",
+        "if (nlevels(sx_d$" + y + ") < 3) stop(\"An ordinal outcome needs at least three observed categories.\")",
+        f"sx_form <- {y} ~ {rhs}",
+        "sx_fit <- ordinal::clm(sx_form, data = sx_d, link = \"logit\")",
+        "sx_null <- ordinal::clm(" + y + " ~ 1, data = sx_d, link = \"logit\")",
+        "sx_checks <- character()",
+        "if (!identical(as.integer(sx_fit$convergence$code), 0L)) sx_checks <- c(sx_checks, paste(\"Convergence problem:\",",
+        "  paste(sx_fit$convergence$messages, collapse = \" \")))",
+        "if (any(is.na(sx_fit$beta))) stop(\"The model is not identifiable (aliased coefficients).\")",
+        "sx_co <- as.data.frame(coef(summary(sx_fit)))",
+        "sx_isb <- rownames(sx_co) %in% names(sx_fit$beta)",
+        f"sx_z <- stats::qnorm(1 - (1 - {conf}) / 2)",
+        "sx_b <- sx_co[sx_isb, , drop = FALSE]; sx_th <- sx_co[!sx_isb, , drop = FALSE]",
+        "sx_small <- min(table(sx_d$" + y + "))",
+        "if (sx_small < 10) sx_checks <- c(sx_checks, sprintf(\"The smallest outcome category has only %d rows.\", sx_small))",
+        "sx_po <- tryCatch(ordinal::nominal_test(sx_fit), error = function(e) NULL)",
+        "sx_dr <- stats::drop1(sx_fit, test = \"Chisq\")[-1, , drop = FALSE]",
+        "sx_tabs <- list(",
+        "  sx_table(\"Coefficients (cumulative logit)\", data.frame(term = rownames(sx_b), B = sx_b[[1]], se = sx_b[[2]],",
+        "    z = sx_b[[3]], p = sx_b[[4]], odds_ratio = exp(sx_b[[1]]), or_ci_low = exp(sx_b[[1]] - sx_z * sx_b[[2]]),",
+        "    or_ci_high = exp(sx_b[[1]] + sx_z * sx_b[[2]])),",
+        "    notes = paste0(\"Category order: \", paste(levels(sx_d$" + y + "), collapse = \" < \"), \". A positive B (OR > 1) \",",
+        "      \"means higher categories are more likely. Proportional-odds model: one OR for every cut-point. \",",
+        "      \"OR CIs: Wald.\"" + (f", \" Coding direction: {direction}.\"" if direction else "") + ")),",
+        "  sx_table(\"Thresholds (cut-points)\", data.frame(cut = rownames(sx_th), estimate = sx_th[[1]], se = sx_th[[2]])),",
+        "  sx_table(\"Term tests (likelihood-ratio)\", data.frame(term = rownames(sx_dr), df = sx_dr$Df, LR_chi2 = sx_dr$LRT,",
+        "    p = sx_dr[[\"Pr(>Chi)\"]]), notes = \"drop1(): nested model comparisons; marginality respected.\"),",
+        "  sx_table(\"Model fit\", data.frame(n = nrow(sx_d), categories = nlevels(sx_d$" + y + "), logLik = as.numeric(stats::logLik(sx_fit)),",
+        "    AIC = stats::AIC(sx_fit), BIC = stats::BIC(sx_fit),",
+        "    LR_chi2 = 2 * (as.numeric(stats::logLik(sx_fit)) - as.numeric(stats::logLik(sx_null))),",
+        "    df = attr(stats::logLik(sx_fit), \"df\") - attr(stats::logLik(sx_null), \"df\"),",
+        "    McFadden_R2 = 1 - as.numeric(stats::logLik(sx_fit)) / as.numeric(stats::logLik(sx_null)),",
+        "    max_gradient = sx_fit$maxGradient, condition_hessian = sx_fit$cond.H, converged = identical(as.integer(sx_fit$convergence$code), 0L))))",
+        "if (!is.null(sx_po) && nrow(sx_po) > 1) {",
+        "  sx_po <- sx_po[-1, , drop = FALSE]",
+        "  sx_tabs[[5]] <- sx_table(\"Proportional-odds check (ordinal::nominal_test)\", data.frame(term = rownames(sx_po),",
+        "    df = sx_po$Df, LRT = sx_po$LRT, p = sx_po[[\"Pr(>Chi)\"]]), notes = paste0(\"Each row tests whether the term's effect \",",
+        "    \"differs across cut-points (small p = the proportional-odds assumption is doubtful for it).\"))",
+        "  if (any(sx_po[[\"Pr(>Chi)\"]] < 0.05, na.rm = TRUE)) sx_checks <- c(sx_checks, \"The proportional-odds assumption is doubtful for at least one term (nominal_test p < .05).\")",
+        "}",
+        f"sx_result <- list(tables = sx_tabs, checks = sx_checks, {COMMON_TAIL})",
+    ]
+    return "\n".join(L) + "\n"
+
+
+def _multinom_reg(ctx: Ctx) -> str:
+    """Baseline-category logit model, nnet::multinom: one set of coefficients per non-reference category."""
+    from .eda import category_codes
+
+    name = ctx.vars["dependent"][0]
+    y = ctx.one("dependent")
+    rhs = _rhs(ctx)
+    conf = ctx.num("conf")
+    _codes, labels = category_codes(ctx.ds, name)
+    ref = ctx.opts.get("reference")
+    ref_lab = ctx.ds.level_label(name, ref) if ref is not None else labels[0]
+    L = _prologue(ctx, "dependent", "predictors") + [
+        f"sx_d${y} <- droplevels(factor(as.character(sx_d${y}), levels = {r_vec(labels)}))",
+        f"sx_ref <- {r_str(ref_lab)}",
+        f"if (!(sx_ref %in% levels(sx_d${y}))) stop(\"The reference category is not observed in the analysed rows.\")",
+        f"sx_d${y} <- stats::relevel(sx_d${y}, ref = sx_ref)",
+        f"if (nlevels(sx_d${y}) < 3) stop(\"A multinomial outcome needs at least three observed categories.\")",
+        f"sx_form <- {y} ~ {rhs}",
+        "sx_fit <- nnet::multinom(sx_form, data = sx_d, trace = FALSE, maxit = 1000, Hess = TRUE, model = TRUE)",
+        "sx_null <- nnet::multinom(" + y + " ~ 1, data = sx_d, trace = FALSE, maxit = 1000)",
+        "sx_checks <- character()",
+        "if (sx_fit$convergence != 0) sx_checks <- c(sx_checks, \"The model did not converge (iteration limit reached).\")",
+        "sx_cf <- stats::coef(sx_fit); if (is.null(dim(sx_cf))) sx_cf <- matrix(sx_cf, nrow = 1, dimnames = list(levels(sx_d$" + y + ")[2], names(sx_cf)))",
+        "sx_V <- tryCatch(solve(sx_fit$Hessian), error = function(e) NULL)",
+        "if (is.null(sx_V)) stop(\"The information matrix is singular: some coefficients cannot be estimated (sparse categories or separation).\")",
+        "sx_se <- matrix(sqrt(pmax(diag(sx_V), 0)), nrow = nrow(sx_cf), byrow = TRUE)",
+        f"sx_z <- stats::qnorm(1 - (1 - {conf}) / 2)",
+        "sx_rows <- expand.grid(term = colnames(sx_cf), category = rownames(sx_cf), stringsAsFactors = FALSE)",
+        "sx_B <- as.vector(t(sx_cf)); sx_SE <- as.vector(t(sx_se))",
+        "sx_tab <- data.frame(category = sx_rows$category, term = sx_rows$term, B = sx_B, se = sx_SE, z = sx_B / sx_SE,",
+        "  p = 2 * stats::pnorm(-abs(sx_B / sx_SE)), RRR = exp(sx_B), ci_low = exp(sx_B - sx_z * sx_SE), ci_high = exp(sx_B + sx_z * sx_SE))",
+        "sx_an <- tryCatch(car::Anova(sx_fit, type = \"II\"), error = function(e) NULL)",
+        "sx_small <- min(table(sx_d$" + y + "))",
+        "if (sx_small < 10) sx_checks <- c(sx_checks, sprintf(\"The smallest outcome category has only %d rows.\", sx_small))",
+        "if (any(!is.finite(sx_SE)) || any(sx_SE > 50)) sx_checks <- c(sx_checks, \"Very large standard errors: possible separation (a category never or always occurs for some predictor values).\")",
+        "sx_tabs <- list(",
+        "  sx_table(\"Coefficients (baseline-category logits)\", sx_tab, notes = paste0(\"Each block compares one category with \",",
+        "    \"the reference category '\", sx_ref, \"'. RRR = relative risk ratio (odds of that category vs the reference). \",",
+        "    \"Categories are unordered. Wald z tests and CIs (Hessian).\")),",
+        "  sx_table(\"Model fit\", data.frame(n = nrow(sx_d), categories = nlevels(sx_d$" + y + "), deviance = sx_fit$deviance,",
+        "    AIC = sx_fit$AIC, LR_chi2 = sx_null$deviance - sx_fit$deviance, df = sx_fit$edf - sx_null$edf,",
+        "    p = stats::pchisq(sx_null$deviance - sx_fit$deviance, sx_fit$edf - sx_null$edf, lower.tail = FALSE),",
+        "    McFadden_R2 = 1 - sx_fit$deviance / sx_null$deviance, converged = sx_fit$convergence == 0)))",
+        "if (!is.null(sx_an)) sx_tabs[[3]] <- sx_table(\"Term tests (likelihood-ratio, Type II)\", data.frame(term = rownames(sx_an),",
+        "  LR_chi2 = sx_an[[\"LR Chisq\"]], df = sx_an$Df, p = sx_an[[\"Pr(>Chisq)\"]]),",
+        "  notes = \"car::Anova: joint test of each term over all outcome contrasts.\")",
+        f"sx_result <- list(tables = sx_tabs, checks = sx_checks, {COMMON_TAIL})",
+    ]
+    return "\n".join(L) + "\n"
+
+
 def _logistic(ctx: Ctx) -> str:
     y = ctx.one("dependent")
     rhs = _rhs(ctx)
@@ -534,8 +660,7 @@ def _logistic(ctx: Ctx) -> str:
         f"sx_y <- sx_d${y}",
         "sx_lv <- if (is.factor(sx_y)) levels(sx_y) else sort(unique(sx_y))",
         "if (length(sx_lv) != 2) stop(\"The outcome must have exactly two values in the analysed data.\")",
-        "sx_d$sx_event <- as.integer(sx_y == sx_lv[2])",
-        "sx_event_label <- as.character(sx_lv[2])",
+        *_event_lines(ctx, y),
         f"sx_form <- sx_event ~ {rhs}",
         "sx_fit <- stats::glm(sx_form, data = sx_d, family = stats::binomial())",
         "if (any(is.na(stats::coef(sx_fit)))) stop(\"The model is not identifiable (aliased coefficients): \",",
@@ -658,6 +783,205 @@ def _alpha(ctx: Ctx) -> str:
     return "\n".join(L) + "\n"
 
 
+# ============================================================ categorical association (v1.1 §9)
+
+ASSOC_HELPERS = r"""# Wilson score interval for one proportion.
+sx_wilson <- function(x, n, z) {
+  if (n == 0) return(c(NA_real_, NA_real_))
+  p <- x / n; den <- 1 + z^2 / n
+  ctr <- (p + z^2 / (2 * n)) / den; half <- z * sqrt(p * (1 - p) / n + z^2 / (4 * n^2)) / den
+  c(ctr - half, ctr + half)
+}
+# Measures for a 2x2 table [exposed, comparison] x [event, reference] (rows x columns).
+sx_2x2 <- function(tab, conf, haldane) {
+  a <- tab[1, 1]; b <- tab[1, 2]; c <- tab[2, 1]; d <- tab[2, 2]
+  z <- stats::qnorm(1 - (1 - conf) / 2)
+  n1 <- a + b; n0 <- c + d
+  p1 <- if (n1 > 0) a / n1 else NA_real_; p0 <- if (n0 > 0) c / n0 else NA_real_
+  zero <- any(c(a, b, c, d) == 0)
+  adj <- if (haldane && zero) 0.5 else 0
+  aa <- a + adj; bb <- b + adj; cc <- c + adj; dd <- d + adj
+  or <- (aa * dd) / (bb * cc)
+  or_se <- sqrt(1 / aa + 1 / bb + 1 / cc + 1 / dd)
+  or_ci <- if (is.finite(or_se) && or > 0 && is.finite(or)) exp(log(or) + c(-1, 1) * z * or_se) else c(NA_real_, NA_real_)
+  rr <- (aa / (aa + bb)) / (cc / (cc + dd))
+  rr_se <- sqrt(1 / aa - 1 / (aa + bb) + 1 / cc - 1 / (cc + dd))
+  rr_ci <- if (is.finite(rr_se) && rr > 0 && is.finite(rr)) exp(log(rr) + c(-1, 1) * z * rr_se) else c(NA_real_, NA_real_)
+  w1 <- sx_wilson(a, n1, z); w0 <- sx_wilson(c, n0, z)
+  rd <- p1 - p0
+  rd_ci <- c(rd - sqrt((p1 - w1[1])^2 + (w0[2] - p0)^2), rd + sqrt((w1[2] - p1)^2 + (p0 - w0[1])^2))
+  ft <- stats::fisher.test(tab, conf.level = conf)
+  den <- sqrt(as.numeric(n1) * n0 * (a + c) * (b + d))
+  phi <- if (den > 0) (as.numeric(a) * d - as.numeric(b) * c) / den else NA_real_
+  list(p1 = p1, p0 = p0, or = or, or_ci = or_ci, rr = rr, rr_ci = rr_ci, rd = rd, rd_ci = rd_ci,
+       or_cond = unname(ft$estimate), or_cond_ci = as.numeric(ft$conf.int), fisher_p = ft$p.value,
+       phi = phi, zero = zero, adj = adj)
+}
+sx_cramers_v <- function(chi2, n, tab) { k <- min(dim(tab)); if (k < 2 || n == 0) NA_real_ else sqrt(chi2 / (n * (k - 1))) }
+"""
+
+
+def _assoc_levels(ctx: Ctx, slot: str, *keys: str) -> list[str]:
+    from .eda import category_codes
+
+    name = ctx.vars[slot][0]
+    codes, labels = category_codes(ctx.ds, name)
+    return [labels[codes.index(ctx.opts[k])] for k in keys]
+
+
+def _assoc_table(ctx: Ctx) -> str:
+    """r x c test of independence: Pearson chi-square (optional Yates for 2x2) or Fisher's exact."""
+    from .eda import _ordered_factor_line
+
+    r, c = ctx.one("row"), ctx.one("col")
+    test = ctx.opts["test"]
+    L = _prologue(ctx, "row", "col") + [
+        ASSOC_HELPERS,
+        _ordered_factor_line(ctx.ds, ctx.vars["row"][0], f"sx_d${r}"),
+        _ordered_factor_line(ctx.ds, ctx.vars["col"][0], f"sx_d${c}"),
+        f"sx_tab <- table(sx_d${r}, sx_d${c})",
+        "sx_tab <- sx_tab[rowSums(sx_tab) > 0, colSums(sx_tab) > 0, drop = FALSE]  # observed categories only",
+        "if (min(dim(sx_tab)) < 2) stop(\"Each variable needs at least two observed categories.\")",
+        "sx_obs <- as.data.frame.matrix(sx_tab); sx_obs$Total <- rowSums(sx_tab)",
+        "sx_obs <- rbind(sx_obs, Total = c(colSums(sx_tab), sum(sx_tab)))",
+        "sx_is2 <- all(dim(sx_tab) == 2)",
+        f"sx_yates <- {'TRUE' if test == 'chisq_yates' else 'FALSE'} && sx_is2",
+        "sx_chi <- suppressWarnings(stats::chisq.test(sx_tab, correct = sx_yates))",
+        "sx_exp <- as.data.frame.matrix(sx_chi$expected)",
+        "sx_v <- sx_cramers_v(unname(suppressWarnings(stats::chisq.test(sx_tab, correct = FALSE))$statistic), sum(sx_tab), sx_tab)",
+        "sx_tests <- data.frame(test = if (sx_yates) \"Chi-square with Yates continuity correction (user-selected)\" else \"Pearson chi-square (no continuity correction)\",",
+        "  statistic = unname(sx_chi$statistic), df = unname(sx_chi$parameter), p = sx_chi$p.value)",
+    ]
+    if test in ("fisher", "fisher_mc"):
+        mc = test == "fisher_mc"
+        L += [
+            f"set.seed({int(ctx.opts['seed'])})" if mc else "",
+            "sx_ft <- tryCatch(stats::fisher.test(sx_tab, workspace = 2e7"
+            + (", simulate.p.value = TRUE, B = 1e5" if mc else "") + f", conf.level = {ctx.num('conf')}),",
+            "  error = function(e) stop(\"Fisher's exact test could not be computed for this table (\", conditionMessage(e),",
+            "    \"). Choose the Monte Carlo version.\"))",
+            "sx_tests <- rbind(data.frame(test = " + (
+                "paste0(\"Fisher's exact test (Monte Carlo p, 100,000 tables, seed \", " + str(int(ctx.opts['seed'])) + ", \")\")"
+                if mc else "\"Fisher's exact test\"") + ", statistic = NA_real_, df = NA_real_, p = sx_ft$p.value), sx_tests)",
+        ]
+    L += [
+        "sx_measures <- data.frame(measure = \"Cramer's V\", estimate = sx_v,",
+        "  note = \"sqrt(chi2 / (n (k - 1))), k = smaller table dimension; uncorrected chi-square\")",
+        "if (sx_is2) { sx_m <- sx_2x2(sx_tab, 0.95, FALSE)",
+        "  sx_measures <- rbind(sx_measures, data.frame(measure = \"Phi coefficient\", estimate = sx_m$phi,",
+        "    note = \"(ad - bc) / sqrt(row and column totals); sign depends on category order\")) }",
+        "sx_minexp <- min(as.matrix(sx_exp)); sx_small <- mean(as.matrix(sx_exp) < 5)",
+        "sx_checks <- if (sx_minexp < 1 || sx_small > 0.2) paste0(\"Sparse table: \", round(100 * sx_small), "
+        "\"% of expected counts are below 5 (minimum \", signif(sx_minexp, 3), \"). The chi-square approximation may be "
+        "poor; Fisher's exact test is preferable.\") else character()",
+        "sx_result <- list(tables = list(",
+        "  sx_table(\"Contingency table (observed counts)\", sx_obs, row_names = rownames(sx_obs),",
+        f"    notes = paste0(\"Rows: \", sx_names[[{r_str(r)}]], \"; columns: \", sx_names[[{r_str(c)}]], \". Categories with no observations are omitted.\")),",
+        "  sx_table(\"Expected counts (under independence)\", sx_exp, row_names = rownames(sx_exp)),",
+        "  sx_table(\"Test of independence\", sx_tests, notes = if (sx_yates) \"The continuity correction was selected by the user.\" else \"No continuity correction applied.\"),",
+        "  sx_table(\"Association measures\", sx_measures)),",
+        f"  checks = sx_checks, {COMMON_TAIL})",
+    ]
+    return "\n".join(x for x in L if x) + "\n"
+
+
+def _assoc_2x2(ctx: Ctx) -> str:
+    """Unadjusted 2x2 measures. Rows = exposed / comparison group, columns = event / reference."""
+    y, g = ctx.one("outcome"), ctx.one("group")
+    ev, ref = _assoc_levels(ctx, "outcome", "event", "outcome_ref")
+    ex, cmp = _assoc_levels(ctx, "group", "exposed", "comparison")
+    conf = ctx.num("conf")
+    hald = "TRUE" if ctx.opts["zero_cells"] == "haldane" else "FALSE"
+    test = ctx.opts["test"]
+    L = _prologue(ctx, "outcome", "group") + [
+        ASSOC_HELPERS,
+        f"sx_y <- as.character(sx_d${y}); sx_g <- as.character(sx_d${g})",
+        f"sx_ev <- {r_str(ev)}; sx_ref <- {r_str(ref)}; sx_ex <- {r_str(ex)}; sx_cmp <- {r_str(cmp)}",
+        "sx_keep <- sx_y %in% c(sx_ev, sx_ref) & sx_g %in% c(sx_ex, sx_cmp)",
+        "sx_other <- sum(!sx_keep)  # rows in other categories of either variable",
+        "sx_tab <- table(factor(sx_g[sx_keep], levels = c(sx_ex, sx_cmp)), factor(sx_y[sx_keep], levels = c(sx_ev, sx_ref)))",
+        "if (sum(sx_tab) == 0) stop(\"No rows fall in the selected categories.\")",
+        f"sx_m <- sx_2x2(sx_tab, {conf}, {hald})",
+        "sx_show <- data.frame(event = c(sx_tab[, 1], sum(sx_tab[, 1])), reference = c(sx_tab[, 2], sum(sx_tab[, 2])))",
+        "sx_show$total <- sx_show$event + sx_show$reference",
+        "sx_show$risk_of_event <- ifelse(sx_show$total > 0, sx_show$event / sx_show$total, NA_real_)",
+        "names(sx_show)[1:2] <- c(paste0(\"Event: \", sx_ev), paste0(\"Reference: \", sx_ref))",
+        "sx_rows <- c(paste0(\"Exposed: \", sx_ex), paste0(\"Comparison: \", sx_cmp), \"Total\")",
+        "sx_note_or <- if (sx_m$zero && sx_m$adj == 0) \"A cell is zero: the sample odds ratio is 0 or infinite and its Woolf interval is undefined; use the conditional (exact) estimate.\" else if (sx_m$adj > 0) \"Haldane-Anscombe correction applied (0.5 added to every cell; user-selected).\" else \"\"",
+        "sx_note_rr <- if (sx_m$zero && sx_m$adj == 0 && (sx_tab[1, 1] == 0 || sx_tab[2, 1] == 0)) \"No events in a group: the risk ratio is 0 or infinite and its interval is undefined.\" else if (sx_m$adj > 0) \"Haldane-Anscombe correction applied (user-selected).\" else \"\"",
+        "sx_eff <- data.frame(",
+        "  measure = c(\"Odds ratio (sample)\", \"Odds ratio (conditional MLE)\", \"Risk ratio\", \"Risk difference\", \"Phi coefficient\"),",
+        "  estimate = c(sx_m$or, sx_m$or_cond, sx_m$rr, sx_m$rd, sx_m$phi),",
+        "  ci_low = c(sx_m$or_ci[1], sx_m$or_cond_ci[1], sx_m$rr_ci[1], sx_m$rd_ci[1], NA),",
+        "  ci_high = c(sx_m$or_ci[2], sx_m$or_cond_ci[2], sx_m$rr_ci[2], sx_m$rd_ci[2], NA),",
+        "  ci_method = c(\"Woolf (log) Wald\", \"Exact (conditional, stats::fisher.test)\", \"Katz log Wald\",",
+        "                \"Newcombe hybrid score (Wilson)\", \"\"),",
+        "  note = c(sx_note_or, \"\", sx_note_rr, \"exposed risk minus comparison risk\", \"signed: positive = event more common in the exposed group\"))",
+    ]
+    if test == "fisher":
+        L.append("sx_test <- data.frame(test = \"Fisher's exact test (two-sided)\", statistic = NA_real_, df = NA_real_, p = sx_m$fisher_p)")
+    else:
+        yates = "TRUE" if test == "chisq_yates" else "FALSE"
+        L += [
+            f"sx_chi <- suppressWarnings(stats::chisq.test(sx_tab, correct = {yates}))",
+            "sx_test <- data.frame(test = " + ("\"Chi-square with Yates continuity correction (user-selected)\"" if test == "chisq_yates"
+                                             else "\"Pearson chi-square (no continuity correction)\"")
+            + ", statistic = unname(sx_chi$statistic), df = 1, p = sx_chi$p.value)",
+        ]
+    L += [
+        "sx_exp <- outer(rowSums(sx_tab), colSums(sx_tab)) / sum(sx_tab)",
+        "sx_checks <- character()",
+        "if (any(sx_exp < 5)) sx_checks <- c(sx_checks, paste0(\"Small expected counts (minimum \", signif(min(sx_exp), 3), \"): prefer Fisher's exact test.\"))",
+        "if (sx_m$zero) sx_checks <- c(sx_checks, \"The table has a zero cell; see the notes on each measure.\")",
+        "sx_interp <- sprintf(\"Risk of %s: %.1f%% in %s vs %.1f%% in %s, a difference of %.1f percentage points (%g%% CI %.1f to %.1f).\",",
+        f"  sx_ev, 100 * sx_m$p1, sx_ex, 100 * sx_m$p0, sx_cmp, 100 * sx_m$rd, 100 * {conf}, 100 * sx_m$rd_ci[1], 100 * sx_m$rd_ci[2])",
+        "sx_result <- list(tables = list(",
+        "  sx_table(\"2x2 table\", sx_show, row_names = sx_rows, notes = paste0(\"Rows: \", "
+        + f"sx_names[[{r_str(g)}]], \" (exposed vs comparison); columns: \", sx_names[[{r_str(y)}]], "
+        "\" (event vs reference). \", if (sx_other > 0) paste0(sx_other, \" complete rows in other categories are excluded.\") else \"\")),",
+        "  sx_table(\"Effect measures (unadjusted)\", sx_eff, notes = paste0(\"Unadjusted estimates from the 2x2 table: no covariates. \",",
+        "    \"For adjusted odds ratios use Binary logistic regression (a separate analysis). Confidence level \", 100 * " + conf + ", \"%.\")),",
+        "  sx_table(\"Test\", sx_test)),",
+        "  notes = sx_interp, checks = sx_checks, n_used = sum(sx_tab), n_excluded = nrow(dat) - sum(sx_tab))",
+    ]
+    return "\n".join(L) + "\n"
+
+
+def preview_2x2(ds, vars_: dict[str, list[str]], opts: dict[str, Any]):
+    """The 2x2 table (Python, before anything is computed in R) for the Analysis Builder form."""
+    import pandas as pd
+
+    y, g = (vars_.get("outcome") or [None])[0], (vars_.get("group") or [None])[0]
+    keys = ("event", "outcome_ref", "exposed", "comparison")
+    if not y or not g or any(opts.get(k) is None for k in keys):
+        return None
+    if opts["event"] == opts["outcome_ref"] or opts["exposed"] == opts["comparison"]:
+        return None
+    f = ds.analysis_frame([y, g]).dropna()
+    rows = []
+    for gv in (opts["exposed"], opts["comparison"]):
+        part = f[f[g] == gv]
+        ev = int((part[y] == opts["event"]).sum())
+        rf = int((part[y] == opts["outcome_ref"]).sum())
+        rows.append([ev, rf, ev + rf])
+    rows.append([rows[0][0] + rows[1][0], rows[0][1] + rows[1][1], rows[0][2] + rows[1][2]])
+    cols = [f"Event: {ds.level_label(y, opts['event'])}", f"Reference: {ds.level_label(y, opts['outcome_ref'])}", "Total"]
+    idx = [f"Exposed: {ds.level_label(g, opts['exposed'])}", f"Comparison: {ds.level_label(g, opts['comparison'])}", "Total"]
+    return pd.DataFrame(rows, columns=cols, index=idx)
+
+
+def _check_2x2(ds, vars_: dict[str, list[str]], opts: dict[str, Any]) -> None:
+    if opts.get("event") == opts.get("outcome_ref"):
+        raise AnalysisInputError("The event and reference categories of the outcome must differ.")
+    if opts.get("exposed") == opts.get("comparison"):
+        raise AnalysisInputError("The exposed and comparison groups must differ.")
+
+
+ASSOC_TEST = Option("test", "Inferential test", "choice", "fisher",
+                    [("fisher", "Fisher's exact test"), ("chisq", "Pearson chi-square (no correction)"),
+                     ("chisq_yates", "Chi-square with Yates continuity correction")])
+
+
 # ============================================================================ specs
 
 DV = Slot("dependent", "Dependent variable", "continuous")
@@ -731,8 +1055,46 @@ SPECS: list[AnalysisSpec] = [
     AnalysisSpec("logistic", "Regression", "Binary logistic regression",
                  "Odds ratios, predicted probabilities, separation checks.",
                  [Slot("dependent", "Outcome (two values)", "binary"), Slot("predictors", "Predictors", "any", 1, 10)],
-                 [INTERACTIONS, CONF], ["detectseparation", "ggplot2"], _logistic, n_plots=1),
+                 [Option("event", "Event (modelled) category", "level", None, slot="dependent", required=False,
+                         help="Leave unset to model the second category (v1.0 default)."), INTERACTIONS, CONF],
+                 ["detectseparation", "ggplot2"], _logistic, n_plots=1),
+    AnalysisSpec("ordinal_reg", "Regression", "Ordinal logistic regression (proportional odds)",
+                 "Cumulative-logit model for an ordered categorical outcome (ordinal::clm), with a proportional-odds check.",
+                 [Slot("dependent", "Outcome (ordinal, 3+ categories)", "ordinal"), Slot("predictors", "Predictors", "any", 1, 10)],
+                 [INTERACTIONS, CONF], ["ordinal"], _ordinal_reg),
+    AnalysisSpec("multinom_reg", "Regression", "Multinomial logistic regression",
+                 "Baseline-category logit model for an unordered outcome with 3+ categories (nnet::multinom).",
+                 [Slot("dependent", "Outcome (3+ categories)", "categorical"), Slot("predictors", "Predictors", "any", 1, 10)],
+                 [Option("reference", "Reference (baseline) category", "level", None, slot="dependent", required=False,
+                         help="Leave unset to use the first category."), INTERACTIONS, CONF],
+                 ["nnet", "car"], _multinom_reg),
 ]
+SPECS.append(AnalysisSpec(
+    "assoc_table", "Categorical Association", "Chi-square / Fisher's exact test (r × c)",
+    "Test whether two categorical variables are independent; Cramér's V (and phi for 2 × 2 tables).",
+    [Slot("row", "Row variable", "categorical"), Slot("col", "Column variable", "categorical")],
+    [Option("test", "Test", "choice", "chisq",
+            [("chisq", "Pearson chi-square (no correction)"), ("chisq_yates", "Chi-square with Yates correction (2 × 2 only)"),
+             ("fisher", "Fisher's exact test (+ chi-square)"), ("fisher_mc", "Fisher's exact, Monte Carlo p (large tables)")]),
+     Option("seed", "Random seed (Monte Carlo)", "int", 1, min=1, max=10**9), CONF],
+    ["stats"], _assoc_table))
+SPECS.append(AnalysisSpec(
+    "assoc_2x2", "Categorical Association", "2 × 2 table: odds ratio, risk ratio, risk difference",
+    "Unadjusted association between a binary outcome and a binary exposure/group. You choose the event and "
+    "reference categories and the exposed and comparison groups; the 2 × 2 table is shown before any statistic. "
+    "For covariate-adjusted odds ratios use Binary logistic regression.",
+    [Slot("outcome", "Outcome", "categorical"), Slot("group", "Exposure / group", "categorical")],
+    [Option("event", "Event (outcome) category", "level", None, slot="outcome"),
+     Option("outcome_ref", "Outcome reference category", "level", None, slot="outcome"),
+     Option("exposed", "Exposed / group category", "level", None, slot="group"),
+     Option("comparison", "Comparison group", "level", None, slot="group"),
+     ASSOC_TEST,
+     Option("zero_cells", "Zero cells", "choice", "none",
+            [("none", "No correction (report undefined estimates)"),
+             ("haldane", "Add 0.5 to every cell when a cell is zero (Haldane-Anscombe)")]),
+     CONF],
+    ["stats"], _assoc_2x2, check=_check_2x2,
+    missing_data="Complete cases on both variables; rows in other categories are excluded (reported)."))
 SPECS.append(AnalysisSpec(
     "mediation", "Mediation (optional)", "Simple mediation (X -> M -> Y)",
     "Indirect effect of X on Y through one mediator M, with a bootstrap confidence interval. Separate from "

@@ -25,8 +25,8 @@ from ..core.dataset import Dataset
 from ..rbridge.worker import REngineError, RScriptError, RWorker
 from .rcode import batch_script, setup_script
 from .space import (
-    Candidate, SearchSettings, candidate_key, count_candidates, dependence_warning, display_formula,
-    enumerate_candidates, focal_label, validate_settings,
+    FAMILIES, Candidate, SearchSettings, candidate_key, coding, count_candidates, dependence_warning,
+    display_formula, enumerate_candidates, focal_label, validate_settings, view,
 )
 
 log = logging.getLogger(__name__)
@@ -74,6 +74,7 @@ class DiscoveryRun:
     engine: dict[str, Any] = field(default_factory=dict)
     warnings: list[str] = field(default_factory=list)
     validation: dict[int, str] = field(default_factory=dict)   # candidate index -> stability summary
+    coding: dict[str, Any] = field(default_factory=dict)       # v1.1: family, outcome treatment, event/reference
 
     @property
     def is_complete(self) -> bool:
@@ -86,7 +87,7 @@ class DiscoveryRun:
     def meta_dict(self) -> dict[str, Any]:
         return {k: getattr(self, k) for k in ("id", "family", "total", "signature", "created_at", "status",
                                                "stop_reason", "n_done", "stop_index", "elapsed_s",
-                                               "n_sample", "engine", "warnings")} | {
+                                               "n_sample", "engine", "warnings", "coding")} | {
             "settings": self.settings.to_dict(), "validation": {str(k): v for k, v in self.validation.items()}}
 
     @classmethod
@@ -98,6 +99,7 @@ class DiscoveryRun:
                   "n_sample", "engine"):
             setattr(run, k, meta[k])
         run.warnings = list(meta.get("warnings", []))
+        run.coding = dict(meta.get("coding") or {})
         run.validation = {int(k): v for k, v in (meta.get("validation") or {}).items()}
         run.rows = rows
         return run
@@ -121,7 +123,8 @@ class _PooledSession:
 
     def run_batch(self, ds: Dataset, script: str, n: int) -> tuple[list[dict[str, Any]], dict[str, Any]]:
         self.ensure(ds)
-        resp = self.session.worker.run(script, packages=["detectseparation", "lme4", "stats"], timeout=120 + 20 * n)
+        resp = self.session.worker.run(script, packages=["detectseparation", "lme4", "ordinal", "nnet", "stats"],
+                                       timeout=120 + 20 * n)
         out = resp.result if isinstance(resp.result, list) else [resp.result]
         return out, resp.versions
 
@@ -134,7 +137,9 @@ def default_workers(s: SearchSettings) -> int:
 
 def create_run(ds: Dataset, s: SearchSettings) -> DiscoveryRun:
     family = validate_settings(ds, s)
+    ds = view(ds, s)
     run = DiscoveryRun(settings=s, family=family, total=count_candidates(s), signature=data_signature(ds))
+    run.coding = coding(ds, s, family)
     dep = dependence_warning(ds, s)
     if dep:
         run.warnings.append(dep)
@@ -169,12 +174,14 @@ def execute(run: DiscoveryRun, ds: Dataset, *, rscript: str | None = None,
             cache: dict[str, dict[str, Any]] | None = None) -> DiscoveryRun:
     """Run (or resume) a search. Blocks; call from a background thread."""
     s = run.settings
+    ds = view(ds, s)
     if run.signature != data_signature(ds):
         raise ValueError("The data or variable settings changed since this search was created; "
                          "start a new search.")
     if run.status not in ("not_started", "partial", "cancelled"):
         raise ValueError(f"A {run.status} search cannot be resumed.")
     cancel = cancel or threading.Event()
+    own_workdir = workdir is None
     workdir = Path(workdir or tempfile.mkdtemp(prefix="sx_discovery_"))
     setup = setup_script(ds, s, run.family)
     n_workers = default_workers(s)
@@ -202,6 +209,10 @@ def execute(run: DiscoveryRun, ds: Dataset, *, rscript: str | None = None,
         run.elapsed_s = elapsed_before + (time.perf_counter() - t_start)
         for p in pooled:
             p.session.worker.stop()
+        if own_workdir:
+            import shutil
+
+            shutil.rmtree(workdir, ignore_errors=True)
     return run
 
 
@@ -381,7 +392,7 @@ def results_frame(run: DiscoveryRun) -> pd.DataFrame:
         [~in_family, df["sig_adj"] & clean, df["sig_raw"] & clean, df["sig_raw"]],
         ["", "A", "B", "C"], default="D")
     df["validation"] = [run.validation.get(int(i), "not validated" if f else "") for i, f in zip(df["idx"], in_family)]
-    df["interpretation"] = [interpret_row(r, s) for r in df.to_dict("records")]
+    df["interpretation"] = [interpret_row(r, s, run.family) for r in df.to_dict("records")]
     return df
 
 
@@ -389,7 +400,7 @@ def _p(p: float) -> str:
     return "< .001" if p < 0.001 else f"{p:.3f}".lstrip("0")
 
 
-def interpret_row(r: dict[str, Any], s: SearchSettings) -> str:
+def interpret_row(r: dict[str, Any], s: SearchSettings, family: str = "gaussian") -> str:
     """One-sentence teaching interpretation for a results row (§10.8)."""
     if r["status"] in ("invalid", "failed"):
         return f"Not tested: {r['reason']}"
@@ -404,7 +415,14 @@ def interpret_row(r: dict[str, Any], s: SearchSettings) -> str:
     else:
         what = f"the {parts[0]} × {parts[1]} interaction on {outcome} differs across {parts[2]}"
     p, pa = r["p"], r.get("p_adj")
-    eff = f"; it explains {100 * r['effect']:.1f}% of the outcome's variation" if r.get("effect") is not None else ""
+    if r.get("effect") is None:
+        eff = ""
+    elif family == "gaussian":
+        eff = f"; it explains {100 * r['effect']:.1f}% of the outcome's variation"
+    elif family == "lmm":
+        eff = f"; marginal R² rises by {100 * r['effect']:.1f} points"
+    else:
+        eff = f"; McFadden pseudo-R² rises by {r['effect']:.3f}"
     if r.get("sig_adj"):
         text = f"Evidence that {what} (p {_p(p)}, adjusted p {_p(pa)}{eff}). Still exploratory: check stability and new data."
     elif r.get("sig_raw"):

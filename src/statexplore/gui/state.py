@@ -119,6 +119,13 @@ class AppState(QObject):
             self.r_status_changed.emit("R ready: " + worker.ready_info.get("r_version", ""))
         return self._session
 
+    def cleanup(self) -> None:
+        """Stop R and delete this session's temporary work folder (exported data, plot files)."""
+        import shutil
+
+        self.shutdown_r()
+        shutil.rmtree(self._workdir, ignore_errors=True)
+
     def shutdown_r(self) -> None:
         if self._worker:
             self._worker.stop()

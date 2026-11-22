@@ -21,6 +21,7 @@ KIND_LABELS = {
     "binary": "exactly two values",
     "any": "continuous or categorical",
     "rankable": "continuous or ordinal",
+    "ordinal": "ordinal (ordered categories)",
 }
 
 
@@ -42,12 +43,14 @@ class Slot:
 class Option:
     key: str
     label: str
-    kind: str                 # float | int | choice | bool
+    kind: str                 # float | int | choice | bool | level (a category of the variable in `slot`)
     default: Any
     choices: list[tuple[str, str]] | None = None   # (value, label)
     min: float | None = None
     max: float | None = None
     help: str = ""
+    slot: str = ""            # kind "level": the slot whose variable's categories are offered
+    required: bool = True     # kind "level": False = may be left unset (the builder's default applies)
 
 
 @dataclass
@@ -119,6 +122,8 @@ def _matches(ds: Dataset, name: str, kind: str) -> bool:
         return ds.analysis_frame([name])[name].dropna().nunique() == 2
     if kind == "any":
         return v.is_categorical or (v.measure is Measure.CONTINUOUS and v.storage is Storage.NUMERIC)
+    if kind == "ordinal":
+        return v.measure is Measure.ORDINAL
     if kind == "rankable":
         return v.measure is Measure.ORDINAL or (v.measure is Measure.CONTINUOUS and v.storage is Storage.NUMERIC)
     raise ValueError(kind)
@@ -192,6 +197,12 @@ def validate(spec: AnalysisSpec, ds: Dataset, vars_: dict[str, list[str]], opts:
             val = bool(val)
         elif o.kind == "choice" and val not in [c[0] for c in o.choices or []]:
             raise AnalysisInputError(f"{o.label}: invalid choice {val!r}.")
+        elif o.kind == "level":
+            chosen = vars_.get(o.slot, [])
+            if val is None and o.required:
+                raise AnalysisInputError(f"{o.label}: choose a category.")
+            if val is not None and chosen and val not in ds.levels(chosen[0]):
+                raise AnalysisInputError(f"{o.label}: {val!r} is not a category of {ds.var(chosen[0]).display_name}.")
         if o.min is not None and val < o.min or o.max is not None and val > o.max:
             raise AnalysisInputError(f"{o.label} must be between {o.min} and {o.max}.")
         clean[o.key] = val

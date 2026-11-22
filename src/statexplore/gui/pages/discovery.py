@@ -18,7 +18,11 @@ from ...analysis.models import from_candidate
 from ...discovery import engine
 from ...discovery.detail import candidate_from_row, full_analysis
 from ...discovery.rcode import candidate_script
-from ...discovery.space import PROFILES, SearchSettings, SearchSpaceError, describe_space
+from ...discovery.space import view as search_view
+from ...discovery.space import FAMILIES, PROFILES, SearchSettings, SearchSpaceError, describe_space, suggest_family
+from ...analysis.measurement import TreatmentError, apply_treatments
+from ..widgets.treatment_panel import TreatmentPanel
+from ..widgets.variable_selector import VariableSelector
 from ..models import FrameModel
 from ..result_view import render
 from ..state import AppState
@@ -105,38 +109,59 @@ class DiscoveryPage(QWidget):
         self.outcome = QComboBox()
         self.outcome.currentIndexChanged.connect(self._outcome_changed)
         form.addRow("Dependent variable", self.outcome)
+        self.family = QComboBox()
+        self.family.addItem("— confirm the outcome model family —", "")
+        for key, label in FAMILIES.items():
+            self.family.addItem(label, key)
+        self.family.setToolTip("Required: StatExplore suggests a family from the outcome's measurement level and "
+                               "treatment, but never chooses one silently.")
+        self.family.currentIndexChanged.connect(self._family_changed)
+        form.addRow("Outcome model family", self.family)
+        self.family_hint = QLabel()
+        self.family_hint.setWordWrap(True)
+        self.family_hint.setObjectName("hint")
+        self.use_suggestion = QPushButton("Use suggested family")
+        self.use_suggestion.clicked.connect(self._use_suggestion)
+        hint_box = QWidget()
+        hint_row = QHBoxLayout(hint_box)
+        hint_row.setContentsMargins(0, 0, 0, 0)
+        hint_row.addWidget(self.family_hint, 1)
+        hint_row.addWidget(self.use_suggestion)
+        form.addRow(hint_box)
+        self.event_combo = QComboBox()
+        self.event_combo.setToolTip("Binary logistic: the category whose probability is modelled")
+        self.event_combo.currentIndexChanged.connect(self._invalidate_estimate)
+        form.addRow("Event category (binary)", self.event_combo)
+        self.reference_combo = QComboBox()
+        self.reference_combo.setToolTip("Multinomial: every other category is compared with this baseline")
+        self.reference_combo.currentIndexChanged.connect(self._invalidate_estimate)
+        form.addRow("Reference category (multinomial)", self.reference_combo)
         self.participant = QComboBox()
         self.participant.setToolTip("Long data with several rows per participant: fit linear mixed models with a "
                                     "random intercept per participant (continuous outcomes).")
         form.addRow("Repeated measures", self.participant)
         cl.addLayout(form)
-        self.var_filter = QLineEdit()
-        self.var_filter.setPlaceholderText("Filter variables…")
-        self.var_filter.textChanged.connect(self._filter_lists)
-        cl.addWidget(self.var_filter)
         cand_box = QGroupBox("Candidate predictors (up to 39)")
         cb = QVBoxLayout(cand_box)
-        self.cands = QListWidget()
-        self.cands.itemChanged.connect(self._selection_changed)
-        cb.addWidget(self.cands)
-        row = QHBoxLayout()
-        b_all = QPushButton("Check visible")
-        b_all.clicked.connect(lambda: self._check_visible(self.cands, True))
-        b_none = QPushButton("Clear")
-        b_none.clicked.connect(lambda: self._check_visible(self.cands, False, all_items=True))
+        self.cand_sel = VariableSelector()
+        self.cand_sel.setMinimumHeight(220)
+        self.cands = self.cand_sel.list
+        self.cand_sel.changed.connect(self._selection_changed)
+        cb.addWidget(self.cand_sel)
         self.n_sel = QLabel()
-        row.addWidget(b_all)
-        row.addWidget(b_none)
-        row.addWidget(self.n_sel)
-        row.addStretch()
-        cb.addLayout(row)
+        cb.addWidget(self.n_sel)
         cl.addWidget(cand_box, 2)
         req_box = QGroupBox("Required covariates (in every model; count toward the maximum)")
         rb = QVBoxLayout(req_box)
-        self.reqs = QListWidget()
-        self.reqs.itemChanged.connect(self._selection_changed)
-        rb.addWidget(self.reqs)
+        self.req_sel = VariableSelector()
+        self.req_sel.setMinimumHeight(170)
+        self.reqs = self.req_sel.list
+        self.req_sel.changed.connect(self._selection_changed)
+        rb.addWidget(self.req_sel)
         cl.addWidget(req_box, 1)
+        self.treatment_panel = TreatmentPanel()
+        self.treatment_panel.changed.connect(self._treatments_changed)
+        cl.addWidget(self.treatment_panel)
 
         opts = QGroupBox("Search settings")
         of = QFormLayout(opts)
@@ -294,83 +319,107 @@ class DiscoveryPage(QWidget):
     def _reload_lists(self) -> None:
         ds = self.state.dataset
         keep_outcome = self.outcome.currentData()
-        keep_c, keep_r = set(self._checked(self.cands)), set(self._checked(self.reqs))
-        for w in (self.cands, self.reqs):
-            w.blockSignals(True)
-            w.clear()
         keep_part = self.participant.currentData()
         self.participant.clear()
         self.participant.addItem("None (one row per participant)", None)
         self.outcome.blockSignals(True)
         self.outcome.clear()
         self.outcome.addItem("— choose —", None)
+        self._pool: list[str] = []
         if ds is not None:
             for v in ds.variables.values():
                 if v.role.value in ("excluded",) or v.storage is Storage.DATETIME:
                     continue
                 n_values = ds.analysis_frame([v.name])[v.name].dropna().nunique()
-                if n_values == 2 or (v.measure is Measure.CONTINUOUS and v.storage is Storage.NUMERIC):
-                    self.outcome.addItem(v.display_name, v.name)
+                if n_values == 2 or (v.measure is Measure.CONTINUOUS and v.storage is Storage.NUMERIC) or \
+                        (v.is_categorical and 3 <= n_values <= 15):
+                    self.outcome.addItem(f"{v.display_name}  ·  {v.measure.value}", v.name)
                 if v.role.value == "id":
                     self.participant.addItem(f"Random intercept per {v.display_name}", v.name)
                 if v.role.value in ("id",) or (not v.is_categorical and v.storage is not Storage.NUMERIC):
                     continue
-                if ds.analysis_frame([v.name])[v.name].dropna().nunique() <= 1:
+                if n_values <= 1:
                     continue  # constant in the analysed rows
-                for lst, keep in ((self.cands, keep_c), (self.reqs, keep_r)):
-                    it = QListWidgetItem(f"{v.display_name}  ·  {v.measure.value}")
-                    it.setToolTip(v.label or v.name)
-                    it.setData(Qt.UserRole, v.name)
-                    it.setFlags(it.flags() | Qt.ItemIsUserCheckable)
-                    it.setCheckState(Qt.Checked if v.name in keep else Qt.Unchecked)
-                    lst.addItem(it)
+                self._pool.append(v.name)
         self.participant.setCurrentIndex(max(0, self.participant.findData(keep_part)))
         idx = self.outcome.findData(keep_outcome)
         self.outcome.setCurrentIndex(max(0, idx))
         self.outcome.blockSignals(False)
-        for w in (self.cands, self.reqs):
-            w.blockSignals(False)
         self._outcome_changed()
-        self._filter_lists(self.var_filter.text())
 
     def _outcome_changed(self) -> None:
+        ds = self.state.dataset
         out = self.outcome.currentData()
-        for lst in (self.cands, self.reqs):
-            for i in range(lst.count()):
-                it = lst.item(i)
-                is_out = it.data(Qt.UserRole) == out
-                it.setHidden(is_out)
-                if is_out:
-                    it.setCheckState(Qt.Unchecked)
+        names = [n for n in getattr(self, "_pool", []) if n != out]
+        deco = (lambda n: f"  ·  {ds.var(n).measure.value}") if ds is not None else None
+        for sel in (self.cand_sel, self.req_sel):
+            sel.blockSignals(True)
+            sel.set_variables(ds, names, decorate=deco)
+            sel.blockSignals(False)
+        self._fill_outcome_levels()
         self._selection_changed()
 
-    def _filter_lists(self, text: str) -> None:
-        t = text.lower()
+    def _fill_outcome_levels(self) -> None:
+        ds = self.state.dataset
         out = self.outcome.currentData()
-        for lst in (self.cands, self.reqs):
-            for i in range(lst.count()):
-                it = lst.item(i)
-                hide = it.data(Qt.UserRole) == out or (bool(t) and t not in it.text().lower()
-                                                       and t not in it.toolTip().lower()
-                                                       and it.checkState() != Qt.Checked)
-                it.setHidden(hide)
+        for combo, first in ((self.event_combo, "(second category)"), (self.reference_combo, "(first category)")):
+            keep = combo.currentData()
+            combo.blockSignals(True)
+            combo.clear()
+            combo.addItem(first, None)
+            if ds is not None and out:
+                for code in ds.levels(out)[:15]:
+                    c = str(int(code)) if isinstance(code, float) and code.is_integer() else str(code)
+                    combo.addItem(f"{c} = {ds.level_label(out, code)}", code)
+            combo.setCurrentIndex(max(0, combo.findData(keep)) if keep is not None else 0)
+            combo.blockSignals(False)
+        self._family_changed()
+
+    def _search_view(self):
+        ds = self.state.dataset
+        try:
+            return apply_treatments(ds, self.treatment_panel.treatments())
+        except TreatmentError:
+            return ds
+
+    def _suggested(self) -> tuple[str, str]:
+        ds, out = self.state.dataset, self.outcome.currentData()
+        if ds is None or not out:
+            return "", ""
+        return suggest_family(self._search_view(), out)
+
+    def _family_changed(self, *_: Any) -> None:
+        fam = self.family.currentData()
+        self.event_combo.setEnabled(fam == "binomial")
+        self.reference_combo.setEnabled(fam == "multinomial")
+        key, why = self._suggested()
+        if key:
+            label = FAMILIES[key].split(" (")[0]
+            status = "" if fam else " <b>Confirm a family to continue.</b>"
+            self.family_hint.setText(f"Suggested: {label}. {html.escape(why)}{status}")
+        else:
+            self.family_hint.setText(html.escape(why))
+        self.use_suggestion.setEnabled(bool(key) and key != fam)
+        self._invalidate_estimate()
+
+    def _use_suggestion(self) -> None:
+        key, _ = self._suggested()
+        if key:
+            self.family.setCurrentIndex(self.family.findData(key))
+
+    def _treatments_changed(self) -> None:
+        self._family_changed()
 
     @staticmethod
     def _checked(lst: QListWidget) -> list[str]:
         return [lst.item(i).data(Qt.UserRole) for i in range(lst.count()) if lst.item(i).checkState() == Qt.Checked]
 
-    def _check_visible(self, lst: QListWidget, on: bool, all_items: bool = False) -> None:
-        lst.blockSignals(True)
-        for i in range(lst.count()):
-            it = lst.item(i)
-            if all_items or not it.isHidden():
-                it.setCheckState(Qt.Checked if on else Qt.Unchecked)
-        lst.blockSignals(False)
-        self._selection_changed()
-
     def _selection_changed(self, *_: Any) -> None:
-        n = len(self._checked(self.cands))
-        self.n_sel.setText(f"{n} selected" + (" — too many (max 39)" if n > 39 else ""))
+        n = len(self.cand_sel.selected())
+        self.n_sel.setText("Too many candidates (maximum 39)." if n > 39 else "")
+        out = self.outcome.currentData()
+        names = ([out] if out else []) + self.cand_sel.selected() + self.req_sel.selected()
+        self.treatment_panel.set_variables(self.state.dataset, names)
         self._invalidate_estimate()
 
     def _invalidate_estimate(self, *_: Any) -> None:
@@ -387,9 +436,18 @@ class DiscoveryPage(QWidget):
         outcome = self.outcome.currentData()
         if not outcome:
             raise SearchSpaceError("Choose a dependent variable.")
+        family = self.family.currentData()
+        if not family:
+            key, why = self._suggested()
+            raise SearchSpaceError("Confirm the outcome model family" + (
+                f" (suggested: {FAMILIES[key].split(' (')[0]} — {why})" if key else "") + ".")
         return SearchSettings(
-            outcome=outcome, candidates=[n for n in self._checked(self.cands) if n != outcome],
-            required=[n for n in self._checked(self.reqs) if n != outcome],
+            outcome=outcome, candidates=[n for n in self.cand_sel.selected() if n != outcome],
+            required=[n for n in self.req_sel.selected() if n != outcome],
+            family=family,
+            event=self.event_combo.currentData() if family == "binomial" else None,
+            reference=self.reference_combo.currentData() if family == "multinomial" else None,
+            treatments=[t.to_dict() for t in self.treatment_panel.treatments()],
             max_predictors=self.max_pred.value(), max_order=self.order.currentData(),
             covariate_mode=self.cov_mode.currentData(), alpha=self.alpha.value(),
             correction=self.correction.currentData(), mode=self.mode.currentData(), target=self.target.value(),
@@ -409,11 +467,18 @@ class DiscoveryPage(QWidget):
         except SearchSpaceError as e:
             self.estimate.setText(f"<span style='color:#c62828'>{html.escape(str(e))}</span>")
             return None
-        fam = {"gaussian": "linear regression (F-tests)", "binomial": "logistic regression (LR tests)",
-               "lmm": "linear mixed models, random intercept (LR tests, ML)"}[info["family"]]
+        c = info["coding"]
+        fam = f"{html.escape(c['family'])}; focal test: {html.escape(c['focal_test'])}"
+        extra = []
+        for key, label in (("event", "event"), ("reference", "reference"), ("ordering", "order")):
+            if c.get(key):
+                val = " < ".join(c[key]) if isinstance(c[key], list) else c[key]
+                extra.append(f"{label}: {html.escape(str(val))}")
+        extra += [html.escape(t) for t in c.get("treatments", [])]
+        coding_txt = ("<br>" + " · ".join(extra)) if extra else ""
         warn = "".join(f"<br><span style='color:#8d6e00'>⚠ {html.escape(w)}</span>" for w in info["warnings"])
         self.estimate.setText(f"<b>{info['total']:,}</b> candidate models · {fam} · shared complete-case "
-                              f"sample: <b>{info['n_shared']:,}</b> of {info['n_rows']:,} rows{warn}")
+                              f"sample: <b>{info['n_shared']:,}</b> of {info['n_rows']:,} rows{coding_txt}{warn}")
         return info
 
     # ---------- running ----------
@@ -563,15 +628,34 @@ class DiscoveryPage(QWidget):
             "optimistic. Confirm promising interactions on new data or a holdout sample (Phase 6).</p>")
         fam = {"gaussian": "Linear models, focal F-test (nested comparison)",
                "binomial": "Logistic models, focal likelihood-ratio test",
+               "ordinal": "Ordinal logistic models (ordinal::clm), focal likelihood-ratio test",
+               "multinomial": "Multinomial logistic models (nnet::multinom), focal likelihood-ratio test "
+                              "(joint over all outcome contrasts)",
                "lmm": "Linear mixed models with a random intercept per participant; focal likelihood-ratio "
                       "test on ML fits (df2 column = participants)"}[run.family]
         effect = {"gaussian": "ΔR² (variance uniquely explained by the interaction)",
                   "binomial": "ΔMcFadden R² (deviance reduction / null deviance)",
+                  "ordinal": "ΔMcFadden pseudo-R² (LR statistic / -2 log-likelihood of the null model)",
+                  "multinomial": "ΔMcFadden pseudo-R² (deviance reduction / null deviance)",
                   "lmm": "Δ marginal R² (variance explained by fixed effects)"}[run.family]
+        coding_rows = []
+        c = run.coding or {}
+        if c.get("event"):
+            coding_rows.append(("Event / reference", f"{e(c['event'])} vs {e(c.get('reference', ''))} "
+                                                     f"({e(c.get('event_source', ''))})"))
+        elif c.get("reference"):
+            coding_rows.append(("Reference category", e(c["reference"])))
+        if c.get("ordering"):
+            coding_rows.append(("Outcome order", e(" < ".join(c["ordering"]))
+                                + (f" ({e(c['direction'])})" if c.get("direction") else "")))
+        for t in c.get("treatments", []):
+            coding_rows.append(("Variable treatment", e(t)))
+        if c.get("predictor_coding"):
+            coding_rows.append(("Category coding", e(c["predictor_coding"])))
         name = lambda n: e(ds.var(n).display_name) if ds and n in ds.variables else e(n)  # noqa: E731
         parts.append("<h3>Settings</h3><table cellpadding='3'>" + "".join(
             f"<tr><td><b>{k}</b></td><td>{v}</td></tr>" for k, v in [
-                ("Outcome", name(s.outcome)), ("Model family", fam), ("Effect", effect),
+                ("Outcome", name(s.outcome)), ("Model family", fam), ("Effect", effect), *coding_rows,
                 ("Candidates", ", ".join(name(n) for n in s.candidates)),
                 ("Required covariates", ", ".join(name(n) for n in s.required) or "none"),
                 ("Max predictors / order", f"{s.max_predictors} / {'two-way' if s.max_order == 2 else 'up to three-way'}"),
@@ -663,8 +747,9 @@ class DiscoveryPage(QWidget):
         cand = candidate_from_row(run, row)
 
         def build(session):
-            session.ensure_data(ds)
-            return candidate_script(session.load_script, ds, run.settings, run.family, cand)
+            v = search_view(ds, run.settings)
+            session.ensure_data(v)
+            return candidate_script(session.load_script, v, run.settings, run.family, cand)
 
         self.state.run_r(build, lambda script: CodeDialog(
             None, self, title=f"Candidate #{cand.index}", script=script,

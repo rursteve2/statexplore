@@ -235,6 +235,9 @@ def _discovery_setup(ds: Dataset, run: Any) -> tuple[str, list[Any], str | None]
     s = run.settings
     if run.family == "lmm":
         raise ValidationInputError("Resampling stability is available for single-level (non-mixed) searches.")
+    if run.family in ("ordinal", "multinomial"):
+        raise ValidationInputError("Resampling stability and procedure cross-validation are available for Gaussian "
+                                   "and binary searches; not yet for ordinal or multinomial outcomes.")
     if run.total > 2000:
         raise ValidationInputError("Resampling repeats the whole search many times: limit it to searches with at "
                                    "most 2,000 candidates.")
@@ -253,7 +256,9 @@ def _discovery_setup(ds: Dataset, run: Any) -> tuple[str, list[Any], str | None]
 
 
 def stability(session: RSession, ds: Dataset, run: Any, rs: ResampleSpec) -> tuple[AnalysisResult, dict[str, bytes]]:
-    from ..discovery.space import focal_label
+    from ..discovery.space import focal_label, view
+
+    ds = view(ds, run.settings)
 
     body, cands, idv = _discovery_setup(ds, run)
     labels = [focal_label(ds, c) + (f" | adj. {', '.join(ds.var(v).display_name for v in c.covariates)}" if c.covariates else "")
@@ -297,7 +302,9 @@ def stability(session: RSession, ds: Dataset, run: Any, rs: ResampleSpec) -> tup
 
 def procedure_cv(session: RSession, ds: Dataset, run: Any, rs: ResampleSpec) -> tuple[AnalysisResult, dict[str, bytes]]:
     """Repeat the whole search inside each training fold; evaluate the selected model on the test fold."""
-    from ..discovery.space import focal_label, model_terms
+    from ..discovery.space import focal_label, model_terms, view
+
+    ds = view(ds, run.settings)
 
     body, cands, idv = _discovery_setup(ds, run)
     labels = [focal_label(ds, c) for c in cands]

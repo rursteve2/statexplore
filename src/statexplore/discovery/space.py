@@ -52,13 +52,19 @@ class SearchSettings:
     batch_size: int = 40
     participant: str | None = None     # set: linear mixed models with a random intercept per participant
     all_two_way: bool = False          # subset mode: also test each subset's model with ALL two-way terms (§10.3)
+    # ---- v1.1 (§10): explicit, user-confirmed outcome model family and coding ----
+    family: str = ""                   # gaussian | binomial | ordinal | multinomial ("" = v1.0 automatic choice)
+    event: Any = None                  # binomial: event category code (None = second category, as in v1.0)
+    reference: Any = None              # multinomial: baseline category code (None = first category)
+    treatments: list[dict[str, Any]] = field(default_factory=list)   # analysis-specific encodings
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> "SearchSettings":
-        return cls(**d)
+        known = {f for f in cls.__dataclass_fields__}
+        return cls(**{k: v for k, v in d.items() if k in known})
 
     def apply_profile(self, name: str) -> None:
         self.profile = name
@@ -85,13 +91,91 @@ class Candidate:
 
 # ---- validation -----------------------------------------------------------------
 
+FAMILIES = {
+    "gaussian": "Gaussian linear regression (stats::lm)",
+    "binomial": "Binary logistic regression (stats::glm, binomial)",
+    "ordinal": "Ordinal logistic regression (ordinal::clm, cumulative logit, proportional odds)",
+    "multinomial": "Multinomial logistic regression (nnet::multinom)",
+}
+FOCAL_TESTS = {
+    "gaussian": "nested-model F test",
+    "lmm": "likelihood-ratio test (ML fits, random intercept)",
+    "binomial": "likelihood-ratio (deviance) test",
+    "ordinal": "likelihood-ratio test of nested cumulative-logit models",
+    "multinomial": "likelihood-ratio test of nested multinomial models (joint over all outcome contrasts)",
+}
+
+
+def view(ds: Dataset, s: "SearchSettings") -> Dataset:
+    """The dataset as this search sees it (analysis-specific treatments applied)."""
+    from ..analysis.measurement import TreatmentError, apply_treatments, as_treatments
+
+    try:
+        return apply_treatments(ds, as_treatments(s.treatments))
+    except TreatmentError as e:
+        raise SearchSpaceError(str(e)) from None
+
+
+def suggest_family(ds: Dataset, outcome: str) -> tuple[str, str]:
+    """A suggestion only (§10.1): the user must confirm the family. `ds` should be the view
+    with the outcome's treatment applied."""
+    v = ds.var(outcome)
+    k = ds.analysis_frame([outcome])[outcome].dropna().nunique()
+    if v.measure is Measure.CONTINUOUS and v.storage is Storage.NUMERIC:
+        if k == 2:
+            return "binomial", ("The outcome is numeric but has only two observed values: binary logistic "
+                                "regression is usual; Gaussian is possible (linear probability model).")
+        return "gaussian", "The outcome is continuous (or treated as continuous for this search)."
+    if k == 2:
+        return "binomial", "The outcome has exactly two categories."
+    if v.measure is Measure.ORDINAL:
+        return "ordinal", (f"The outcome is ordinal with {k} categories: ordinal logistic regression keeps their "
+                           "order. Multinomial ignores the order; Gaussian needs 'treat as continuous'.")
+    if v.is_categorical:
+        return "multinomial", f"The outcome is nominal with {k} unordered categories."
+    return "", "This variable cannot be an outcome."
+
+
 def search_family(ds: Dataset, s: "SearchSettings") -> str:
-    family = outcome_family(ds, s.outcome)
+    family = s.family or outcome_family(ds, s.outcome)
+    if family not in FAMILIES:
+        raise SearchSpaceError(f"Unknown outcome model family {family!r}.")
+    if s.family:
+        _check_family(ds, s)
     if s.participant:
         if family != "gaussian":
-            raise SearchSpaceError("Mixed-model discovery needs a continuous outcome.")
+            raise SearchSpaceError("Mixed-model discovery (repeated measures) supports Gaussian outcomes. For binary, "
+                                   "ordinal or nominal repeated outcomes use the Mixed & Longitudinal workspace.")
         return "lmm"
     return family
+
+
+def _check_family(ds: Dataset, s: "SearchSettings") -> None:
+    v = ds.var(s.outcome)
+    levels_obs = sorted(ds.analysis_frame([s.outcome])[s.outcome].dropna().unique().tolist(), key=str)
+    k = len(levels_obs)
+    dn = v.display_name
+    if s.family == "gaussian" and not (v.measure is Measure.CONTINUOUS and v.storage is Storage.NUMERIC):
+        hint = (f" Tick 'Treat {dn} as continuous for this analysis' to model its numeric codes."
+                if v.is_categorical and v.storage is Storage.NUMERIC else "")
+        raise SearchSpaceError(f"Gaussian linear regression needs a continuous outcome; {dn} is {v.measure.value}.{hint}")
+    if s.family == "binomial":
+        if k != 2:
+            raise SearchSpaceError(f"Binary logistic regression needs exactly two outcome values; {dn} has {k}.")
+        if s.event is not None and s.event not in levels_obs:
+            raise SearchSpaceError(f"The event category {s.event!r} is not a value of {dn}.")
+    if s.family in ("ordinal", "multinomial"):
+        if not v.is_categorical:
+            raise SearchSpaceError(f"{FAMILIES[s.family].split(' (')[0]} needs a categorical outcome; {dn} is continuous.")
+        if k < 3:
+            raise SearchSpaceError(f"{dn} has {k} observed categories; use binary logistic regression for two.")
+        if k > 15:
+            raise SearchSpaceError(f"{dn} has {k} categories (limit 15 for {s.family} outcomes).")
+    if s.family == "ordinal" and v.measure is not Measure.ORDINAL:
+        raise SearchSpaceError(f"{dn} is {v.measure.value}: ordinal regression needs ordered categories. Approve an "
+                               "ordinal level in Dataset Explorer ▸ Measurement Review, or choose multinomial.")
+    if s.family == "multinomial" and s.reference is not None and s.reference not in ds.levels(s.outcome):
+        raise SearchSpaceError(f"The reference category {s.reference!r} is not a category of {dn}.")
 
 
 def outcome_family(ds: Dataset, outcome: str) -> str:
@@ -107,6 +191,7 @@ def outcome_family(ds: Dataset, outcome: str) -> str:
 
 def validate_settings(ds: Dataset, s: SearchSettings) -> str:
     """Raise SearchSpaceError with a user-facing reason; return the model family."""
+    ds = view(ds, s)
     if s.participant and s.participant in [s.outcome] + s.candidates + s.required:
         raise SearchSpaceError("The participant ID cannot also be the outcome or a predictor.")
     family = search_family(ds, s)
@@ -233,6 +318,7 @@ def focal_label(ds: Dataset, c: Candidate) -> str:
 
 
 def shared_sample_size(ds: Dataset, s: SearchSettings) -> int:
+    ds = view(ds, s)
     frame = ds.analysis_frame([s.outcome] + s.candidates + s.required)
     return int(frame.notna().all(axis=1).sum())
 
@@ -257,6 +343,7 @@ def dependence_warning(ds: Dataset, s: SearchSettings) -> str:
 
 def describe_space(ds: Dataset, s: SearchSettings) -> dict[str, Any]:
     family = validate_settings(ds, s)
+    ds = view(ds, s)
     total = count_candidates(s)
     warnings = []
     if total >= LARGE_SEARCH:
@@ -273,4 +360,55 @@ def describe_space(ds: Dataset, s: SearchSettings) -> dict[str, Any]:
     if s.mode in "CD" and budget is not None and budget < total:
         warnings.append(f"The model budget ({budget:,}) is smaller than the search space: the run "
                         "will be labelled partial.")
-    return {"family": family, "total": total, "n_shared": n_shared, "n_rows": n_all, "warnings": warnings}
+    if family in ("ordinal", "multinomial"):
+        k = len(ds.analysis_frame([s.outcome])[s.outcome].dropna().unique())
+        warnings.append(f"{FAMILIES[family].split(' (')[0]}: each model estimates "
+                        + ("one coefficient per term plus " + str(k - 1) + " thresholds" if family == "ordinal" else
+                           f"{k - 1} coefficients per term (one per non-reference category)")
+                        + "; the parameter limit applies to the total, so fewer predictors fit.")
+    return {"family": family, "total": total, "n_shared": n_shared, "n_rows": n_all, "warnings": warnings,
+            "coding": coding(ds, s, family)}
+
+
+def binomial_levels(ds: Dataset, s: SearchSettings) -> tuple[Any, Any]:
+    """(event, reference) codes. Default event = the second category in R's level order
+    (after a reference level is moved first), exactly as in v1.0."""
+    v = ds.var(s.outcome)
+    observed = set(ds.analysis_frame([s.outcome])[s.outcome].dropna().unique().tolist())
+    if v.is_categorical:
+        levels = [c for c in ds.levels(s.outcome) if c in observed]
+        if v.reference_level in levels:
+            levels = [v.reference_level] + [c for c in levels if c != v.reference_level]
+    else:
+        levels = sorted(observed)
+    event = s.event if s.event is not None else levels[1]
+    return event, next(c for c in levels if c != event)
+
+
+def coding(ds: Dataset, s: SearchSettings, family: str) -> dict[str, Any]:
+    """How the outcome and predictors are coded in this search (§10.4), recorded with the run.
+    `ds` must be the search view."""
+    from ..analysis.measurement import treatment_records
+
+    v = ds.var(s.outcome)
+    out: dict[str, Any] = {"family": FAMILIES.get("gaussian" if family == "lmm" else family, family),
+                           "focal_test": FOCAL_TESTS.get(family, ""),
+                           "outcome": v.display_name, "outcome_level": v.measure.value,
+                           "predictor_coding": "categorical predictors: treatment (dummy) contrasts against the "
+                                               "reference category (first category unless one is set)",
+                           "treatments": [r["description"] for r in treatment_records(ds)]}
+    if family == "binomial":
+        event, ref = binomial_levels(ds, s)
+        out["event"] = ds.level_label(s.outcome, event)
+        out["reference"] = ds.level_label(s.outcome, ref)
+        out["event_source"] = "chosen by the user" if s.event is not None else "second category (default)"
+    elif family == "ordinal":
+        out["ordering"] = [ds.level_label(s.outcome, c) for c in ds.levels(s.outcome)]
+        if v.coding_direction:
+            out["direction"] = v.coding_direction
+    elif family == "multinomial":
+        ref = s.reference if s.reference is not None else ds.levels(s.outcome)[0]
+        out["reference"] = ds.level_label(s.outcome, ref)
+    if any(t.get("variable") == s.outcome for t in s.treatments):
+        out["outcome_treatment"] = next(r["description"] for r in treatment_records(ds) if r["variable"] == s.outcome)
+    return out

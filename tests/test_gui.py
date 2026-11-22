@@ -117,6 +117,9 @@ def test_discovery_page_end_to_end(window, qtbot, tmp_path, r_worker):
     for i in range(page.cands.count()):
         page.cands.item(i).setCheckState(Qt.Checked)
     page.workers.setValue(1)
+    assert page._estimate() is None and "Confirm the outcome model family" in page.estimate.text()   # v1.1
+    page._use_suggestion()
+    assert page.family.currentData() == "gaussian"
     info = page._estimate()
     assert info["total"] == 6 and "<b>6</b>" in page.estimate.text()
     page._start()

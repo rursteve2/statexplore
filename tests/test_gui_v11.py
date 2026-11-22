@@ -118,3 +118,66 @@ def test_eda_page_categorical_workflow(hrs_window, qtbot, r_worker):
     r = hrs_window.state.project.results[-1]
     assert r.kind == "describe" and r.inputs["treatments"][0]["variable"] == "R_LTACTX"
     assert r.tables[0].rows[0][1] == pytest.approx(hrs_window.state.dataset.analysis_column("R_LTACTX").mean())
+
+
+@pytest.mark.r
+def test_analysis_builder_2x2_preview_and_run(hrs_window, qtbot, r_worker):
+    page = hrs_window.pages["Analysis Builder"]
+    select_analysis(page, "assoc_2x2")
+    assert "Choose both variables" in page.preview.text()
+    out = page.slot_widgets["outcome"].combo
+    out.setCurrentIndex(out.findData("R_SMOKEN"))
+    grp = page.slot_widgets["group"].combo
+    grp.setCurrentIndex(grp.findData("RAGENDER"))
+    ev = page.option_widgets["event"]
+    assert [ev.itemText(i) for i in range(ev.count())] == ["— choose —", "0 = 0.No", "1 = 1.Yes"]
+    for key, code in (("event", 1.0), ("outcome_ref", 0.0), ("exposed", 1.0), ("comparison", 2.0)):
+        w = page.option_widgets[key]
+        w.setCurrentIndex(w.findData(code))
+    text = page.preview.text()
+    assert "Event: 1.Yes" in text and "Exposed: 1.Male" in text and "Comparison: 2.Female" in text
+    page._run()
+    qtbot.waitUntil(lambda: page.current is not None, timeout=60000)
+    result, _ = page.current
+    assert result.status.value in ("ok", "warning"), result.messages
+    assert result.tables[0].name == "2x2 table" and "Risk difference" in page.output.toHtml()
+
+
+@pytest.mark.r
+def test_discovery_page_ordinal_family_and_selectors(hrs_window, qtbot, r_worker):
+    from statexplore.analysis import measurement as M
+    from statexplore.core.derive import FilterSpec
+
+    ds = hrs_window.state.dataset
+    M.approve(ds, "R_SHLT", "ordinal")
+    ds.add_filter(FilterSpec("WAVE", "==", 10.0))
+    hrs_window.state.notify_metadata_changed()
+    page = hrs_window.pages["Automated Model Discovery"]
+    page.outcome.setCurrentIndex(page.outcome.findData("R_SHLT"))
+    assert "Suggested: Ordinal logistic regression" in page.family_hint.text()
+    page._use_suggestion()
+    assert page.family.currentData() == "ordinal"
+    # standard selector controls on both lists (spec §7.2: below Required Covariates too)
+    for sel in (page.cand_sel, page.req_sel):
+        assert set(sel.buttons) == {"check_visible", "clear_visible", "check_all", "clear_all"}
+    page.cand_sel.set_filter("Big 5")
+    page.cand_sel.check_visible()
+    page.cand_sel.set_filter("")
+    assert len(page.cand_sel.selected()) == 5
+    page.req_sel.set_selected(["RAGENDER"])
+    page.workers.setValue(2)
+    info = page._estimate()
+    assert info is not None and info["family"] == "ordinal" and "clm" in page.estimate.text()
+    page._start()
+    qtbot.waitUntil(lambda: page.run is not None and page.run.status == "complete", timeout=300000)
+    assert page.run.settings.family == "ordinal" and page.run.coding["ordering"][0] == "1.Excellent"
+    qtbot.waitUntil(lambda: "Ordinal logistic models" in page.summary_view.toPlainText(), timeout=10000)
+    text = page.summary_view.toPlainText()
+    assert "Ordinal logistic models" in text and "Outcome order" in text
+    # gaussian needs the continuous treatment checkbox for the ordinal outcome
+    page.family.setCurrentIndex(page.family.findData("gaussian"))
+    assert page._estimate() is None and "Treat R_SHLT as continuous" in page.estimate.text()
+    page.treatment_panel.ask = False
+    page.treatment_panel.set_treated("R_SHLT")
+    info = page._estimate()
+    assert info is not None and info["family"] == "gaussian" and "R_SHLT: Continuous" in page.estimate.text()
