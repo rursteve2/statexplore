@@ -240,7 +240,8 @@ The supplied `hrs_least_missing_1000 (1).sav` is byte-identical to the v1.0 fixt
 - [x] P6 Longitudinal preflight + Survey Analysis page
 - [x] P7 R Console
 - [x] P8 R Package Manager
-- [ ] P9 Research extras (Likert sensitivity, teaching finder), migrations, docs, packaging, release audit
+- [x] P9 Research extras (Likert sensitivity, teaching finder), migrations, docs, packaging, release audit
+- [ ] User: install on a clean Windows 10/11 machine (networking off); decide whether to publish GitHub release v1.1.0
 
 ### Baseline (2026-11-21): 152/152 v1.0 tests pass.
 
@@ -267,3 +268,13 @@ The supplied `hrs_least_missing_1000 (1).sav` is byte-identical to the v1.0 fixt
 - P7: `r/console_worker.R` + `rbridge/console.py` + R Console page: highlighted editor, run/stop, clean vs persistent sessions, output/messages/warnings/errors, PNG plots, open/save .R, objects, loaded packages, clear/restart, explicit Import Resulting Dataset (diff → confirm → snapshot .sxp → new project with history). Each run recorded in the project.
 - P8: `rbridge/package_manager.py` + dialog (R Console and Settings): inventory core/user/R-base, local .zip/.tar.gz only (repos = NULL), DESCRIPTION checks (platform, R version, dependencies with versions, core shadowing, compiler for source), manifest with SHA-256, removal guarded by reverse dependencies.
 - Bugs found and fixed: preflight info changed v1.0 models' status (now notes); Python-computed tables broke script reproducibility (moved to R); single plot JSON-unboxed to a string; console error call showed the console's own eval(); no zip tool on Windows for test packages (zip in Python).
+
+### Review (P9 / release 1.1.0)
+- 247/247 tests (adds test_research_tools 4, test_backward_compat 5, test_acceptance_workflow 1).
+- §17: `likert_sensitivity` (== statsmodels OLS / OrderedModel), `analysis/interpret.py` (brief interpretation on every Analysis Builder / mixed result; Copy tables), `analysis/teaching_finder.py` (+ Teaching Studio button).
+- §18: PROJECT_VERSION 2; first save over a v1 file keeps `<name>.v1-backup.sxp`; genuine v1.0.0 fixture generated from a worktree of eb80db6; old results reproduce to 1e-9; status-bar notices.
+- Exports show per-analysis treatments (Excel, Word; PDF via shared HTML).
+- §23 workflow automated (24 steps, real GUI, HRS) — all PASS; docs/release-audit-v1.1.0.md.
+- Packaging: console_worker.R was missing from the PyInstaller spec (caught before building); self-test extended to every new engine + R Console; frozen build and silent-installed copy both pass `--selftest --full`; clean uninstall.
+- Docs: README (new sections, 4A measurement levels, limitations), spec-compliance-v1.1.md, RELEASE_NOTES_v1.1.0.md, DEVELOPER.md v1.1 notes, release audit.
+- Not published: GitHub release/push is outward-facing → awaiting the user's decision.

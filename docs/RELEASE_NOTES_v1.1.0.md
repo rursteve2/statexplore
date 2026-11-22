@@ -12,6 +12,8 @@ kept the first time you save it in the 1.1 format).
 Windows may say "Windows protected your PC" (the program is not code-signed): **More info ▸ Run anyway**.
 Requirements: Windows 10 or 11 (64-bit), about 1.5 GB of free disk space.
 
+Checksums (SHA-256): Setup `8a634fbee48d73fa1c8f6c15126a062f230ef9f6e4ba8ea68f929b10950d55c9` · portable zip `02ad56583f64a7fd8a42273efebbf03f6b53974941e7bf057e9c9ae73cedf3bc`.
+
 ## What's new
 
 **Measurement levels**
