@@ -233,7 +233,7 @@ def _discovery_setup(ds: Dataset, run: Any) -> tuple[str, list[Any], str | None]
     from ..discovery.space import enumerate_candidates
 
     s = run.settings
-    if run.family == "lmm":
+    if run.family in ("lmm", "glmm", "clmm", "gee"):
         raise ValidationInputError("Resampling stability is available for single-level (non-mixed) searches.")
     if run.family in ("ordinal", "multinomial"):
         raise ValidationInputError("Resampling stability and procedure cross-validation are available for Gaussian "

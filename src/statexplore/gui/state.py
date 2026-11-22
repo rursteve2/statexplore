@@ -47,6 +47,7 @@ class AppState(QObject):
     r_status_changed = Signal(str)
     models_changed = Signal()
     show_in_teaching = Signal(object)    # ModelSpec
+    show_in_mixed = Signal(object)       # MixedSpec (a longitudinal discovery candidate, refitted)
 
     def __init__(self) -> None:
         super().__init__()

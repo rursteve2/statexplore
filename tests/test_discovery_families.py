@@ -142,8 +142,10 @@ def test_H_family_validation_and_suggestions(hrs_path):
     assert v(family="ordinal") == "ordinal"
     assert suggest_family(ds, "R_SHLT")[0] == "ordinal"
     assert suggest_family(ds, "RAGENDER")[0] == "binomial" and suggest_family(ds, "R_BMI")[0] == "gaussian"
-    with pytest.raises(SearchSpaceError, match="Mixed-model discovery"):
+    # v1.2: repeated ordinal outcomes use ordinal::clmm; a Gaussian structure is refused with a reason
+    with pytest.raises(SearchSpaceError, match="not available for ordinal outcomes"):
         v(family="ordinal", participant="HHIDPN")
+    assert v(family="ordinal", participant="HHIDPN", structure="clmm_ri") == "clmm"
 
 
 def test_H_continuous_override_in_hrs_search(hrs_path, tmp_path):

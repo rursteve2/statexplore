@@ -99,7 +99,12 @@ def from_candidate(run: Any, row: dict[str, Any]) -> ModelSpec:
     """ModelSpec for a discovery candidate (same terms and same shared sample)."""
     s = run.settings
     focal = tuple(row["focal"])
-    if row.get("kind") == "all_two_way":
+    if row.get("kind") in ("main", "combo", "factorial"):
+        inter = [tuple(t) for t in (row.get("inter") or [])]
+        terms: list[Term] = [(v,) for v in row["covariates"]] + inter + [(v,) for v in s.required]
+        top = [t for t in inter if not any(set(t) < set(u) for u in inter)]
+        focal = top[0] if len(top) == 1 else None
+    elif row.get("kind") == "all_two_way":
         terms: list[Term] = list(combinations(focal, 2)) + [(v,) for v in s.required]
         focal = None
     else:

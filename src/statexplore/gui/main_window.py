@@ -141,6 +141,8 @@ class MainWindow(QMainWindow):
             lambda b: self.statusBar().showMessage("Working…" if b else "Ready", 0 if b else 3000))
         self.state.show_in_teaching.connect(
             lambda _m: self.sidebar.setCurrentRow(SECTIONS.index("Teaching Studio")))
+        self.state.show_in_mixed.connect(
+            lambda _m: self.sidebar.setCurrentRow(SECTIONS.index("Mixed & Longitudinal Models")))
         self.state.project_changed.connect(self._update_title)
         self.state.metadata_changed.connect(self._update_title)
         self.state.result_added.connect(lambda _r: self._update_title())

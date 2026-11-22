@@ -45,6 +45,42 @@ class MixedInputError(ValueError):
     pass
 
 
+STRUCTURE_SPECS = {   # discovery structure -> Mixed workspace settings (None: not available here)
+    "ri": dict(random="intercept"), "rs": dict(random="slope"), "rs_uncorr": dict(random="slope_uncorrelated"),
+    "nlme_ri": dict(random="intercept", force_nlme=True), "nlme_rs": dict(random="slope", force_nlme=True),
+    "ar1": dict(random="intercept", residual="ar1"), "car1": dict(random="intercept", residual="car1"),
+    "mmrm_us": dict(random="none", residual="unstructured"), "mmrm_cs": None, "mmrm_ar1": None,
+    "glmer_ri": dict(random="intercept"), "glmer_rs": dict(random="slope"),
+    "clmm_ri": dict(random="intercept"), "clmm_rs": dict(random="slope"),
+    "gee_exch": dict(estimator="gee", gee_corstr="exchangeable"), "gee_ar1": dict(estimator="gee", gee_corstr="ar1"),
+    "gee_ind": dict(estimator="gee", gee_corstr="independence"),
+}
+
+
+def spec_from_discovery(run: Any, row: dict[str, Any]) -> "MixedSpec":
+    """The exact model of a longitudinal discovery candidate for the Mixed workspace (refit, labelled)."""
+    from ..discovery.detail import candidate_from_row
+    from ..discovery.space import full_terms
+
+    s = run.settings
+    c = candidate_from_row(run, row)
+    st = c.structure or s.structure or "ri"
+    extra = STRUCTURE_SPECS.get(st)
+    if extra is None:
+        raise MixedInputError("This covariance structure (mmrm compound symmetry / AR(1)) is not offered in the "
+                              "Mixed workspace; View candidate code shows the exact fit.")
+    terms = [list(t) for t in full_terms(c)]
+    preds = list(dict.fromkeys(v for t in terms for v in t if v != s.time))
+    fam = s.family or "gaussian"
+    return MixedSpec(outcome=s.outcome, id=s.participant, time=s.time, time_type=s.time_type, predictors=preds,
+                     interactions="none", method="ML", family=fam, event=s.event, reference=s.reference,
+                     inference="lrt" if fam == "gaussian" else "satterthwaite",
+                     treatments=[dict(t) for t in s.treatments], terms=terms,
+                     max_fixed=max(6, len(preds) + (1 if s.time else 0)),
+                     source=f"discovery search {run.id}, candidate #{row['idx']} (refitted here with the same "
+                            "formula, structure, ML estimation and coding)", **extra)
+
+
 @dataclass
 class MixedSpec:
     outcome: str
@@ -70,6 +106,10 @@ class MixedSpec:
     reference: Any = None               # multinomial: baseline category code (None = first category)
     nagq: int = 1                       # GLMM: 1 = Laplace; > 1 = adaptive Gauss-Hermite (one random intercept)
     gee_corstr: str = "exchangeable"    # GEE working correlation
+    # ---- v1.2: exact fixed terms (a discovery candidate refitted here); overrides `interactions` ----
+    terms: list[list[str]] | None = None
+    source: str = ""                    # e.g. "discovery run abc #12 (refit)"
+    max_fixed: int = 6                  # complexity limit: distinct fixed-effect predictors incl. time (M §10)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -163,6 +203,10 @@ def validate(ds: Dataset, s: MixedSpec) -> None:
     names = [s.outcome, s.id] + ([s.time] if s.time else []) + ([s.cluster] if s.cluster else []) + s.predictors
     if len(set(names)) != len(names):
         raise MixedInputError("Each variable can have only one role.")
+    n_fixed = len(s.predictors) + (1 if s.time else 0)
+    if n_fixed > s.max_fixed:
+        raise MixedInputError(f"{n_fixed} distinct fixed-effect predictors (time included) exceed the complexity limit "
+                              f"of {s.max_fixed}. Raise 'Max fixed-effect predictors' to fit a larger model.")
     from .models import variable_problem
 
     frame = ds.analysis_frame(list(dict.fromkeys(names))).dropna()
@@ -200,6 +244,9 @@ def validate(ds: Dataset, s: MixedSpec) -> None:
 
 def _fixed_rhs(ds: Dataset, s: MixedSpec) -> str:
     a = lambda n: alias(ds.var(n).alias)  # noqa: E731
+    if s.terms:
+        name = lambda n: "sx_time" if n == s.time else a(n)  # noqa: E731
+        return " + ".join(":".join(name(v) for v in t) for t in s.terms)
     preds = [a(p) for p in s.predictors]
     terms: list[str] = []
     if s.time:
@@ -867,6 +914,9 @@ def run(session: RSession, ds: Dataset, s: MixedSpec) -> tuple[AnalysisResult, d
                               inputs={"spec": s.to_dict(), "filters": [f.describe() for f in ds.filters]})
     result.missing_data = "All available observations (complete on the model variables within each row); MAR assumed."
     result.seed = s.seed
+    if s.source:
+        result.messages.append(f"Refit: {s.source}. Rows can differ from the search if it used a shared "
+                               "complete-case sample over more variables.")
     record(result, ds)
     artifacts: dict[str, bytes] = {}
     if raw is None:

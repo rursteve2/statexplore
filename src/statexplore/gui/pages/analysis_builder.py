@@ -210,6 +210,21 @@ class AnalysisBuilderPage(QWidget):
         self.preview.setTextFormat(Qt.RichText)
         self.preview.setWordWrap(True)
         self.preview.setVisible(self.spec.key == "assoc_2x2")
+        from ...analysis.complexity import LIMITS
+
+        self.complexity = QLabel()
+        self.complexity.setObjectName("hint")
+        self.complexity.setWordWrap(True)
+        self.complexity.setVisible(self.spec.key in LIMITS)
+        self.form_layout.addWidget(self.complexity)
+        for w in self.slot_widgets.values():
+            w.changed.connect(self._update_complexity)
+        for o in self.spec.options:
+            ow = self.option_widgets.get(o.key)
+            sig = getattr(ow, "valueChanged", None) or getattr(ow, "currentIndexChanged", None)
+            if sig is not None:
+                sig.connect(lambda *_a: self._update_complexity())
+        self._update_complexity()
         self.form_layout.addWidget(self.preview)
         for o in self.spec.options:
             if o.kind == "level":
@@ -237,6 +252,19 @@ class AnalysisBuilderPage(QWidget):
         w.setCurrentIndex(max(idx, 0))
         w.blockSignals(False)
         self._update_preview()
+
+    def _update_complexity(self) -> None:
+        """Distinct predictors, terms, coefficients, rows, residual df (and cells) before fitting (M §10)."""
+        from ...analysis.complexity import LIMITS, describe, preflight
+
+        if self.spec is None or self.spec.key not in LIMITS or not hasattr(self, "complexity") \
+                or self.state.dataset is None:
+            return
+        vars_, opts = self._values()
+        try:
+            self.complexity.setText(describe(preflight(self.spec.key, self.state.dataset, vars_, opts)))
+        except Exception:  # an incomplete selection must never break the form
+            self.complexity.setText("")
 
     def _update_preview(self) -> None:
         if self.spec is None or self.spec.key != "assoc_2x2" or not hasattr(self, "preview"):

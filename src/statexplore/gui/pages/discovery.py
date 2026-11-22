@@ -21,8 +21,8 @@ from ...discovery.detail import candidate_from_row, full_analysis
 from ...discovery.rcode import candidate_script
 from ...discovery.space import view as search_view
 from ...discovery.space import (
-    FAMILIES, MAX_PREDICTORS_LIMIT, PROFILES, STRATEGIES, SearchSettings, SearchSpaceError, describe_space,
-    suggest_family,
+    FAMILIES, MAX_PREDICTORS_LIMIT, PROFILES, STRATEGIES, STRUCTURES, SearchSettings, SearchSpaceError,
+    describe_space, structures_for, suggest_family,
 )
 from ...analysis.measurement import TreatmentError, apply_treatments
 from ..widgets.treatment_panel import TreatmentPanel
@@ -204,11 +204,8 @@ class DiscoveryPage(QWidget):
         self.reference_combo.setToolTip("Multinomial: every other category is compared with this baseline")
         self.reference_combo.currentIndexChanged.connect(self._invalidate_estimate)
         form.addRow("Reference category (multinomial)", self.reference_combo)
-        self.participant = QComboBox()
-        self.participant.setToolTip("Long data with several rows per participant: fit linear mixed models with a "
-                                    "random intercept per participant (continuous outcomes).")
-        form.addRow("Repeated measures", self.participant)
         cl.addLayout(form)
+        self._build_study_box(cl)
         cand_box = QGroupBox("Candidate predictors (up to 39)")
         cb = QVBoxLayout(cand_box)
         self.cand_sel = VariableSelector()
@@ -433,10 +430,16 @@ class DiscoveryPage(QWidget):
         self.code_btn = QPushButton("View candidate code")
         self.code_btn.clicked.connect(self._view_code)
         self.teach_btn = QPushButton("Plot in Teaching Studio")
+        self.teach_btn.setToolTip("Longitudinal candidates open in the Mixed & Longitudinal workspace (exact formula "
+                                  "and structure, refitted), which draws population and participant trajectories.")
         self.teach_btn.clicked.connect(self._to_teaching)
         self.set_btn = QPushButton("Add to comparison")
         self.set_btn.clicked.connect(self._to_set)
-        for b in (self.open_btn, self.code_btn, self.teach_btn, self.set_btn):
+        self.main_btn = QPushButton("Compare with main-effects model")
+        self.main_btn.setToolTip("Adds this model and the same model without any interaction (same rows, same "
+                                 "variables) to the Model Comparison set.")
+        self.main_btn.clicked.connect(self._compare_main)
+        for b in (self.open_btn, self.code_btn, self.teach_btn, self.set_btn, self.main_btn):
             sort_row.addWidget(b)
         rl.addLayout(sort_row)
 
@@ -454,10 +457,143 @@ class DiscoveryPage(QWidget):
         lay.addWidget(warn)
         lay.addWidget(split, 1)
 
+        self._fill_structures()
+        self._study_changed()
         state.project_changed.connect(self._reload)
         state.metadata_changed.connect(self._reload_lists)
         state.result_added.connect(lambda r: self._show_run() if r.kind == "discovery_stability" and self.run else None)
         self._reload()
+
+    # ---------- study structure (M §8.1) ----------
+    def _build_study_box(self, layout: QVBoxLayout) -> None:
+        box = QGroupBox("Study structure")
+        f = QFormLayout(box)
+        self.study = QComboBox()
+        self.study.addItem("Independent observations — no within-participant modelling", "independent")
+        self.study.addItem("Repeated measures / longitudinal (participant ID + time)", "longitudinal")
+        self.study.setToolTip("Independent observations treats every row as a separate unit. It does NOT turn long "
+                              "data into one row per participant:\nwith repeated IDs, p-values are too small. Choose "
+                              "repeated measures to model the dependence.")
+        f.addRow(self.study)
+        self.participant = QComboBox()
+        self.participant.setToolTip("Any column with repeated values can identify participants; ID-role variables "
+                                    "are listed first. The ID is a grouping variable, never a predictor.")
+        self.time_combo = QComboBox()
+        self.time_combo.setToolTip("Needed for random slopes, residual correlation, marginal models and the time "
+                                   "strategy. Numeric codes are used (labels mapped back).")
+        self.time_type = QComboBox()
+        self.time_type.addItem("Continuous (linear trend)", "continuous")
+        self.time_type.addItem("Categorical (one effect per occasion)", "categorical")
+        self.time_fixed = QCheckBox("Include time as a fixed effect in every model (counts as a predictor)")
+        self.time_fixed.setChecked(True)
+        self.workflow = QComboBox()
+        self.workflow.addItem("A: Fixed-effect discovery (lock one structure)", "fixed")
+        self.workflow.addItem("B: Compare random-effect / covariance structures (lock the fixed part)", "structure")
+        self.workflow.setToolTip("A searches main effects and interactions with one locked structure (ML fits).\n"
+                                 "B fits the candidates as main effects (+ optional time interactions) under each "
+                                 "structure and compares fit (REML for Gaussian).\nThe two rankings are kept separate.")
+        self.structure = QComboBox()
+        self.structures_list = QListWidget()
+        self.structures_list.setMaximumHeight(140)
+        self.time_inter = QCheckBox("Locked fixed part includes time × each candidate")
+        self.role_btn = QPushButton("Mark this column as the participant ID in the project")
+        self.role_btn.setAutoDefault(False)
+        self.role_btn.clicked.connect(self._mark_id_role)
+        self.long_info = QTextBrowser()
+        self.long_info.setMaximumHeight(170)
+        self._long_widgets = [self.participant, self.time_combo, self.time_type, self.time_fixed, self.workflow,
+                              self.structure, self.structures_list, self.time_inter, self.role_btn, self.long_info]
+        for label, w in [("Participant ID", self.participant), ("", self.role_btn), ("Time", self.time_combo),
+                         ("Time enters as", self.time_type), ("", self.time_fixed), ("Workflow", self.workflow),
+                         ("Structure (workflow A)", self.structure), ("Structures (workflow B)", self.structures_list),
+                         ("", self.time_inter), ("Preflight", self.long_info)]:
+            if label:
+                f.addRow(label, w)
+            else:
+                f.addRow(w)
+        layout.addWidget(box)
+        for w in (self.study, self.participant, self.time_combo, self.time_type, self.workflow, self.structure):
+            w.currentIndexChanged.connect(self._study_changed)
+        self.time_fixed.toggled.connect(self._study_changed)
+        self.time_inter.toggled.connect(self._invalidate_estimate)
+        self.structures_list.itemChanged.connect(self._invalidate_estimate)
+
+    def _fill_structures(self) -> None:
+        fam = self.family.currentData() or "gaussian"
+        keep, keep_list = self.structure.currentData(), set(self._checked_structures())
+        self.structure.blockSignals(True)
+        self.structure.clear()
+        self.structures_list.blockSignals(True)
+        self.structures_list.clear()
+        for key in structures_for(fam):
+            label = STRUCTURES[key][0]
+            self.structure.addItem(label, key)
+            it = QListWidgetItem(label)
+            it.setData(Qt.UserRole, key)
+            it.setFlags(it.flags() | Qt.ItemIsUserCheckable)
+            default = key in ("ri", "rs", "glmer_ri", "glmer_rs", "clmm_ri", "clmm_rs") if not keep_list else key in keep_list
+            it.setCheckState(Qt.Checked if default else Qt.Unchecked)
+            self.structures_list.addItem(it)
+        self.structure.setCurrentIndex(max(0, self.structure.findData(keep)))
+        self.structure.blockSignals(False)
+        self.structures_list.blockSignals(False)
+
+    def _checked_structures(self) -> list[str]:
+        lst = self.structures_list
+        return [lst.item(i).data(Qt.UserRole) for i in range(lst.count()) if lst.item(i).checkState() == Qt.Checked]
+
+    def _study_changed(self, *_: Any) -> None:
+        long = self.study.currentData() == "longitudinal"
+        for w in self._long_widgets:
+            w.setEnabled(long)
+        if long:
+            wf = self.workflow.currentData()
+            self.structure.setEnabled(wf == "fixed")
+            self.structures_list.setEnabled(wf == "structure")
+            self.time_inter.setEnabled(wf == "structure")
+        self._update_long_info()
+        self._invalidate_estimate()
+
+    def _mark_id_role(self) -> None:
+        ds, pid = self.state.dataset, self.participant.currentData()
+        if ds is None or not pid:
+            return
+        ds.set_variable_field(pid, "role", "id")
+        self.state.notify_metadata_changed()
+
+    def _update_long_info(self) -> None:
+        """Rows, participants, waves and outcome availability by wave on the analysed rows (M §8.1, §8.6)."""
+        ds, out = self.state.dataset, self.outcome.currentData()
+        if self.study.currentData() != "longitudinal":
+            dep = ""
+            if ds is not None and out:
+                try:
+                    from ...discovery.space import dependence_warning
+                    dep = dependence_warning(ds, SearchSettings(outcome=out, candidates=self.cand_sel.selected()))
+                except Exception:   # an incomplete selection must never break the form
+                    dep = ""
+            self.long_info.setHtml(f"<p style='color:#c62828'>⚠ {html.escape(dep)}</p>" if dep else "")
+            return
+        pid, time = self.participant.currentData(), self.time_combo.currentData()
+        if ds is None or not out or not pid:
+            self.long_info.setHtml("<i>Choose an outcome and a participant ID.</i>")
+            return
+        try:
+            from ...analysis.longitudinal_preflight import preflight
+            from ..result_view import table_html
+
+            v = self._search_view()
+            rep = preflight(v, out, pid, time, [n for n in self.cand_sel.selected() if n not in (out, pid, time)])
+            parts = [f"<p><b>Rows</b> {rep.n_records:,} · <b>Participants</b> {rep.n_participants:,} · "
+                     f"<b>Waves</b> {len(rep.time_points) if time else '—'} · participants with 2+ observations "
+                     f"{rep.n_multi_obs:,} · duplicate participant-time rows {rep.duplicates}</p>"]
+            parts += [f"<p style='color:#8d6e00'>⚠ {html.escape(w)}</p>" for w in rep.warnings]
+            parts += [f"<p class='note'>{html.escape(n)}</p>" for n in rep.notes]
+            if time:
+                parts.append(table_html(rep.tables(v)[1]))
+            self.long_info.setHtml("".join(parts))
+        except Exception as e:  # an incomplete selection must never break the form
+            self.long_info.setHtml(f"<i>{html.escape(str(e))}</i>")
 
     # ---------- variable lists ----------
     def _reload(self) -> None:
@@ -470,9 +606,11 @@ class DiscoveryPage(QWidget):
     def _reload_lists(self) -> None:
         ds = self.state.dataset
         keep_outcome = self.outcome.currentData()
-        keep_part = self.participant.currentData()
+        keep_part, keep_time = self.participant.currentData(), self.time_combo.currentData()
         self.participant.clear()
-        self.participant.addItem("None (one row per participant)", None)
+        self.time_combo.clear()
+        self.time_combo.addItem("(none)", None)
+        ids, others, times, tothers = [], [], [], []
         self.outcome.blockSignals(True)
         self.outcome.clear()
         self.outcome.addItem("— choose —", None)
@@ -485,14 +623,25 @@ class DiscoveryPage(QWidget):
                 if n_values == 2 or (v.measure is Measure.CONTINUOUS and v.storage is Storage.NUMERIC) or \
                         (v.is_categorical and 3 <= n_values <= 15):
                     self.outcome.addItem(f"{v.display_name}  ·  {v.measure.value}", v.name)
-                if v.role.value == "id":
-                    self.participant.addItem(f"Random intercept per {v.display_name}", v.name)
+                (ids if v.role.value == "id" else others).append(v)
+                if v.storage is Storage.NUMERIC:
+                    (times if v.role.value == "time" else tothers).append(v)
                 if v.role.value in ("id",) or (not v.is_categorical and v.storage is not Storage.NUMERIC):
                     continue
                 if n_values <= 1:
                     continue  # constant in the analysed rows
                 self._pool.append(v.name)
+        # any structurally valid column may be the ID or time; configured roles are suggested first (M §8.1)
+        for v in ids:
+            self.participant.addItem(f"{v.display_name}  (ID role)", v.name)
+        for v in others:
+            self.participant.addItem(v.display_name, v.name)
+        for v in times:
+            self.time_combo.addItem(f"{v.display_name}  (time role)", v.name)
+        for v in tothers:
+            self.time_combo.addItem(v.display_name, v.name)
         self.participant.setCurrentIndex(max(0, self.participant.findData(keep_part)))
+        self.time_combo.setCurrentIndex(max(0, self.time_combo.findData(keep_time)))
         idx = self.outcome.findData(keep_outcome)
         self.outcome.setCurrentIndex(max(0, idx))
         self.outcome.blockSignals(False)
@@ -541,6 +690,8 @@ class DiscoveryPage(QWidget):
 
     def _family_changed(self, *_: Any) -> None:
         fam = self.family.currentData()
+        if hasattr(self, "structure"):
+            self._fill_structures()
         self.event_combo.setEnabled(fam == "binomial")
         self.reference_combo.setEnabled(fam == "multinomial")
         key, why = self._suggested()
@@ -570,6 +721,8 @@ class DiscoveryPage(QWidget):
         self.n_sel.setText("Too many candidates (maximum 39)." if n > 39 else "")
         out = self.outcome.currentData()
         self.treatment_panel.set_model(self.state.dataset, out, self.cand_sel.selected() + self.req_sel.selected())
+        if hasattr(self, "long_info"):
+            self._update_long_info()
         self._invalidate_estimate()
 
     def _invalidate_estimate(self, *_: Any) -> None:
@@ -597,9 +750,15 @@ class DiscoveryPage(QWidget):
             key, why = self._suggested()
             raise SearchSpaceError("Confirm the outcome model family" + (
                 f" (suggested: {FAMILIES[key].split(' (')[0]} — {why})" if key else "") + ".")
+        long = self.study.currentData() == "longitudinal"
+        time = self.time_combo.currentData() if long else None
+        required = [n for n in self.req_sel.selected() if n != outcome]
+        if long and time and self.time_fixed.isChecked() and self.strategy.currentData() != "time" \
+                and time not in required:
+            required.append(time)          # time as a fixed effect: counts toward the predictor limit
         return SearchSettings(
-            outcome=outcome, candidates=[n for n in self.cand_sel.selected() if n != outcome],
-            required=[n for n in self.req_sel.selected() if n != outcome],
+            outcome=outcome, candidates=[n for n in self.cand_sel.selected() if n not in (outcome, time)],
+            required=required,
             family=family,
             event=self.event_combo.currentData() if family == "binomial" else None,
             reference=self.reference_combo.currentData() if family == "multinomial" else None,
@@ -610,7 +769,11 @@ class DiscoveryPage(QWidget):
             profile=self.profile.currentData(), max_models=self.max_models.value() or None,
             max_minutes=self.max_minutes.value() or None, workers=self.workers.value(),
             sample=self.sample.currentData(), max_params=self.max_params.value(),
-            participant=self.participant.currentData(),
+            participant=self.participant.currentData() if long else None,
+            study="longitudinal" if long else "independent",
+            time=self.time_combo.currentData() if long else None, time_type=self.time_type.currentData(),
+            structure=self.structure.currentData() or "ri", workflow=self.workflow.currentData() if long else "fixed",
+            structures=self._checked_structures(), time_interactions=self.time_inter.isChecked(),
             all_two_way=bool(self.all2.currentData()) and self.cov_mode.currentData() == "subsets"
             and self.strategy.currentData() == "focal",
             strategy=self.strategy.currentData(), include_main=self.include_main.isChecked(),
@@ -874,6 +1037,15 @@ class DiscoveryPage(QWidget):
                 f"With {sm['family_size']:,} tests, about <b>{sm['expected_false_raw']:.1f}</b> would be expected "
                 f"by chance alone if no interaction were real. <b>{sm['sig_adj']:,}</b> remain significant after "
                 f"{corr} adjustment.</p>")
+            fams = sm.get("families") or []
+            if len(fams) > 1 or (fams and fams[0]["type"] != "focal_interaction"):
+                parts.append("<p><b>Hypotheses by type</b> (each type is its own multiple-testing family; "
+                             "different types are never ranked together):</p><ul>" + "".join(
+                                 f"<li>{e(f['label'])}: {f['tests']:,} tests · {f['sig_raw']:,} raw p &lt; "
+                                 f"{s.alpha:g} (≈{f['expected_false_raw']:.1f} expected by chance) · "
+                                 f"{f['sig_adj']:,} after adjustment"
+                                 + (f" · {f['no_ci']:,} joint/without a comparable single-coefficient CI"
+                                    if f["no_ci"] else "") + "</li>" for f in fams) + "</ul>")
             if sm["provisional"]:
                 parts.append("<p style='color:#8d6e00'>Adjusted p-values are <b>provisional</b>: they are "
                              "conditional on the candidates evaluated, not the full search space.</p>")
@@ -886,13 +1058,22 @@ class DiscoveryPage(QWidget):
                "ordinal": "Ordinal logistic models (ordinal::clm), focal likelihood-ratio test",
                "multinomial": "Multinomial logistic models (nnet::multinom), focal likelihood-ratio test "
                               "(joint over all outcome contrasts)",
-               "lmm": "Linear mixed models with a random intercept per participant; focal likelihood-ratio "
-                      "test on ML fits (df2 column = participants)"}[run.family]
+               "lmm": "Gaussian longitudinal models (structure below); likelihood-ratio tests on ML fits "
+                      "(Groups column = participants; never a denominator df)",
+               "glmm": "Binary logistic mixed models (lme4::glmer, Laplace ML); likelihood-ratio tests; "
+                       "subject-specific log-odds",
+               "clmm": "Ordinal cumulative-logit mixed models (ordinal::clmm); likelihood-ratio tests; "
+                       "subject-specific log-odds; proportional odds assumed",
+               "gee": "GEE (geepack::geeglm): population-average effects, robust sandwich Wald tests; no likelihood "
+                      "(QIC instead of AIC)"}[run.family]
         effect = {"gaussian": "ΔR² (variance uniquely explained by the interaction)",
                   "binomial": "ΔMcFadden R² (deviance reduction / null deviance)",
                   "ordinal": "ΔMcFadden pseudo-R² (LR statistic / -2 log-likelihood of the null model)",
                   "multinomial": "ΔMcFadden pseudo-R² (deviance reduction / null deviance)",
-                  "lmm": "Δ marginal R² (variance explained by fixed effects)"}[run.family]
+                  "lmm": "Δ marginal R² (random-intercept lme4 fits only; otherwise not computed)",
+                  "glmm": "not computed (use the LR statistic and odds ratios)",
+                  "clmm": "not computed (use the LR statistic and odds ratios)",
+                  "gee": "not computed (use the Wald statistic and coefficients)"}[run.family]
         coding_rows = []
         c = run.coding or {}
         if c.get("event"):
@@ -905,6 +1086,11 @@ class DiscoveryPage(QWidget):
                                 + (f" ({e(c['direction'])})" if c.get("direction") else "")))
         for t in c.get("treatments", []):
             coding_rows.append(("Variable treatment", e(t)))
+        for key, label in (("workflow", "Longitudinal workflow"), ("participant", "Participant ID"),
+                           ("time", "Time"), ("structure", "Random / covariance structure"),
+                           ("estimand", "Estimand")):
+            if c.get(key):
+                coding_rows.append((label, e(c[key])))
         if c.get("predictor_coding"):
             coding_rows.append(("Category coding", e(c["predictor_coding"])))
         name = lambda n: e(ds.var(n).display_name) if ds and n in ds.variables else e(n)  # noqa: E731
@@ -913,8 +1099,11 @@ class DiscoveryPage(QWidget):
                 ("Outcome", name(s.outcome)), ("Model family", fam), ("Effect", effect), *coding_rows,
                 ("Candidates", ", ".join(name(n) for n in s.candidates)),
                 ("Required covariates", ", ".join(name(n) for n in s.required) or "none"),
-                ("Max predictors / order", f"{s.max_predictors} / {'two-way' if s.max_order == 2 else 'up to three-way'}"),
-                ("Covariate adjustment", "focal (required only)" if s.covariate_mode == "focal" else "all subsets"),
+                ("Strategy", e(STRATEGIES.get(getattr(s, "strategy", "focal"), "")) + (
+                    " + main-effects-only models" if getattr(s, "include_main", False) and s.strategy != "main" else "")),
+                ("Max predictors / order", f"{s.max_predictors} distinct / {'two-way' if s.max_order == 2 else 'up to three-way'}"),
+                ("Covariate adjustment", ("focal (required only)" if s.covariate_mode == "focal" else "all subsets")
+                 if getattr(s, "strategy", "focal") == "focal" else "—"),
                 ("Sample", f"shared complete cases (n = {run.n_sample:,})" if run.n_sample else "complete cases per model"),
                 ("α / adjustment", f"{s.alpha:g} / {s.correction}"), ("Mode", s.mode),
                 ("Budgets", f"{s.max_models or 'no'} models, {s.max_minutes or 'no'} minutes"),
@@ -947,9 +1136,8 @@ class DiscoveryPage(QWidget):
             QMessageBox.information(self, "Discovery", f"This candidate was not fitted: {row['reason']}")
             return
         ds, run = self.state.dataset, self.run
-        if run.family == "lmm":
-            QMessageBox.information(self, "Discovery", "For mixed-model candidates use the Mixed & Longitudinal "
-                                    "Models workspace with the same predictors; View candidate code shows the exact fit.")
+        if run.settings.participant:
+            self._to_mixed(row)
             return
         cand = candidate_from_row(run, row)
         self.state.run_r(lambda s: full_analysis(s, ds, run, cand), self._detail_done,
@@ -974,14 +1162,28 @@ class DiscoveryPage(QWidget):
         row = self._selected_row()
         if row is None:
             return None
-        if self.run.family == "lmm":
-            QMessageBox.information(self, "Discovery", "Mixed-model candidates are refitted in the Mixed & "
-                                    "Longitudinal Models workspace (same outcome, participant ID and predictors).")
+        if self.run.settings.participant:
+            self._to_mixed(row)
             return None
         if row["status"] in ("invalid", "failed"):
             QMessageBox.information(self, "Discovery", f"This candidate was not fitted: {row['reason']}")
             return None
         return from_candidate(self.run, row)
+
+    def _to_mixed(self, row: dict[str, Any]) -> None:
+        """Longitudinal candidates: refit the exact formula and structure in the Mixed workspace, which draws
+        population-average and participant-specific trajectories (M §8.7). The result is labelled a refit."""
+        from ...analysis.mixed import MixedInputError, spec_from_discovery
+
+        if row["status"] in ("invalid", "failed"):
+            QMessageBox.information(self, "Discovery", f"This candidate was not fitted: {row['reason']}")
+            return
+        try:
+            spec = spec_from_discovery(self.run, row)
+        except MixedInputError as e:
+            QMessageBox.information(self, "Discovery", str(e))
+            return
+        self.state.show_in_mixed.emit(spec)
 
     def _to_teaching(self) -> None:
         m = self._candidate_model()
@@ -993,6 +1195,32 @@ class DiscoveryPage(QWidget):
         if m is not None:
             self.state.add_model(m)
             QMessageBox.information(self, "Discovery", f"{m.label} added to the Model Comparison set.")
+
+    def _compare_main(self) -> None:
+        """Interaction model vs its main-effects-only version on the same sample (M §11). Hierarchy is kept:
+        the interaction model contains every main effect, so the two are nested."""
+        row = self._selected_row()
+        if row is None:
+            return
+        if self.run.settings.participant:
+            QMessageBox.information(
+                self, "Discovery", "For longitudinal searches, the 'Joint test of all interaction terms' (or the "
+                "single interaction test) in this search already compares the model with its main-effects version "
+                "under the same random-effect / covariance structure, ML fits and rows.")
+            return
+        m = self._candidate_model()
+        if m is None:
+            return
+        if not any(len(t) > 1 for t in m.terms):
+            QMessageBox.information(self, "Discovery", "This model has no interaction terms.")
+            return
+        mains = m.copy_edited([t for t in m.terms if len(t) == 1], label=f"{m.label} — main effects only")
+        mains.focal = None
+        self.state.add_model(m)
+        self.state.add_model(mains)
+        QMessageBox.information(self, "Discovery", f"{m.label} and its main-effects-only version were added to the "
+                                "Model Comparison set (same rows). The nested F / likelihood-ratio test there asks "
+                                "whether the interaction terms improve the model jointly.")
 
     def _view_code(self) -> None:
         row = self._selected_row()

@@ -18,6 +18,8 @@ from itertools import combinations
 from math import comb
 from typing import Any, Iterator
 
+import pandas as pd
+
 from ..core.dataset import Dataset
 from ..core.variables import Measure, Storage
 
@@ -68,6 +70,14 @@ class SearchSettings:
     include_main: bool = False         # add main-effects-only models (focal / factorial); keep them (combinations)
     min_predictors: int = 1            # smallest predictor subset in combinations / main / factorial
     min_obs: int = 0                   # minimum complete rows for a model to be fitted (0 = no minimum)
+    # ---- v1.2: longitudinal discovery (M §8). Longitudinal <=> `participant` is set. ----
+    study: str = "independent"         # independent | longitudinal (recorded for the user; `participant` decides)
+    time: str | None = None            # time variable (random slopes, residual correlation, time strategy)
+    time_type: str = "continuous"      # continuous | categorical  (how time enters the fixed effects)
+    structure: str = "ri"              # random-effect / covariance structure locked for workflow A
+    workflow: str = "fixed"            # fixed (A: fixed-effect discovery) | structure (B: structure comparison)
+    structures: list[str] = field(default_factory=list)   # workflow B: structures to compare
+    time_interactions: bool = False    # workflow B: locked fixed part includes time x each candidate
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -88,7 +98,39 @@ STRATEGIES = {
     "focal": "Single focal interaction (+ optional covariates)",
     "factorial": "Full factorial model per predictor subset",
     "main": "Main effects only",
+    "time": "Time × each eligible predictor (longitudinal)",
 }
+
+# Longitudinal structures (M §8.3-8.4): key -> (label, outcome families, engine group)
+STRUCTURES: dict[str, tuple[str, tuple[str, ...], str]] = {
+    "ri": ("Random intercept (1 | ID) — lme4", ("gaussian",), "gaussian"),
+    "rs": ("Random intercept + time slope, correlated (time | ID) — lme4", ("gaussian",), "gaussian"),
+    "rs_uncorr": ("Random intercept + time slope, uncorrelated (time || ID) — lme4", ("gaussian",), "gaussian"),
+    "nlme_ri": ("Random intercept, independent residuals — nlme", ("gaussian",), "gaussian"),
+    "nlme_rs": ("Random intercept + time slope, independent residuals — nlme", ("gaussian",), "gaussian"),
+    "ar1": ("Random intercept + AR(1) residuals over occasions — nlme corAR1", ("gaussian",), "gaussian"),
+    "car1": ("Random intercept + continuous-time AR(1) residuals — nlme corCAR1", ("gaussian",), "gaussian"),
+    "mmrm_us": ("Marginal model, unstructured covariance — mmrm (no random effects)", ("gaussian",), "gaussian"),
+    "mmrm_cs": ("Marginal model, compound-symmetry covariance — mmrm (no random effects)", ("gaussian",), "gaussian"),
+    "mmrm_ar1": ("Marginal model, AR(1) covariance — mmrm (no random effects)", ("gaussian",), "gaussian"),
+    "glmer_ri": ("Binary logistic mixed model, random intercept — lme4::glmer", ("binomial",), "binomial"),
+    "glmer_rs": ("Binary logistic mixed model, random intercept + time slope — lme4::glmer", ("binomial",), "binomial"),
+    "clmm_ri": ("Ordinal cumulative-logit mixed model, random intercept — ordinal::clmm", ("ordinal",), "ordinal"),
+    "clmm_rs": ("Ordinal cumulative-logit mixed model, random intercept + time slope — ordinal::clmm",
+                ("ordinal",), "ordinal"),
+    "gee_exch": ("GEE, exchangeable working correlation — geepack (population-average)", ("gaussian", "binomial"), "gee"),
+    "gee_ar1": ("GEE, AR(1) working correlation — geepack (population-average)", ("gaussian", "binomial"), "gee"),
+    "gee_ind": ("GEE, independence working correlation — geepack (population-average)", ("gaussian", "binomial"), "gee"),
+}
+SLOPE_STRUCTURES = {"rs", "rs_uncorr", "nlme_rs", "glmer_rs", "clmm_rs"}
+ORDERED_TIME_STRUCTURES = {"ar1", "car1", "mmrm_us", "mmrm_cs", "mmrm_ar1", "gee_ar1"}
+LONG_FAMILIES = {"lmm": "Gaussian longitudinal model", "glmm": "Binary logistic mixed model (lme4::glmer)",
+                 "clmm": "Ordinal cumulative-logit mixed model (ordinal::clmm)",
+                 "gee": "GEE (geepack::geeglm, population-average)"}
+
+
+def structures_for(family: str) -> list[str]:
+    return [k for k, (_l, fams, _g) in STRUCTURES.items() if family in fams]
 MODEL_TYPES = {"main": "Main effects only", "one": "One interaction", "multi": "Multiple interactions",
                "factorial": "Full factorial", "focal": "Single focal interaction",
                "focal_cov": "Focal interaction + covariates", "all_two_way": "All two-way interactions"}
@@ -101,7 +143,8 @@ class Candidate:
     covariates: tuple[str, ...]     # focal kind: other subset members; main/combo/factorial: the predictor subset
     required: tuple[str, ...]
     kind: str = "focal"             # focal | all_two_way | main | combo | factorial
-    inter: tuple[tuple[str, ...], ...] = ()   # combo / factorial: the interaction terms
+    inter: tuple[tuple[str, ...], ...] = ()   # combo / factorial / structure: the interaction terms
+    structure: str = ""                         # structure kind (workflow B): the structure compared
 
     @property
     def order(self) -> int:
@@ -122,7 +165,10 @@ FAMILIES = {
 }
 FOCAL_TESTS = {
     "gaussian": "nested-model F test",
-    "lmm": "likelihood-ratio test (ML fits, random intercept)",
+    "lmm": "likelihood-ratio test (ML fits, same random-effect / covariance structure)",
+    "glmm": "likelihood-ratio test (Laplace ML fits, same random-effect structure)",
+    "clmm": "likelihood-ratio test of nested cumulative-logit mixed models (same random effects)",
+    "gee": "robust (sandwich) Wald test of the dropped coefficients",
     "binomial": "likelihood-ratio (deviance) test",
     "ordinal": "likelihood-ratio test of nested cumulative-logit models",
     "multinomial": "likelihood-ratio test of nested multinomial models (joint over all outcome contrasts)",
@@ -166,11 +212,34 @@ def search_family(ds: Dataset, s: "SearchSettings") -> str:
     if s.family:
         _check_family(ds, s)
     if s.participant:
-        if family != "gaussian":
-            raise SearchSpaceError("Mixed-model discovery (repeated measures) supports Gaussian outcomes. For binary, "
-                                   "ordinal or nominal repeated outcomes use the Mixed & Longitudinal workspace.")
-        return "lmm"
+        return longitudinal_family(family, s)
     return family
+
+
+def longitudinal_family(family: str, s: "SearchSettings") -> str:
+    """Engine family of a longitudinal search; refuses unsupported combinations with a reason."""
+    if family == "multinomial":
+        raise SearchSpaceError("Repeated nominal (multinomial) outcomes are not available in automated discovery: "
+                               "the only engine (mclogit::mblogit, PQL) is approximate and has no valid likelihood-"
+                               "ratio test. Use the Mixed & Longitudinal workspace, or choose another outcome family.")
+    structs = s.structures if s.workflow == "structure" else [s.structure or "ri"]
+    if not structs:
+        raise SearchSpaceError("Choose at least one random-effect / covariance structure to compare.")
+    groups = set()
+    for st in structs:
+        if st not in STRUCTURES:
+            raise SearchSpaceError(f"Unknown structure {st!r}.")
+        label, fams, group = STRUCTURES[st]
+        if family not in fams:
+            raise SearchSpaceError(f"{label} is not available for {family} outcomes.")
+        groups.add(group)
+    if len(groups) > 1:
+        raise SearchSpaceError("Structures from different model families (e.g. GEE and mixed models) estimate "
+                               "different things and cannot be ranked together. Compare them in separate runs.")
+    group = groups.pop()
+    if group == "gee":
+        return "gee"
+    return {"gaussian": "lmm", "binomial": "glmm", "ordinal": "clmm"}[family]
 
 
 def _check_family(ds: Dataset, s: "SearchSettings") -> None:
@@ -217,6 +286,10 @@ def validate_settings(ds: Dataset, s: SearchSettings) -> str:
     ds = view(ds, s)
     if s.participant and s.participant in [s.outcome] + s.candidates + s.required:
         raise SearchSpaceError("The participant ID cannot also be the outcome or a predictor.")
+    if s.time and not s.participant:
+        raise SearchSpaceError("A time variable needs a participant ID (Study structure: repeated measures).")
+    if s.participant:
+        _check_longitudinal(ds, s)
     family = search_family(ds, s)
     if s.outcome in s.candidates or s.outcome in s.required:
         raise SearchSpaceError("The outcome cannot also be a predictor.")
@@ -229,6 +302,11 @@ def validate_settings(ds: Dataset, s: SearchSettings) -> str:
         raise SearchSpaceError(f"At most {MAX_VARIABLES} variables (outcome included) may be selected.")
     if s.strategy not in STRATEGIES:
         raise SearchSpaceError(f"Unknown search strategy {s.strategy!r}.")
+    if s.participant and s.workflow == "structure":
+        n_fixed = len(set(s.candidates) | set(s.required) | ({s.time} if s.time_interactions and s.time else set()))
+        if n_fixed > MAX_PREDICTORS_LIMIT:
+            raise SearchSpaceError(f"The locked fixed part has {n_fixed} distinct predictors (limit "
+                                   f"{MAX_PREDICTORS_LIMIT}).")
     needs_pair = s.strategy in ("focal", "factorial")
     if len(s.candidates) < (2 if needs_pair else 1):
         raise SearchSpaceError("Choose at least two candidate predictors." if needs_pair else
@@ -240,7 +318,7 @@ def validate_settings(ds: Dataset, s: SearchSettings) -> str:
     if needs_pair and 2 + len(s.required) > s.max_predictors:
         raise SearchSpaceError("Required covariates leave no room for a two-way interaction "
                                "within the maximum number of predictors.")
-    if len(s.required) >= s.max_predictors and s.strategy in ("main", "combinations"):
+    if len(s.required) >= s.max_predictors and s.strategy in ("main", "combinations", "time"):
         raise SearchSpaceError("Required covariates leave no room for a candidate predictor "
                                "within the maximum number of predictors.")
     if not 1 <= s.min_predictors <= s.max_predictors:
@@ -259,6 +337,55 @@ def validate_settings(ds: Dataset, s: SearchSettings) -> str:
         if why:
             raise SearchSpaceError(why)
     return family
+
+
+def _check_longitudinal(ds: Dataset, s: "SearchSettings") -> None:
+    """ID / time structure checks on the analysed rows (M §8.1)."""
+    pid, t = s.participant, s.time
+    if t and (t in (s.outcome, pid) or t in s.candidates):
+        raise SearchSpaceError("The time variable cannot also be the outcome, the participant ID or a candidate "
+                               "predictor (it enters the fixed effects through the time strategy or as a required "
+                               "covariate).")
+    structs = set(s.structures if s.workflow == "structure" else [s.structure or "ri"])
+    if s.strategy == "time" and not t:
+        raise SearchSpaceError("The 'Time × each predictor' strategy needs a time variable.")
+    if s.workflow == "structure" and s.time_interactions and not t:
+        raise SearchSpaceError("Time interactions need a time variable.")
+    if structs & (SLOPE_STRUCTURES | ORDERED_TIME_STRUCTURES) and not t:
+        raise SearchSpaceError("Random slopes and residual correlation structures need a time variable.")
+    if s.workflow not in ("fixed", "structure") or s.time_type not in ("continuous", "categorical"):
+        raise SearchSpaceError("Invalid longitudinal option.")
+    cols = list(dict.fromkeys([pid] + ([t] if t else [])))
+    f = ds.analysis_frame(cols)
+    if f[pid].isna().all():
+        raise SearchSpaceError(f"{ds.var(pid).display_name} has no values.")
+    n_rows, n_ids = int(f[pid].notna().sum()), int(f[pid].nunique())
+    if n_ids >= n_rows:
+        raise SearchSpaceError(f"{ds.var(pid).display_name} is unique in every row: there are no repeated "
+                               "measurements to model. Choose 'Independent observations' or another ID.")
+    if t:
+        if ds.var(t).storage is not Storage.NUMERIC:
+            raise SearchSpaceError(f"{ds.var(t).display_name} is not numeric: time must have numeric codes.")
+        if structs & ORDERED_TIME_STRUCTURES and f.dropna().duplicated([pid, t]).any():
+            raise SearchSpaceError("Some participants have more than one row at the same time point; residual "
+                                   "correlation structures and marginal models need one row per participant per "
+                                   "occasion.")
+        if "car1" in structs and (f[t].dropna() < 0).any():
+            raise SearchSpaceError("Continuous-time AR(1) needs non-negative elapsed time values.")
+
+
+def longitudinal_summary(ds: Dataset, s: "SearchSettings") -> dict[str, Any]:
+    """Rows, participants, waves and observed outcomes by wave on the analysed rows (M §8.1, §8.6)."""
+    from ..analysis.longitudinal_preflight import preflight
+
+    v = view(ds, s)
+    rep = preflight(v, s.outcome, s.participant, s.time, s.candidates + [r for r in s.required if r != s.time])
+    used = [s.outcome] + s.candidates + s.required + [s.participant] + ([s.time] if s.time else [])
+    f = v.analysis_frame(list(dict.fromkeys(used))).dropna()
+    per = f.groupby(s.participant).size() if len(f) else pd.Series(dtype=int)
+    return {"report": rep, "rows": rep.n_records, "participants": rep.n_participants,
+            "waves": len(rep.time_points), "complete_rows": len(f), "complete_participants": int(per.size),
+            "participants_2plus": int((per >= 2).sum()), "participants_3plus": int((per >= 3).sum())}
 
 
 # ---- enumeration ------------------------------------------------------------------
@@ -281,7 +408,9 @@ def _block_counts(s: SearchSettings) -> list[tuple[str, int]]:
 
     p = len(s.candidates)
     blocks: list[tuple[str, int]] = []
-    if s.strategy in ("focal", "factorial") and s.include_main or s.strategy == "main":
+    if s.participant and s.workflow == "structure":
+        return [("structures", len(s.structures))]
+    if s.strategy in ("focal", "factorial", "time") and s.include_main or s.strategy == "main":
         blocks.append(("main", sum(comb(p, k) for k in _sizes(s))))
     if s.strategy == "combinations":
         drop = 0 if s.include_main else 1
@@ -290,7 +419,48 @@ def _block_counts(s: SearchSettings) -> list[tuple[str, int]]:
         blocks.append(("factorial", sum(comb(p, k) for k in _sizes(s, 2))))
     elif s.strategy == "focal":
         blocks.append(("focal", _count_focal(s)))
+    elif s.strategy == "time":
+        blocks.append(("time", _count_time(s)))
     return blocks
+
+
+def _count_time(s: SearchSettings) -> int:
+    p, room = len(s.candidates), _room(s)
+    orders = [o for o in (2, 3) if o <= s.max_order and o <= room]
+    if s.covariate_mode == "focal":
+        return sum(comb(p, o - 1) for o in orders)
+    return sum(comb(p, k - 1) * sum(comb(k - 1, o - 1) for o in orders if o <= k) for k in range(2, room + 1))
+
+
+def _enum_time(s: SearchSettings, idx: int, start: int) -> Iterator[Candidate]:
+    """Time × predictor focal interactions (M §8.5): focal sets always contain the time variable."""
+    names, req, t, room = s.candidates, tuple(s.required), s.time, _room(s)
+    orders = [o for o in (2, 3) if o <= s.max_order and o <= room]
+    if s.covariate_mode == "focal":
+        for o in orders:
+            for f in combinations(names, o - 1):
+                if idx >= start:
+                    yield Candidate(idx, (t,) + f, (), req)
+                idx += 1
+        return
+    for k in range(2, room + 1):
+        for rest in combinations(names, k - 1):
+            for o in orders:
+                if o > k:
+                    continue
+                for f in combinations(rest, o - 1):
+                    if idx >= start:
+                        yield Candidate(idx, (t,) + f, tuple(x for x in rest if x not in f), req)
+                    idx += 1
+
+
+def _enum_structures(s: SearchSettings, idx: int, start: int) -> Iterator[Candidate]:
+    """Workflow B: one locked fixed part, one candidate per random-effect / covariance structure."""
+    inter = tuple((s.time, x) for x in s.candidates) if s.time_interactions and s.time else ()
+    for st in s.structures:
+        if idx >= start:
+            yield Candidate(idx, (), tuple(s.candidates), tuple(s.required), "structure", inter, st)
+        idx += 1
 
 
 def count_candidates(s: SearchSettings) -> int:
@@ -314,7 +484,7 @@ def enumerate_candidates(s: SearchSettings, start: int = 0) -> Iterator[Candidat
     for name, n in _block_counts(s):
         if start < offset + n:
             gen = {"main": _enum_main, "combinations": _enum_combinations, "factorial": _enum_factorial,
-                   "focal": _enum_focal}[name]
+                   "focal": _enum_focal, "time": _enum_time, "structures": _enum_structures}[name]
             yield from gen(s, offset, max(start, offset))
         offset += n
 
@@ -415,6 +585,8 @@ def _mains(c: Candidate) -> list[tuple[str, ...]]:
 
 def model_terms(c: Candidate) -> tuple[list[tuple[str, ...]], list[tuple[str, ...]]]:
     """(full terms, reduced terms of the declared focal test) as tuples of variable names."""
+    if c.kind == "structure":
+        return full_terms(c), []
     if c.kind in ("main", "combo", "factorial"):
         full = full_terms(c)
         return full, candidate_tests(c)[0]["reduced"]
@@ -428,6 +600,10 @@ def model_terms(c: Candidate) -> tuple[list[tuple[str, ...]], list[tuple[str, ..
 
 
 def full_terms(c: Candidate) -> list[tuple[str, ...]]:
+    if c.kind == "structure":
+        mains = _mains(c) + [(v,) for v in c.required]
+        extra = [(t[0],) for t in c.inter[:1] if (t[0],) not in mains]     # time main effect for time x X
+        return mains + extra + list(c.inter)
     if c.kind in ("main", "combo", "factorial"):
         return _mains(c) + list(c.inter) + [(v,) for v in c.required]
     return model_terms(c)[0]
@@ -440,6 +616,8 @@ def candidate_tests(c: Candidate) -> list[dict[str, Any]]:
     term are not dropped alone (hierarchy)."""
     full = full_terms(c)
     req = [(v,) for v in c.required]
+    if c.kind == "structure":
+        return []          # structures are compared with each other after the run, never by a focal p-value
     if c.kind == "focal":
         return [{"id": 0, "type": "focal_interaction", "drop": [c.focal], "reduced": model_terms(c)[1]}]
     if c.kind == "all_two_way":
@@ -464,6 +642,8 @@ def candidate_tests(c: Candidate) -> list[dict[str, Any]]:
 
 
 def model_type(c: Candidate) -> str:
+    if c.kind == "structure":
+        return "Covariance structure: " + STRUCTURES[c.structure][0].split(" — ")[0]
     if c.kind == "focal":
         return MODEL_TYPES["focal_cov" if c.covariates else "focal"]
     if c.kind == "all_two_way":
@@ -475,6 +655,10 @@ def model_type(c: Candidate) -> str:
 
 
 def candidate_key(c: Candidate) -> str:
+    if c.kind == "structure":
+        from .modelspec import canonical_key
+
+        return f"structure:{c.structure}|{canonical_key(full_terms(c))}"
     if c.kind in ("main", "combo", "factorial"):
         from .modelspec import canonical_key
 
@@ -487,6 +671,10 @@ def candidate_key(c: Candidate) -> str:
 
 def display_formula(ds: Dataset, outcome: str, c: Candidate) -> str:
     dn = lambda n: ds.var(n).display_name  # noqa: E731
+    if c.kind == "structure":
+        from .modelspec import display
+
+        return display(full_terms(c), dn(outcome), dn, order=list(c.covariates) + list(c.required))
     if c.kind in ("main", "combo", "factorial"):
         from .modelspec import display
 
@@ -515,6 +703,8 @@ def test_label(ds: Dataset, c: Candidate, t: dict[str, Any]) -> str:
 
 
 def focal_label(ds: Dataset, c: Candidate) -> str:
+    if c.kind == "structure":
+        return STRUCTURES[c.structure][0]
     if c.kind == "all_two_way":
         return "all two-way: " + ", ".join(ds.var(v).display_name for v in c.focal)
     if c.kind in ("main", "combo", "factorial"):
@@ -524,6 +714,22 @@ def focal_label(ds: Dataset, c: Candidate) -> str:
             return "full factorial: " + " × ".join(ds.var(v).display_name for v in c.covariates)
         return ", ".join(term_label(ds, t) for t in c.inter)
     return " × ".join(ds.var(v).display_name for v in c.focal)
+
+
+def random_part(ds: Dataset, s: SearchSettings, structure: str | None = None) -> str:
+    """The grouping / covariance part of a longitudinal model, in R notation with display names."""
+    if not s.participant:
+        return ""
+    g = ds.var(s.participant).display_name
+    t = ds.var(s.time).display_name if s.time else "time"
+    st = structure or s.structure or "ri"
+    return {"ri": f"(1 | {g})", "rs": f"(1 + {t} | {g})", "rs_uncorr": f"(1 + {t} || {g})",
+            "nlme_ri": f"random = ~1 | {g}", "nlme_rs": f"random = ~1 + {t} | {g}",
+            "ar1": f"random = ~1 | {g}, corAR1(~ occasion | {g})", "car1": f"random = ~1 | {g}, corCAR1(~ {t} | {g})",
+            "mmrm_us": f"us({t} | {g})", "mmrm_cs": f"cs({t} | {g})", "mmrm_ar1": f"ar1({t} | {g})",
+            "glmer_ri": f"(1 | {g})", "glmer_rs": f"(1 + {t} | {g})", "clmm_ri": f"(1 | {g})",
+            "clmm_rs": f"(1 + {t} | {g})", "gee_exch": f"GEE id = {g}, exchangeable",
+            "gee_ar1": f"GEE id = {g}, AR(1)", "gee_ind": f"GEE id = {g}, independence"}.get(st, "")
 
 
 def shared_sample_size(ds: Dataset, s: SearchSettings) -> int:
@@ -614,18 +820,34 @@ def coding(ds: Dataset, s: SearchSettings, family: str) -> dict[str, Any]:
     from ..analysis.measurement import treatment_records
 
     v = ds.var(s.outcome)
-    out: dict[str, Any] = {"family": FAMILIES.get("gaussian" if family == "lmm" else family, family),
+    base = {"lmm": "gaussian", "glmm": "binomial", "clmm": "ordinal", "gee": s.family or "gaussian"}.get(family, family)
+    fam_label = FAMILIES.get(base, base)
+    if s.participant:
+        fam_label = f"{LONG_FAMILIES.get(family, family)}; outcome: {FAMILIES.get(base, base).split(' (')[0]}"
+    out: dict[str, Any] = {"family": fam_label,
                            "focal_test": FOCAL_TESTS.get(family, ""),
                            "outcome": v.display_name, "outcome_level": v.measure.value,
                            "predictor_coding": "categorical predictors: treatment (dummy) contrasts against the "
                                                "reference category (first category unless one is set)",
                            "treatments": [r["description"] for r in treatment_records(ds)]}
-    if family == "binomial":
+    if s.participant:
+        out["structure"] = (", ".join(STRUCTURES[x][0] for x in s.structures) if s.workflow == "structure"
+                            else STRUCTURES[s.structure or "ri"][0])
+        out["participant"] = ds.var(s.participant).display_name
+        if s.time:
+            out["time"] = f"{ds.var(s.time).display_name} ({s.time_type})"
+        out["workflow"] = ("B: random-effect / covariance-structure comparison (fixed part locked; REML for Gaussian)"
+                           if s.workflow == "structure" else "A: fixed-effect discovery (structure locked; ML fits)")
+        if family == "gee":
+            out["estimand"] = "population-average (marginal) effects; robust sandwich standard errors"
+        elif family in ("glmm", "clmm"):
+            out["estimand"] = "subject-specific (conditional on the random effects) effects"
+    if base == "binomial":
         event, ref = binomial_levels(ds, s)
         out["event"] = ds.level_label(s.outcome, event)
         out["reference"] = ds.level_label(s.outcome, ref)
         out["event_source"] = "chosen by the user" if s.event is not None else "second category (default)"
-    elif family == "ordinal":
+    elif base == "ordinal":
         out["ordering"] = [ds.level_label(s.outcome, c) for c in ds.levels(s.outcome)]
         if v.coding_direction:
             out["direction"] = v.coding_direction

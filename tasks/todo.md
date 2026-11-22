@@ -305,8 +305,8 @@ Baseline: local main `1673df9` (= GitHub v1.1.0 release commit 99aeb93 + a docs 
 - [x] 1 Numeric sort proxy (missing last both directions), sort/filter/selection preserved; highlight toolbar (adj p default, raw, strict, off; α presets/custom; highlighted-only; counters; warnings separate); project persistence of highlight prefs
 - [x] 2 Fit identity + provenance (run_id, candidate_id, model_id, signatures, cache reason); typed CI/test metadata; n_groups vs df; tests: event/reference/treatment/structure changes never reuse
 - [x] 3 Variable Treatment Manager (outcome section, all predictors with status, all-eligible view, ack fingerprint) in Discovery + Mixed (+ any other users); HRS R_LTACTX/R_SHLT tests
-- [ ] 4 Canonical spec + counts; strategies (combinations/focal/factorial/main); R multi-test evaluation; families by type; result views (hypothesis-type filter, model comparison tab, columns Predictors "3 / 6", Model terms, Estimated parameters); X Tests A–L; M Test D
-- [ ] 5 Longitudinal setup UI (study structure, ID/time validation + preflight) and Gaussian structures (lme4 RI/RS, nlme AR1/CAR1, mmrm); Workflow B structure comparison
-- [ ] 6 glmer / clmm / GEE discovery; R reference checks
+- [x] 4 Canonical spec + counts; strategies (combinations/focal/factorial/main); R multi-test evaluation; families by type; result views (hypothesis-type filter, model comparison tab, columns Predictors "3 / 6", Model terms, Estimated parameters); X Tests A–L; M Test D
+- [x] 5 Longitudinal setup UI (study structure, ID/time validation + preflight) and Gaussian structures (lme4 RI/RS, nlme AR1/CAR1, mmrm); Workflow B structure comparison
+- [x] 6 glmer / clmm / GEE discovery; R reference checks
 - [ ] 7 Discovery → Teaching Studio / Mixed handoff (exact terms, refit labelled); "Compare with main-effects model"; adjustable manual-model limits; exports carry new schema
 - [ ] 8 Regression suite, docs (README, DEVELOPER, release notes, spec-compliance-v1.2, feature matrix), version 1.2.0, build + frozen self-test

@@ -1091,8 +1091,8 @@ SPECS: list[AnalysisSpec] = [
                  [DV, Slot("factors", "Factor", "categorical")], [ADJUST, CONF], ["afex", "emmeans", "car"], _anova_between),
     AnalysisSpec("anova_welch", "ANOVA", "Welch one-way ANOVA", "One-way ANOVA without assuming equal variances.",
                  [DV, Slot("factor", "Factor", "categorical")], [CONF], ["effectsize"], _anova_welch),
-    AnalysisSpec("anova_factorial", "ANOVA", "Factorial ANOVA (2-3 factors)",
-                 "Main effects and interactions of two or three between-subject factors.",
+    AnalysisSpec("anova_factorial", "ANOVA", "Factorial ANOVA (2-5 factors)",
+                 "Main effects and interactions of between-subject factors (3 by default; up to 5 after a cell check).",
                  [DV, Slot("factors", "Factors", "categorical", 2, 3)], [ADJUST, CONF], ["afex", "emmeans", "car"],
                  _anova_between),
     AnalysisSpec("anova_rm", "ANOVA", "Repeated-measures ANOVA",
@@ -1186,4 +1186,8 @@ SPECS.append(AnalysisSpec(
     "Internal consistency of a set of items (psych::alpha). Runs only when you choose it.",
     [Slot("items", "Items", "any", 2, 40)], [], ["psych"], _alpha,
     missing_data="Complete cases on all items."))
+
+from .complexity import install as _install_limits  # noqa: E402  (M §10 configurable limits)
+
+_install_limits(SPECS)
 BY_KEY = {s.key: s for s in SPECS}

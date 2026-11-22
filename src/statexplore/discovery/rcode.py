@@ -19,15 +19,42 @@ sx_cache_for <- function(d) {
     sx_disc_cache_rows <<- rownames(d)
   }
 }
+sx_add <- function(f, extra) stats::update(f, stats::as.formula(paste(". ~ . +", extra)))
+sx_fit_lmm <- function(f, d, st, reml) {
+  if (st %in% c("ri", "rs", "rs_uncorr")) {
+    re <- switch(st, ri = "(1 | sx_gid)", rs = "(1 + sx_time | sx_gid)", rs_uncorr = "(1 + sx_time || sx_gid)")
+    return(lme4::lmer(sx_add(f, re), data = d, REML = reml))
+  }
+  if (startsWith(st, "mmrm")) {
+    cs <- switch(st, mmrm_us = "us", mmrm_cs = "cs", mmrm_ar1 = "ar1")
+    return(mmrm::mmrm(sx_add(f, paste0(cs, "(sx_timef | sx_gid)")), data = d, reml = reml))
+  }
+  random <- if (st == "nlme_rs") ~ 1 + sx_time | sx_gid else ~ 1 | sx_gid
+  cor <- switch(st, ar1 = nlme::corAR1(form = ~ sx_occ | sx_gid), car1 = nlme::corCAR1(form = ~ sx_time | sx_gid),
+                NULL)
+  fit <- function(opt) nlme::lme(f, random = random, correlation = cor, data = d,
+                                 method = if (reml) "REML" else "ML", control = nlme::lmeControl(opt = opt))
+  m <- tryCatch(fit("nlminb"), error = function(e) NULL)
+  if (is.null(m)) { m <- fit("optim"); attr(m, "sx_note") <- "nlminb failed; refitted with optim" }
+  m
+}
 sx_fit_model <- function(f, d) {
+  st <- sx_disc_struct
   switch(sx_disc_family,
-    lmm = lme4::lmer(stats::update(f, . ~ . + (1 | sx_gid)), data = d, REML = FALSE),
+    lmm = sx_fit_lmm(f, d, st, sx_disc_reml),
+    glmm = lme4::glmer(sx_add(f, if (st == "glmer_rs") "(1 + sx_time | sx_gid)" else "(1 | sx_gid)"), data = d,
+                       family = stats::binomial()),
+    clmm = ordinal::clmm(sx_add(f, if (st == "clmm_rs") "(1 + sx_time | sx_gid)" else "(1 | sx_gid)"), data = d,
+                         link = "logit"),
+    gee = geepack::geeglm(f, data = d, id = sx_gid, waves = sx_occ, corstr = sx_disc_corstr,
+                          family = if (sx_disc_gee_family == "binomial") stats::binomial() else stats::gaussian()),
     gaussian = stats::lm(f, d),
     ordinal = ordinal::clm(f, data = d, link = "logit"),
     multinomial = nnet::multinom(f, data = d, trace = FALSE, maxit = 1000, model = FALSE),
     stats::glm(f, data = d, family = stats::binomial()))
 }
 sx_fit_stats <- function(m) {
+  if (sx_disc_family == "gee") return(list(ll = NA_real_, k = length(stats::coef(m)), conv = ""))
   ll <- stats::logLik(m)
   out <- list(ll = as.numeric(ll), k = attr(ll, "df"), conv = "")
   if (sx_disc_family == "gaussian") { out$rss <- stats::deviance(m); out$dfres <- m$df.residual }
@@ -37,7 +64,12 @@ sx_fit_stats <- function(m) {
     if (m$convergence != 0) out$conv <- "did not converge (iteration limit)" }
   if (sx_disc_family == "ordinal" && !identical(as.integer(m$convergence$code), 0L))
     out$conv <- paste("did not converge:", paste(m$convergence$messages, collapse = " "))
-  if (sx_disc_family == "lmm") {
+  if (sx_disc_family %in% c("lmm", "glmm") && inherits(m, "merMod")) {
+    conv <- unlist(m@optinfo$conv$lme4$messages)
+    if (length(conv)) out$conv <- paste("convergence:", conv[1])
+  }
+  out$r2m <- NA_real_
+  if (sx_disc_family == "lmm" && sx_disc_struct == "ri") {
     v <- stats::var(as.vector(lme4::getME(m, "X") %*% lme4::fixef(m)))
     vc <- as.data.frame(lme4::VarCorr(m)); out$r2m <- v / (v + sum(vc$vcov))
   }
@@ -66,6 +98,14 @@ sx_term_cols <- function(X, f, term) {
   j <- match(norm(term), norm(labs))
   if (is.na(j)) character() else colnames(X)[attr(X, "assign") == j]
 }
+sx_wald <- function(m, X, f, drop) {
+  # robust (sandwich) Wald test of all coefficients of the dropped terms (GEE)
+  cols <- unlist(lapply(drop, function(t) sx_term_cols(X, f, t)))
+  b <- stats::coef(m)[cols]; V <- as.matrix(stats::vcov(m))[cols, cols, drop = FALSE]
+  w <- as.numeric(t(b) %*% solve(V, b))
+  list(statistic = w, df1 = length(cols), df_den = NA_real_, p = stats::pchisq(w, length(cols), lower.tail = FALSE),
+       effect = NA_real_, partial_eta2 = NA_real_)
+}
 sx_compare <- function(s1, s0, d) {
   r <- list(statistic = NA_real_, df1 = NA_real_, df_den = NA_real_, p = NA_real_, effect = NA_real_,
             partial_eta2 = NA_real_)
@@ -85,32 +125,39 @@ sx_compare <- function(s1, s0, d) {
   }
   r$statistic <- lr
   r$p <- stats::pchisq(max(lr, 0), r$df1, lower.tail = FALSE)
-  r$effect <- switch(sx_disc_family, lmm = s1$r2m - s0$r2m,             # delta marginal R-squared
+  r$effect <- switch(sx_disc_family, lmm = s1$r2m - s0$r2m,             # delta marginal R-squared (lme4 RI)
+                     glmm = NA_real_, clmm = NA_real_,
                      lr / sx_null_scale(d))                             # delta McFadden pseudo-R-squared
   r
 }
-sx_discover_one <- function(full, tests, vars, focal_vars) {
+sx_long <- function() sx_disc_family %in% c("lmm", "glmm", "clmm", "gee")
+sx_discover_one <- function(full, tests, vars, focal_vars, struct = NULL) {
+  if (!is.null(struct)) {      # workflow B: this candidate's structure
+    old_struct <- sx_disc_struct; sx_disc_struct <<- struct; on.exit(sx_disc_struct <<- old_struct)
+  }
   res <- list(status = "ok", reason = "", flags = character(), n = NA_real_, n_params = NA_real_,
               n_groups = NA_real_, statistic = NA_real_, df1 = NA_real_, df2 = NA_real_, p = NA_real_,
               effect = NA_real_, partial_eta2 = NA_real_, estimate = NA_real_, se = NA_real_,
               ci_low = NA_real_, ci_high = NA_real_, r2 = NA_real_, adj_r2 = NA_real_, aic = NA_real_,
               bic = NA_real_, loglik = NA_real_, tests = list())
   invalid <- function(why) { res$status <- "invalid"; res$reason <- why; res$flags <- ""; res$tests <- NULL; res }
-  d <- sx_complete(sx_dd, c("sx_y", vars, if (sx_disc_family == "lmm") "sx_gid"))
+  d <- sx_complete(sx_dd, c("sx_y", vars, if (sx_long()) c("sx_gid", if (sx_disc_has_time) c("sx_time", "sx_timef", "sx_occ"))))
   n <- nrow(d); res$n <- n
   if (n < sx_disc_min_obs) return(invalid(sprintf("%d complete rows; the minimum is %d", n, sx_disc_min_obs)))
   for (v in vars) if (is.factor(d[[v]]) && nlevels(d[[v]]) < 2)
     return(invalid(paste0(sx_names[[v]], " has fewer than 2 levels in the analysed rows")))
   if (sx_disc_family == "binomial" && length(unique(d$sx_y)) < 2) return(invalid("outcome has one value"))
   K <- if (is.factor(d$sx_y)) nlevels(d$sx_y) else NA_integer_
-  if (sx_disc_family %in% c("ordinal", "multinomial") && K < 3)
+  if (sx_disc_family %in% c("glmm") || (sx_disc_family == "gee" && sx_disc_gee_family == "binomial"))
+    if (length(unique(d$sx_y)) < 2) return(invalid("outcome has one value"))
+  if (sx_disc_family %in% c("ordinal", "multinomial", "clmm") && K < 3)
     return(invalid(sprintf("only %d outcome categories observed in the analysed rows", K)))
   if (sx_disc_family == "multinomial" && !(sx_disc_ref %in% levels(d$sx_y)))
     return(invalid("the reference outcome category is not observed in the analysed rows"))
   f1 <- stats::reformulate(if (length(full)) full else "1", response = "sx_y")
   X <- stats::model.matrix(f1, d)
   # parameters: lm/glm = columns of X; ordinal = slopes + (K - 1) thresholds; multinomial = (K - 1) x columns
-  k <- switch(sx_disc_family, ordinal = ncol(X) - 1 + (K - 1), multinomial = (K - 1) * ncol(X), ncol(X))
+  k <- switch(sx_disc_family, ordinal = , clmm = ncol(X) - 1 + (K - 1), multinomial = (K - 1) * ncol(X), ncol(X))
   res$n_params <- k
   if (k > sx_disc_max_params) return(invalid(sprintf("%d parameters exceed the limit of %d", k, sx_disc_max_params)))
   if (n - k < 1) return(invalid("no residual degrees of freedom"))
@@ -130,17 +177,35 @@ sx_discover_one <- function(full, tests, vars, focal_vars) {
     r <- abs(stats::cor(d[cv])); diag(r) <- 0
     if (max(r) > 0.9) res$flags <- c(res$flags, sprintf("|r| = %.2f between continuous predictors", max(r)))
   }
+  if (sx_long() && sx_disc_struct %in% c("rs", "rs_uncorr", "nlme_rs", "glmer_rs", "clmm_rs")) {
+    k2 <- sum(tapply(d$sx_time, droplevels(d$sx_gid), function(x) length(unique(x))) >= 2)
+    if (k2 < 10) return(invalid(sprintf("only %d participants have 2+ time points: a random slope is not estimable", k2)))
+  }
   if (sx_disc_shared) sx_cache_for(d)
   m1 <- sx_fit_model(f1, d)
   s1 <- sx_fit_stats(m1)
   if (nzchar(s1$conv)) res$flags <- c(res$flags, s1$conv)
-  if (sx_disc_family == "lmm") {
-    if (lme4::isSingular(m1)) res$flags <- c(res$flags, "singular fit (participant variance ~ 0)")
-    conv <- unlist(m1@optinfo$conv$lme4$messages)
-    if (length(conv)) res$flags <- c(res$flags, paste("convergence:", conv[1]))
+  if (sx_long()) {
     res$n_groups <- nlevels(droplevels(d$sx_gid))
+    if (inherits(m1, "merMod") && lme4::isSingular(m1))
+      res$flags <- c(res$flags, "singular fit (a random-effect variance is ~ 0 or a correlation is +/-1)")
+    if (!is.null(attr(m1, "sx_note"))) res$flags <- c(res$flags, attr(m1, "sx_note"))
+    if (sx_disc_family == "gee" && !identical(as.integer(m1$geese$error), 0L))
+      res$flags <- c(res$flags, "GEE did not converge")
+    if (sx_disc_family == "clmm" && !is.null(m1$condHess) && is.finite(m1$condHess) && m1$condHess > 1e4)
+      res$flags <- c(res$flags, sprintf("ill-conditioned Hessian (condition number %.0f)", m1$condHess))
+    if (sx_disc_family %in% c("glmm") || (sx_disc_family == "gee" && sx_disc_gee_family == "binomial")) {
+      epp <- min(sum(d$sx_y), n - sum(d$sx_y)) / max(1, k - 1)
+      if (epp < 10) res$flags <- c(res$flags, sprintf("%.1f events per parameter", epp))
+    }
     res$r2 <- s1$r2m
-    ctab <- cbind(Estimate = lme4::fixef(m1), SE = sqrt(diag(as.matrix(stats::vcov(m1)))))
+    ctab <- switch(sx_disc_family,
+      lmm = if (inherits(m1, "merMod")) cbind(lme4::fixef(m1), sqrt(diag(as.matrix(stats::vcov(m1))))) else
+        if (inherits(m1, "lme")) summary(m1)$tTable[, 1:2, drop = FALSE] else
+        cbind(stats::coef(m1), sqrt(diag(as.matrix(stats::vcov(m1))))),
+      glmm = stats::coef(summary(m1))[, 1:2, drop = FALSE],
+      clmm = stats::coef(summary(m1))[, 1:2, drop = FALSE],
+      gee = stats::coef(summary(m1))[, 1:2, drop = FALSE])
     crit <- stats::qnorm(1 - (1 - sx_disc_conf) / 2)
   } else if (sx_disc_family == "gaussian") {
     sm <- summary(m1); res$r2 <- sm$r.squared; res$adj_r2 <- sm$adj.r.squared
@@ -161,12 +226,16 @@ sx_discover_one <- function(full, tests, vars, focal_vars) {
     ctab <- if (sx_disc_family == "ordinal") stats::coef(summary(m1)) else NULL
     crit <- stats::qnorm(1 - (1 - sx_disc_conf) / 2)
   }
-  res$aic <- stats::AIC(m1); res$bic <- stats::BIC(m1); res$loglik <- s1$ll
+  if (sx_disc_family != "gee") { res$aic <- stats::AIC(m1); res$bic <- stats::BIC(m1); res$loglik <- s1$ll }
   for (t in tests) {
-    s0 <- sx_reduced_stats(t$reduced, d)
-    if (nzchar(s0$conv) && sx_disc_family %in% c("ordinal", "multinomial", "binomial"))
-      res$flags <- c(res$flags, paste("reduced model", s0$conv))
-    tr <- sx_compare(s1, s0, d)
+    if (sx_disc_family == "gee") {
+      tr <- sx_wald(m1, X, f1, t$drop)
+    } else {
+      s0 <- sx_reduced_stats(t$reduced, d)
+      if (nzchar(s0$conv) && sx_disc_family %in% c("ordinal", "multinomial", "binomial", "glmm", "clmm"))
+        res$flags <- c(res$flags, paste("reduced model", s0$conv))
+      tr <- sx_compare(s1, s0, d)
+    }
     if (sx_disc_family == "multinomial" && tr$statistic < -1e-6)
       res$flags <- c(res$flags, "optimizer: the reduced model fitted better than the full model")
     tr$id <- t$id; tr$estimate <- NA_real_; tr$se <- NA_real_; tr$ci_low <- NA_real_; tr$ci_high <- NA_real_
@@ -180,11 +249,17 @@ sx_discover_one <- function(full, tests, vars, focal_vars) {
     }
     res$tests[[length(res$tests) + 1]] <- tr
   }
+  if (sx_disc_family == "gee") {
+    res$qic <- tryCatch(as.numeric(geepack::QIC(m1)[["QIC"]]), error = function(e) NA_real_)
+    res$aic <- NA_real_; res$bic <- NA_real_; res$loglik <- NA_real_
+  }
   # the declared focal test, also at the top level (v1.1 row layout)
-  t1 <- res$tests[[1]]
-  for (nm in c("statistic", "df1", "p", "effect", "partial_eta2", "estimate", "se", "ci_low", "ci_high"))
-    res[[nm]] <- t1[[nm]]
-  if (sx_disc_family == "gaussian") res$df2 <- t1$df_den
+  if (length(res$tests)) {
+    t1 <- res$tests[[1]]
+    for (nm in c("statistic", "df1", "p", "effect", "partial_eta2", "estimate", "se", "ci_low", "ci_high"))
+      res[[nm]] <- t1[[nm]]
+    if (sx_disc_family == "gaussian") res$df2 <- t1$df_den
+  }
   if (length(res$flags)) res$status <- "warning"
   res$flags <- paste(unique(res$flags), collapse = "; ")
   res
@@ -193,7 +268,7 @@ sx_discover_one <- function(full, tests, vars, focal_vars) {
 sx_discover_batch <- function(batch) lapply(batch, function(s) {
   warns <- character()
   r <- tryCatch(withCallingHandlers(
-      do.call(sx_discover_one, s[c("full", "tests", "vars", "focal_vars")]),
+      do.call(sx_discover_one, s[intersect(c("full", "tests", "vars", "focal_vars", "struct"), names(s))]),
       warning = function(w) { warns <<- c(warns, conditionMessage(w)); invokeRestart("muffleWarning") }),
     error = function(e) list(status = "failed", reason = conditionMessage(e), flags = ""))
   if (length(warns) && !identical(r$status, "failed") && !identical(r$status, "invalid")) {
@@ -212,7 +287,8 @@ def setup_script(ds: Dataset, s: SearchSettings, family: str) -> str:
 
     ds = view(ds, s)
     a = lambda n: alias(ds.var(n).alias)  # noqa: E731
-    vars_ = [a(n) for n in [s.outcome] + s.candidates + s.required + ([s.participant] if s.participant else [])]
+    long = ([s.participant] + ([s.time] if s.time else [])) if s.participant else []
+    vars_ = [a(n) for n in dict.fromkeys([s.outcome] + s.candidates + s.required + long)]
     y = a(s.outcome)
     lines = [
         DISCOVERY_HELPERS,
@@ -228,8 +304,27 @@ def setup_script(ds: Dataset, s: SearchSettings, family: str) -> str:
          if s.sample == "shared" else
          "sx_dd <- droplevels(dat[, sx_disc_vars, drop = FALSE])  # complete cases are taken per model"),
     ]
+    struct = (s.structures[0] if s.workflow == "structure" and s.structures else s.structure) or "ri"
+    lines += [f"sx_disc_struct <- {r_str(struct)}",
+              f"sx_disc_reml <- {'TRUE' if s.participant and s.workflow == 'structure' else 'FALSE'}"
+              "  # REML only to compare covariance structures with a locked fixed part",
+              f"sx_disc_corstr <- {r_str({'gee_exch': 'exchangeable', 'gee_ar1': 'ar1', 'gee_ind': 'independence'}.get(struct, 'exchangeable'))}",
+              f"sx_disc_gee_family <- {r_str(s.family or 'gaussian')}",
+              f"sx_disc_has_time <- {'TRUE' if s.participant and s.time else 'FALSE'}"]
     if s.participant:
-        lines.append(f"sx_dd$sx_gid <- factor(sx_dd${a(s.participant)})  # participant (random intercept)")
+        lines.append(f"sx_dd$sx_gid <- factor(sx_dd${a(s.participant)})  # participant (grouping, not a predictor)")
+        if s.time:
+            tv = ds.var(s.time)
+            if tv.is_categorical:
+                codes, labels = category_codes(ds, s.time)
+                lines.append(f"sx_dd$sx_time <- {r_vec([float(c) for c in codes])}[match(as.character("
+                             f"sx_dd${a(s.time)}), {r_vec(labels)})]  # numeric time codes (labels mapped back)")
+            else:
+                lines.append(f"sx_dd$sx_time <- as.numeric(sx_dd${a(s.time)})  # numeric time")
+            lines += ["sx_dd$sx_timef <- factor(sx_dd$sx_time)  # time as categories (categorical time, mmrm)",
+                      "sx_dd$sx_occ <- as.integer(sx_dd$sx_timef)  # occasion index (AR(1), GEE waves)",
+                      "sx_dd <- sx_dd[order(sx_dd$sx_gid, sx_dd$sx_time), , drop = FALSE]  # within-participant order"]
+    family = {"lmm": "gaussian", "glmm": "binomial", "clmm": "ordinal", "gee": s.family or "gaussian"}.get(family, family)
     v = ds.var(s.outcome)
     if family in ("gaussian", "lmm"):
         lines.append(f"sx_dd$sx_y <- sx_dd${y}")
@@ -256,25 +351,34 @@ def setup_script(ds: Dataset, s: SearchSettings, family: str) -> str:
     return "\n".join(lines) + "\n"
 
 
-def _term(ds: Dataset, t: tuple[str, ...]) -> str:
-    return ":".join(alias(ds.var(v).alias) for v in t)
+def _rname(ds: Dataset, v: str, s: SearchSettings | None) -> str:
+    """R column for a model variable: its alias, or the prepared time column in longitudinal searches."""
+    if s is not None and s.participant and s.time and v == s.time:
+        return "sx_timef" if s.time_type == "categorical" else "sx_time"
+    return alias(ds.var(v).alias)
 
 
-def candidate_args(ds: Dataset, c: Candidate) -> str:
+def _term(ds: Dataset, t: tuple[str, ...], s: SearchSettings | None = None) -> str:
+    return ":".join(_rname(ds, v, s) for v in t)
+
+
+def candidate_args(ds: Dataset, c: Candidate, s: SearchSettings | None = None) -> str:
     from .space import candidate_tests, full_terms
 
-    terms = lambda ts: r_vec([_term(ds, t) for t in ts])  # noqa: E731
+    terms = lambda ts: r_vec([_term(ds, t, s) for t in ts])  # noqa: E731
     tests = ", ".join(f"list(id = {t['id']}L, type = {r_str(t['type'])}, reduced = {terms(t['reduced'])}, "
                       f"drop = {terms(t['drop'])})" for t in candidate_tests(c))
-    av = lambda vs: r_vec([alias(ds.var(v).alias) for v in vs])  # noqa: E731
+    av = lambda vs: r_vec([_rname(ds, v, s) for v in vs])  # noqa: E731
     cells = av(c.focal) if c.kind in ("focal", "all_two_way") else \
         "list(" + ", ".join(av(t) for t in c.inter) + ")"
+    struct = f", struct = {r_str(c.structure)}" if c.kind == "structure" else ""
+    variables = list(dict.fromkeys(v for t in full_terms(c) for v in t)) if c.kind == "structure" else c.variables
     return (f"full = {terms(full_terms(c))}, tests = list({tests}), "
-            f"vars = {av(c.variables)}, focal_vars = {cells}")
+            f"vars = {av(variables)}, focal_vars = {cells}{struct}")
 
 
-def batch_script(ds: Dataset, batch: list[Candidate]) -> str:
-    items = ",\n  ".join(f"list(i = {c.index}L, {candidate_args(ds, c)})" for c in batch)
+def batch_script(ds: Dataset, batch: list[Candidate], s: SearchSettings | None = None) -> str:
+    items = ",\n  ".join(f"list(i = {c.index}L, {candidate_args(ds, c, s)})" for c in batch)
     return f"sx_result <- sx_discover_batch(list(\n  {items}))\n"
 
 
@@ -282,4 +386,4 @@ def candidate_script(load_script: str, ds: Dataset, s: SearchSettings, family: s
     setup = setup_script(ds, s, family).replace("sx_result <- list(n = nrow(sx_dd), n_complete = "
                                                "sum(stats::complete.cases(sx_dd)))\n", "")
     return (load_script + "\n" + setup + "\n# ---- candidate " + str(c.index) + " ----\n"
-            + f"sx_result <- sx_discover_one({candidate_args(ds, c)})\nstr(sx_result)\n")
+            + f"sx_result <- sx_discover_one({candidate_args(ds, c, s)})\nstr(sx_result)\n")

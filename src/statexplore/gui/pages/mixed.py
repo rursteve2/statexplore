@@ -145,6 +145,11 @@ class MixedPage(QWidget):
         self.ntraj = QSpinBox()
         self.ntraj.setRange(0, 500)
         self.ntraj.setValue(40)
+        self.max_fixed = QSpinBox()
+        self.max_fixed.setRange(1, 30)
+        self.max_fixed.setValue(6)
+        self.max_fixed.setToolTip("Distinct fixed-effect predictors (time included; the participant ID never counts). "
+                                  "Default 6; raise to 10, 15 or more after checking the preflight.")
         self.family = self._choice(mixed.FAMILIES)
         self.estimator = self._choice(mixed.ESTIMATORS)
         self.inference = self._choice(mixed.INFERENCE)
@@ -174,7 +179,8 @@ class MixedPage(QWidget):
                          ("Residual covariance", self.residual), ("Estimation", self.method),
                          ("Inference (Gaussian lme4)", self.inference), ("Event category (binary)", self.event_combo),
                          ("Reference category (multinomial)", self.reference_combo), ("Quadrature points (nAGQ)", self.nagq),
-                         ("GEE working correlation", self.gee_corstr), ("Trajectories to draw", self.ntraj)]:
+                         ("GEE working correlation", self.gee_corstr), ("Trajectories to draw", self.ntraj),
+                         ("Max fixed-effect predictors", self.max_fixed)]:
             if label:
                 mf.addRow(label, w)
             else:
@@ -249,6 +255,7 @@ class MixedPage(QWidget):
         state.project_changed.connect(self._reload)
         state.metadata_changed.connect(self._reload)
         state.busy_changed.connect(lambda b: self.fit_btn.setEnabled(not b))
+        state.show_in_mixed.connect(self.fit_spec)
         self._reload()
 
     @staticmethod
@@ -339,7 +346,7 @@ class MixedPage(QWidget):
             family=self.family.currentData(), estimator=self.estimator.currentData(),
             inference=self.inference.currentData(), event=self.event_combo.currentData(),
             reference=self.reference_combo.currentData(), nagq=self.nagq.value(),
-            gee_corstr=self.gee_corstr.currentData())
+            gee_corstr=self.gee_corstr.currentData(), max_fixed=self.max_fixed.value())
 
     def _update_engine(self, *_args) -> None:
         if self.residual.currentData() == "unstructured" and self.random.currentData() != "none":
@@ -419,6 +426,28 @@ class MixedPage(QWidget):
             return
         ds = self.state.dataset
         self.output.setHtml("<p>Fitting in R…</p>")
+        self.state.run_r(lambda sess: mixed.run(sess, ds, s), self._done,
+                         lambda m: self.output.setHtml(f"<p style='color:#c62828'>{m}</p>"))
+
+    def fit_spec(self, s: "mixed.MixedSpec") -> None:
+        """Fit an exact specification (e.g. a discovery candidate): the form shows its main settings; the
+        result states that it is a refit and which formula and structure were used."""
+        ds = self.state.dataset
+        if ds is None:
+            return
+        for combo, val in ((self.outcome, s.outcome), (self.idv, s.id), (self.time, s.time), (self.family, s.family),
+                           (self.estimator, s.estimator), (self.random, s.random), (self.residual, s.residual),
+                           (self.time_type, s.time_type), (self.gee_corstr, s.gee_corstr)):
+            i = combo.findData(val)
+            if i >= 0:
+                combo.setCurrentIndex(i)
+        self.method.setCurrentText(s.method)
+        try:
+            mixed.validate(mixed.view(ds, s), s)
+        except mixed.MixedInputError as e:
+            self.output.setHtml(f"<p style='color:#c62828'>{e}</p>")
+            return
+        self.output.setHtml(f"<p>Refitting {s.source} in R…</p>")
         self.state.run_r(lambda sess: mixed.run(sess, ds, s), self._done,
                          lambda m: self.output.setHtml(f"<p style='color:#c62828'>{m}</p>"))
 

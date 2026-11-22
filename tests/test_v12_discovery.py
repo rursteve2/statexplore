@@ -342,3 +342,24 @@ def test_project_round_trip_keeps_typed_tests(planted3, tmp_path):
     assert r2.fit_id == run.fit_id and r2.rows[3]["tests"] == run.rows[3]["tests"]
     pd.testing.assert_frame_equal(hypotheses(r2)[["test_id", "p", "p_adj", "ci_applicable"]],
                                   hypotheses(run)[["test_id", "p", "p_adj", "ci_applicable"]])
+
+
+@pytest.mark.r
+def test_combination_candidate_drill_down_and_model_spec(planted3, r_session):
+    from statexplore.analysis.models import from_candidate
+    from statexplore.discovery.detail import candidate_from_row, full_analysis
+
+    df, ds = planted3
+    run = execute(create_run(ds, S(outcome="y", candidates=["x1", "x2", "x3"], min_predictors=3,
+                                   max_predictors=3)), ds)
+    tf = hypotheses(run)
+    hit = tf[(tf["formula"] == "y ~ x1 + x2 + x3 + x1:x2 + x2:x3") & (tf["label"] == "x1 × x2")].iloc[0]
+    row = next(r for r in run.rows if r["idx"] == hit["idx"])
+    cand = candidate_from_row(run, row)
+    assert cand.kind == "combo" and cand.inter == (("x1", "x2"), ("x2", "x3"))
+    res, _ = full_analysis(r_session, ds, run, cand)
+    term = [t for t in res.tables if t.name.startswith("Term tests")][0]
+    p_detail = dict(zip([r[0] for r in term.rows], [r[3] for r in term.rows]))
+    assert p_detail["x1:x2"] == pytest.approx(hit["p"], rel=1e-9)
+    spec = from_candidate(run, row)
+    assert set(spec.terms) == {("x1",), ("x2",), ("x3",), ("x1", "x2"), ("x2", "x3")}

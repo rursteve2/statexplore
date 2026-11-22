@@ -170,3 +170,63 @@ def test_discovery_outcome_row_sits_below_family(hrs_window):
     panel = page.treatment_panel
     assert panel.outcome == "R_LTACTX" and "Frequency of light physical activity" in panel.outcome_info.text()
     assert panel.outcome_box.parent() is not panel        # re-parented into the outcome form
+
+
+# ---- M §8 / §15 E: longitudinal setup in Discovery, refit handoff ---------------------------
+
+def test_longitudinal_setup_and_preflight_hrs(hrs_window):
+    ds = hrs_window.state.dataset
+    page = hrs_window.pages["Automated Model Discovery"]
+    page.outcome.setCurrentIndex(page.outcome.findData("R_LTACTX"))
+    assert page.study.currentData() == "independent" and not page.participant.isEnabled()
+    page.cand_sel.set_selected(["RAGENDER"])
+    page.study.setCurrentIndex(page.study.findData("longitudinal"))
+    assert page.participant.isEnabled()
+    # any structurally valid column can be the ID; the time variable is chosen explicitly
+    page.participant.setCurrentIndex(page.participant.findData("HHIDPN"))
+    page.time_combo.setCurrentIndex(page.time_combo.findData("WAVE"))
+    txt = page.long_info.toPlainText()
+    assert "Participants 1,000" in txt and "Waves 16" in txt
+    assert "not observed at 6 of 16 time points" in txt          # R_LTACTX waves 1-6: reported, never zero-filled
+    page.family.setCurrentIndex(page.family.findData("ordinal"))
+    assert page.structure.findData("clmm_ri") >= 0 and page.structure.findData("ri") < 0
+    page.time_combo.setCurrentIndex(0)                           # no time: the time strategy is refused
+    page.strategy.setCurrentIndex(page.strategy.findData("time"))
+    with pytest.raises(Exception, match="needs a time variable"):
+        from statexplore.discovery.space import validate_settings
+        ds.set_variable_field("R_LTACTX", "measure", "ordinal")
+        validate_settings(ds, page._settings())
+
+
+@pytest.mark.r
+def test_longitudinal_candidate_refits_in_mixed_workspace(window, qtbot, tmp_path, r_worker):
+    rng = np.random.default_rng(8)
+    n_id, k = 60, 4
+    df = pd.DataFrame({"pid": np.repeat(np.arange(n_id), k), "t": np.tile(np.arange(k), n_id)})
+    df["g"] = np.repeat(rng.integers(0, 2, n_id), k)
+    df["y"] = np.repeat(rng.normal(size=n_id), k) + 0.5 * df["g"] * df["t"] + rng.normal(size=len(df))
+    load_frame(window, tmp_path, df)
+    page = window.pages["Automated Model Discovery"]
+    page.outcome.setCurrentIndex(page.outcome.findData("y"))
+    page._use_suggestion()
+    page.study.setCurrentIndex(page.study.findData("longitudinal"))
+    page.participant.setCurrentIndex(page.participant.findData("pid"))
+    page.time_combo.setCurrentIndex(page.time_combo.findData("t"))
+    page.cand_sel.set_selected(["g"])
+    page.strategy.setCurrentIndex(page.strategy.findData("time"))
+    page.structure.setCurrentIndex(page.structure.findData("rs"))
+    page.workers.setValue(1)
+    info = page._estimate()
+    assert info is not None and info["total"] == 2, page.estimate.text()      # main-effects model + t × g
+    page._start()
+    qtbot.waitUntil(lambda: page.run is not None and page.run.status == "complete", timeout=120000)
+    qtbot.waitUntil(lambda: len(page.tests) > 0, timeout=10000)
+    row = next(r for r in page.run.rows if r["kind"] == "focal")
+    assert row["formula"].endswith("+ (1 + t | pid)") and row["n_groups"] == n_id
+    mixed = window.pages["Mixed & Longitudinal Models"]
+    page._to_mixed(row)
+    qtbot.waitUntil(lambda: mixed.current is not None, timeout=120000)
+    res = mixed.current
+    assert any(m.startswith("Refit: discovery search") for m in res.messages)
+    assert res.inputs["spec"]["terms"] == [["t"], ["g"], ["t", "g"]] and res.inputs["spec"]["random"] == "slope"
+    assert window.stack.currentWidget() is mixed

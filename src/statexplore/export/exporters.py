@@ -219,8 +219,19 @@ def export(project: Project, result_ids: Iterable[str], folder: Path, formats: s
 
         run = next(r for r in project.searches if r.id == sid)
         df = results_frame(run)
-        keep = [c for c in df.columns if c not in ("focal", "covariates", "key")]
+        keep = [c for c in df.columns if c not in ("focal", "covariates", "key", "inter")]
         extra[f"search {run.id}"] = df[keep]
+        from ..discovery.engine import tests_frame
+
+        tf = tests_frame(run)
+        if len(tf):   # every tested hypothesis with raw and adjusted p, its family and CI metadata (numeric)
+            tcols = [c for c in ("test_id", "idx", "model_type", "formula", "test_type", "test_label", "label",
+                                 "test_method", "statistic", "df1", "df_den", "lrt_df", "p", "p_adj", "p_bh",
+                                 "p_holm", "family_size", "adj_method", "effect", "estimate", "se", "ci_low",
+                                 "ci_high", "ci_scale", "ci_null", "ci_level", "ci_method", "ci_applicable",
+                                 "n", "n_groups", "n_predictors", "n_terms", "n_params", "status", "flags",
+                                 "search_scope", "candidate_id", "model_id") if c in tf.columns]
+            extra[f"search {run.id} hypotheses"] = tf[tcols]
         sm = summary(run, df) if len(df) else {}
         settings = {**run.settings.to_dict(), **{k: v for k, v in sm.items()}, "status": run.status,
                     "warnings": " | ".join(run.warnings)}

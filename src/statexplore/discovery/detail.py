@@ -15,17 +15,30 @@ from .space import Candidate
 
 
 def candidate_from_row(run: DiscoveryRun, row: dict[str, Any]) -> Candidate:
+    inter = row.get("inter") or []
+    if isinstance(inter, str):
+        import json
+
+        inter = json.loads(inter)
     return Candidate(int(row["idx"]), tuple(row["focal"]), tuple(row["covariates"]), tuple(run.settings.required),
-                     str(row.get("kind") or "focal"))
+                     str(row.get("kind") or "focal"), tuple(tuple(t) for t in inter))
 
 
 def full_analysis(session: RSession, ds: Dataset, run: DiscoveryRun,
                   c: Candidate) -> tuple[AnalysisResult, dict[str, bytes]]:
     s = run.settings
     a = lambda n: alias(ds.var(n).alias)  # noqa: E731
-    if c.kind == "all_two_way":
-        rhs = "(" + " + ".join(a(v) for v in c.focal) + ")^2" + "".join(f" + {a(v)}" for v in c.required)
+    if c.kind in ("main", "combo", "factorial"):
+        from .space import full_terms
+
+        rhs = " + ".join(":".join(a(v) for v in t) for t in full_terms(c))
         internal: dict[str, Any] = {"rhs": rhs}
+        top = [t for t in c.inter if not any(set(t) < set(u) for u in c.inter)]
+        if len(top) == 1:
+            internal["focal"] = [a(v) for v in top[0]]
+    elif c.kind == "all_two_way":
+        rhs = "(" + " + ".join(a(v) for v in c.focal) + ")^2" + "".join(f" + {a(v)}" for v in c.required)
+        internal = {"rhs": rhs}
     else:
         rhs = " * ".join(a(v) for v in c.focal) + "".join(f" + {a(v)}" for v in c.covariates + c.required)
         internal = {"rhs": rhs, "focal": [a(v) for v in c.focal]}
@@ -39,7 +52,9 @@ def full_analysis(session: RSession, ds: Dataset, run: DiscoveryRun,
         opts["event"] = s.event
     if run.family == "multinomial" and getattr(s, "reference", None) is not None:
         opts["reference"] = s.reference
-    title = f"Discovery candidate #{c.index}: " + " × ".join(ds.var(v).display_name for v in c.focal)
+    from .space import focal_label
+
+    title = f"Discovery candidate #{c.index}: {focal_label(ds, c)}"
     result, artifacts = run_analysis(session, ds, spec, vars_, opts, internal, title,
                                      treatments=getattr(s, "treatments", None))
     result.values["discovery"] = {"run": run.id, "candidate": c.index}
