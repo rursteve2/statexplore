@@ -60,7 +60,8 @@ def _kill_tree(proc: subprocess.Popen[str]) -> None:
 class RWorker:
     """One long-lived Rscript process. Requests are serialised with a lock."""
 
-    def __init__(self, rscript: str | Path | None = None, startup_timeout: float = 60.0):
+    def __init__(self, rscript: str | Path | None = None, startup_timeout: float = 60.0,
+                 script: str | Path | None = None, extra_env: dict[str, str] | None = None):
         path = Path(rscript) if rscript else find_rscript()
         if path is None or not Path(path).is_file():
             raise REngineError(
@@ -69,6 +70,8 @@ class RWorker:
             )
         self.rscript = Path(path)
         self.startup_timeout = startup_timeout
+        self.script = Path(script) if script else WORKER_SCRIPT   # the R console uses its own worker script
+        self.extra_env = dict(extra_env or {})
         self._ids = itertools.count(1)
         self._lock = threading.Lock()
         self._proc: subprocess.Popen[str] | None = None
@@ -82,10 +85,11 @@ class RWorker:
         env = os.environ.copy()
         env["STATEXPLORE_R_LIB"] = str(r_library())
         env["R_DEFAULT_PACKAGES"] = "utils,stats,graphics,grDevices,methods"
+        env.update(self.extra_env)
         flags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
         self._responses = queue.Queue()
         self._proc = subprocess.Popen(
-            [str(self.rscript), "--vanilla", str(WORKER_SCRIPT)],
+            [str(self.rscript), "--vanilla", str(self.script)],
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
             text=True, encoding="utf-8", errors="replace", bufsize=1,
             env=env, creationflags=flags,

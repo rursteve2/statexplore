@@ -23,16 +23,18 @@ from .pages.dataset_explorer import DatasetExplorerPage
 from .pages.discovery import DiscoveryPage
 from .pages.mixed import MixedPage
 from .pages.eda import EdaPage
+from .pages.r_console import RConsolePage
 from .pages.reports import ReportsPage
 from .pages.simple import DashboardPage, PlannedPage, SettingsPage
 from .pages.teaching import TeachingPage
+from .pages.survey import SurveyPage
 from .pages.validation import ValidationPage
 from .state import AppState
 
 SECTIONS = [
     "Dashboard", "Dataset Explorer", "Exploratory Data Analysis", "Analysis Builder",
     "Automated Model Discovery", "Model Comparison", "Validation & Uncertainty", "Mixed & Longitudinal Models",
-    "Teaching Studio", "Reports", "Settings",
+    "Survey Analysis", "Teaching Studio", "R Console", "Reports", "Settings",
 ]
 PLANNED: dict[str, tuple[int, str]] = {}
 FILE_FILTER = "Datasets (*.csv *.sav *.xlsx);;CSV (*.csv);;SPSS (*.sav);;Excel (*.xlsx)"
@@ -104,6 +106,8 @@ class MainWindow(QMainWindow):
             "Model Comparison": ComparisonPage(self.state),
             "Teaching Studio": TeachingPage(self.state),
             "Mixed & Longitudinal Models": MixedPage(self.state),
+            "Survey Analysis": SurveyPage(self.state),
+            "R Console": RConsolePage(self.state),
             "Validation & Uncertainty": ValidationPage(self.state),
             "Reports": ReportsPage(self.state),
             "Settings": SettingsPage(self.state),
@@ -278,6 +282,7 @@ class MainWindow(QMainWindow):
         if not self._confirm_discard():
             e.ignore()
             return
+        self.pages["R Console"].shutdown()
         self.state.wait_idle(5000)
         self.state.cleanup()
         e.accept()

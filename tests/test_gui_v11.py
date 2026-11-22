@@ -181,3 +181,113 @@ def test_discovery_page_ordinal_family_and_selectors(hrs_window, qtbot, r_worker
     page.treatment_panel.set_treated("R_SHLT")
     info = page._estimate()
     assert info is not None and info["family"] == "gaussian" and "R_SHLT: Continuous" in page.estimate.text()
+
+
+@pytest.mark.r
+def test_mixed_page_ltactx_workflow(hrs_window, qtbot, r_worker):
+    """§23 steps 3-13: review R_LTACTX, approve ordinal, choose a model, review waves, fit."""
+    from statexplore.analysis import measurement as M
+
+    ds = hrs_window.state.dataset
+    ds.set_variable_field("HHIDPN", "role", "id")
+    M.approve(ds, "R_LTACTX", "ordinal")
+    hrs_window.state.notify_metadata_changed()
+    page = hrs_window.pages["Mixed & Longitudinal Models"]
+    page.outcome.setCurrentIndex(page.outcome.findData("R_LTACTX"))
+    page.time.setCurrentIndex(page.time.findData("WAVE"))
+    assert page.idv.currentData() == "HHIDPN"
+    assert "Suggested family: Ordinal" in page.family_hint.text()
+    text = page.preflight_view.toPlainText()
+    assert "Wave 1 to Wave 6" in text and "Wave 7 to Wave 16" in text
+    # Gaussian needs explicit continuous treatment
+    from statexplore.analysis import mixed as MX
+
+    with pytest.raises(MX.MixedInputError, match="Treat R_LTACTX as continuous"):
+        MX.validate(ds, page._spec())
+    page.treatment_panel.ask = False
+    page.treatment_panel.set_treated("R_LTACTX")
+    page.pred_sel.set_selected(["RAGENDER"])
+    page._fit()
+    qtbot.waitUntil(lambda: page.current is not None, timeout=180000)
+    res = page.current
+    assert res.status.value in ("ok", "warning") and res.values["analysis_range"] == "Wave 7 to Wave 16"
+    assert res.inputs["treatments"][0]["variable"] == "R_LTACTX"
+    # GEE alternative (population-average), binary outcome
+    page.outcome.setCurrentIndex(page.outcome.findData("R_DEPRES"))
+    page.family.setCurrentIndex(page.family.findData("binomial"))
+    page.estimator.setCurrentIndex(page.estimator.findData("gee"))
+    assert "population-average" in page.engine_label.text() and not page.random.isEnabled()
+    page.current = None
+    page._fit()
+    qtbot.waitUntil(lambda: page.current is not None, timeout=180000)
+    assert page.current.title.startswith("Generalized estimating equations")
+
+
+@pytest.mark.r
+def test_survey_page(window, qtbot, tmp_path, r_worker, hrs_path):
+    import numpy as np
+    import pandas as pd
+
+    from statexplore.core.importers import import_file
+    from statexplore.core.project import Project
+
+    rng = np.random.default_rng(3)
+    n = 300
+    df = pd.DataFrame({"stratum": np.repeat([1, 2, 3], 100), "psu": np.repeat(np.arange(1, 13), 25),
+                       "w": rng.uniform(1, 3, n), "y": rng.normal(size=n)})
+    p = tmp_path / "svy.csv"
+    df.to_csv(p, index=False)
+    window.state.set_project(Project(import_file(p)))
+    page = window.pages["Survey Analysis"]
+    for combo, name in ((page.weight, "w"), (page.psu, "psu"), (page.strata, "stratum")):
+        combo.setCurrentIndex(combo.findData(name))
+    page.kind.setCurrentIndex(page.kind.findData("mean"))
+    page.var_sel.set_selected(["y"])
+    page._run()
+    qtbot.waitUntil(lambda: page.current is not None, timeout=60000)
+    assert page.current.status.value == "ok" and "Weighted means" in page.output.toPlainText()
+    assert abs(page.current.tables[1].rows[0][2] - np.average(df.y, weights=df.w)) < 1e-10
+    window.state.dirty = False
+    window.import_path(str(hrs_path))
+    qtbot.waitUntil(lambda: window.state.dataset is not None and window.state.dataset.n_rows == 16000, timeout=30000)
+    page._detect()
+    assert "weight: none found" in page.output.toPlainText()
+
+
+@pytest.mark.r
+def test_r_console_page_and_package_manager(window, qtbot, tmp_path, monkeypatch, r_worker):
+    import numpy as np
+    import pandas as pd
+
+    from statexplore.core.importers import import_file
+    from statexplore.core.project import Project
+    from statexplore.gui.pages.r_console import PackageManagerDialog
+    from tests.test_console_packages import _binary_pkg
+
+    monkeypatch.setenv("STATEXPLORE_USER_LIB_ROOT", str(tmp_path / "userroot"))
+    p = tmp_path / "d.csv"
+    pd.DataFrame({"x": np.arange(10.0)}).to_csv(p, index=False)
+    window.state.set_project(Project(import_file(p)))
+    page = window.pages["R Console"]
+    page.editor.setPlainText("mean(my_data$x)\nhist(my_data$x)")
+    page.run_script()
+    qtbot.waitUntil(lambda: not page._busy, timeout=60000)
+    assert "[1] 4.5" in page.output.toPlainText() and page.plots_layout.count() >= 1
+    rec = window.state.project.results[-1]
+    assert rec.kind == "r_console" and rec.plots and "mean(my_data$x)" in rec.script
+    # package manager: install a local binary, then use it in a script
+    dlg = PackageManagerDialog(window.state, page)
+    assert dlg.install_path(str(_binary_pkg(tmp_path, "sxguipkg")), confirm=False)
+    dlg.close()
+    page.editor.setPlainText("library(sxguipkg); hello()")
+    page.run_script()
+    qtbot.waitUntil(lambda: not page._busy, timeout=60000)
+    assert "hello from sxguipkg" in page.output.toPlainText()
+    # persistent session + explicit import
+    page.persistent.setChecked(True)
+    page.editor.setPlainText("my_data$x10 <- my_data$x * 10")
+    page.run_script()
+    qtbot.waitUntil(lambda: not page._busy, timeout=60000)
+    assert window.state.dataset.n_cols == 1                              # not applied until imported
+    assert page.import_dataset(confirm=False)
+    assert list(window.state.dataset.variables) == ["x", "x10"] and len(window.state.project.results) >= 3

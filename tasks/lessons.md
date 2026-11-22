@@ -44,3 +44,6 @@
 
 ## Qt attribute names
 - Never name a widget attribute after a QWidget/QObject virtual (`event`, `show`, `close`, `update`, `layout`...): `self.event = QComboBox()` shadows `QWidget.event()` and Qt crashes with an access violation on the next event. Use suffixed names (`event_combo`).
+
+## JSON from R
+- `jsonlite::toJSON(auto_unbox = TRUE)` turns a length-1 vector into a scalar: a list of one plot path arrived as a string and Python iterated its characters. Wrap vectors that are semantically lists in `I()`, and make the Python side accept a scalar too.

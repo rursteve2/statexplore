@@ -86,8 +86,12 @@ class SettingsPage(QWidget):
         save.clicked.connect(self._save)
         test = QPushButton("Test R connection")
         test.clicked.connect(self._test)
+        pkgs = QPushButton("R Package Manager…")
+        pkgs.setToolTip("Install your own R packages from local files (offline), for use in the R Console")
+        pkgs.clicked.connect(self._packages)
         btns.addWidget(save)
         btns.addWidget(test)
+        btns.addWidget(pkgs)
         btns.addStretch()
         lay.addLayout(btns)
         self.status = QLabel()
@@ -95,6 +99,11 @@ class SettingsPage(QWidget):
         self.status.setTextInteractionFlags(Qt.TextSelectableByMouse)
         lay.addWidget(self.status)
         lay.addStretch()
+
+    def _packages(self) -> None:
+        from .r_console import PackageManagerDialog
+
+        PackageManagerDialog(self.state, self).exec()
 
     def _browse(self) -> None:
         path, _ = QFileDialog.getOpenFileName(self, "Locate Rscript.exe", "", "Rscript (Rscript.exe)")

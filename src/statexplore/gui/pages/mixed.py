@@ -11,14 +11,21 @@ from ...analysis import mixed
 from ...core.project import Project
 from ...core.structure import ReshapeSpec, suggest_structure, wide_to_long
 from ...core.variables import Measure, Role, Storage
+from ...analysis.measurement import TreatmentError, apply_treatments
 from ..result_view import render
 from ..state import AppState
+from ..widgets.treatment_panel import TreatmentPanel
+from ..widgets.variable_selector import VariableSelector
 from .eda import CodeDialog
 
 ENGINE_TEXT = {
-    "lme4": "lme4 / lmerTest (random effects, independent residuals, Satterthwaite df)",
+    "lme4": "lme4 / lmerTest (random effects, independent residuals)",
     "nlme": "nlme (random effects + correlated residuals)",
     "mmrm": "mmrm (marginal model — no random effects; unstructured covariance)",
+    "glmer": "lme4::glmer (binary logistic mixed model; Laplace or adaptive quadrature)",
+    "clmm": "ordinal::clmm (cumulative-logit mixed model)",
+    "mblogit": "mclogit::mblogit (multinomial mixed model, PQL approximation — see the limitations in the results)",
+    "geepack": "geepack::geeglm (GEE: population-average effects, robust SEs; no random effects)",
 }
 
 
@@ -138,24 +145,65 @@ class MixedPage(QWidget):
         self.ntraj = QSpinBox()
         self.ntraj.setRange(0, 500)
         self.ntraj.setValue(40)
-        for label, w in [("Outcome (continuous)", self.outcome), ("Participant ID", self.idv), ("Time", self.time),
+        self.family = self._choice(mixed.FAMILIES)
+        self.estimator = self._choice(mixed.ESTIMATORS)
+        self.inference = self._choice(mixed.INFERENCE)
+        self.gee_corstr = self._choice(mixed.GEE_CORSTR)
+        self.event_combo, self.reference_combo = QComboBox(), QComboBox()
+        self.nagq = QSpinBox()
+        self.nagq.setRange(1, 25)
+        self.nagq.setToolTip("1 = Laplace approximation (default). More points = adaptive Gauss-Hermite quadrature; "
+                             "only with a single random intercept.")
+        self.family_hint = QLabel()
+        self.family_hint.setWordWrap(True)
+        self.family_hint.setObjectName("hint")
+        self.use_family = QPushButton("Use suggested family")
+        self.use_family.clicked.connect(self._use_family)
+        fam_box = QWidget()
+        fam_row = QHBoxLayout(fam_box)
+        fam_row.setContentsMargins(0, 0, 0, 0)
+        fam_row.addWidget(self.family_hint, 1)
+        fam_row.addWidget(self.use_family)
+        for label, w in [("Outcome", self.outcome), ("Outcome family", self.family), ("", fam_box),
+                         ("Estimator", self.estimator), ("Participant ID", self.idv), ("Time", self.time),
                          ("Time as", self.time_type), ("Cluster (optional)", self.cluster),
                          ("Interactions", self.interactions), ("Random effects", self.random),
                          ("Residual covariance", self.residual), ("Estimation", self.method),
-                         ("Trajectories to draw", self.ntraj)]:
-            mf.addRow(label, w)
+                         ("Inference (Gaussian lme4)", self.inference), ("Event category (binary)", self.event_combo),
+                         ("Reference category (multinomial)", self.reference_combo), ("Quadrature points (nAGQ)", self.nagq),
+                         ("GEE working correlation", self.gee_corstr), ("Trajectories to draw", self.ntraj)]:
+            if label:
+                mf.addRow(label, w)
+            else:
+                mf.addRow(w)
         ll.addWidget(mbox)
-        self.preds = QListWidget()
-        self.preds.setMaximumHeight(170)
+        self.pred_sel = VariableSelector(max_height=230)
+        self.preds = self.pred_sel.list
+        self.pred_sel.changed.connect(self._update_treatments)
         pbox = QGroupBox("Fixed-effect predictors (besides time)")
-        QVBoxLayout(pbox).addWidget(self.preds)
+        QVBoxLayout(pbox).addWidget(self.pred_sel)
         ll.addWidget(pbox)
+        self.treatment_panel = TreatmentPanel()
+        self.treatment_panel.changed.connect(self._update_engine)
+        ll.addWidget(self.treatment_panel)
+        pre_box = QGroupBox("Longitudinal data preflight (before fitting)")
+        pl = QVBoxLayout(pre_box)
+        self.preflight_view = QTextBrowser()
+        self.preflight_view.setMinimumHeight(180)
+        pl.addWidget(self.preflight_view)
+        pre_btn = QPushButton("Review missing observations by time point")
+        pre_btn.clicked.connect(self._preflight)
+        pl.addWidget(pre_btn)
+        ll.addWidget(pre_box)
         self.engine_label = QLabel()
         self.engine_label.setWordWrap(True)
         self.engine_label.setObjectName("hint")
         ll.addWidget(self.engine_label)
-        for w in (self.residual, self.random):
+        for w in (self.residual, self.random, self.family, self.estimator, self.inference):
             w.currentIndexChanged.connect(self._update_engine)
+        self.outcome.currentIndexChanged.connect(self._outcome_changed)
+        for w in (self.idv, self.time):
+            w.currentIndexChanged.connect(self._preflight)
         row = QHBoxLayout()
         self.fit_btn = QPushButton("Fit model")
         self.fit_btn.clicked.connect(self._fit)
@@ -210,54 +258,141 @@ class MixedPage(QWidget):
     def _reload(self) -> None:
         ds = self.state.dataset
         keep = {w: w.currentData() for w in (self.outcome, self.idv, self.time, self.cluster)}
-        checked = {self.preds.item(i).data(Qt.UserRole) for i in range(self.preds.count())
-                   if self.preds.item(i).checkState() == Qt.Checked}
         for w in (self.outcome, self.idv, self.time, self.cluster):
+            w.blockSignals(True)
             w.clear()
-        self.preds.clear()
         self.time.addItem("(none)", None)
         self.cluster.addItem("(none)", None)
-        if ds is None:
-            return
+        preds: list[str] = []
         role_default = {}
-        for v in ds.variables.values():
-            if v.storage is Storage.DATETIME or v.role is Role.EXCLUDED:
-                continue
-            if v.measure is Measure.CONTINUOUS and v.storage is Storage.NUMERIC:
-                self.outcome.addItem(v.display_name, v.name)
-            self.idv.addItem(v.display_name, v.name)
-            self.cluster.addItem(v.display_name, v.name)
-            if v.storage is Storage.NUMERIC or v.is_categorical:
-                self.time.addItem(v.display_name, v.name)
-            if v.role in (Role.ID, Role.TIME, Role.CLUSTER):
-                role_default[v.role] = v.name
-            if v.role is Role.NONE and (v.is_categorical or (v.measure is Measure.CONTINUOUS and v.storage is Storage.NUMERIC)):
-                it = QListWidgetItem(f"{v.display_name}  ·  {v.measure.value}")
-                it.setData(Qt.UserRole, v.name)
-                it.setFlags(it.flags() | Qt.ItemIsUserCheckable)
-                it.setCheckState(Qt.Checked if v.name in checked else Qt.Unchecked)
-                self.preds.addItem(it)
-        for w, role in ((self.idv, Role.ID), (self.time, Role.TIME), (self.cluster, Role.CLUSTER)):
-            target = keep.get(w) or role_default.get(role)
-            w.setCurrentIndex(max(0, w.findData(target)))
-        self.outcome.setCurrentIndex(max(0, self.outcome.findData(keep.get(self.outcome))))
+        if ds is not None:
+            for v in ds.variables.values():
+                if v.storage is Storage.DATETIME or v.role is Role.EXCLUDED:
+                    continue
+                k = ds.analysis_column(v.name).dropna().nunique() if v.is_categorical else 0
+                if (v.measure is Measure.CONTINUOUS and v.storage is Storage.NUMERIC) or (v.is_categorical and 2 <= k <= 15):
+                    self.outcome.addItem(f"{v.display_name}  ·  {v.measure.value}", v.name)
+                self.idv.addItem(v.display_name, v.name)
+                self.cluster.addItem(v.display_name, v.name)
+                if v.storage is Storage.NUMERIC or v.is_categorical:
+                    self.time.addItem(v.display_name, v.name)
+                if v.role in (Role.ID, Role.TIME, Role.CLUSTER):
+                    role_default[v.role] = v.name
+                if v.role is Role.NONE and (v.is_categorical or (v.measure is Measure.CONTINUOUS and v.storage is Storage.NUMERIC)):
+                    preds.append(v.name)
+            for w, role in ((self.idv, Role.ID), (self.time, Role.TIME), (self.cluster, Role.CLUSTER)):
+                target = keep.get(w) or role_default.get(role)
+                w.setCurrentIndex(max(0, w.findData(target)))
+            self.outcome.setCurrentIndex(max(0, self.outcome.findData(keep.get(self.outcome))))
+        for w in (self.outcome, self.idv, self.time, self.cluster):
+            w.blockSignals(False)
+        self.pred_sel.set_variables(ds, preds, decorate=(lambda n: f"  ·  {ds.var(n).measure.value}") if ds else None)
+        self._outcome_changed()
+
+    def _outcome_changed(self, *_args) -> None:
+        ds, out = self.state.dataset, self.outcome.currentData()
+        for combo, first in ((self.event_combo, "(second category)"), (self.reference_combo, "(first category)")):
+            combo.clear()
+            combo.addItem(first, None)
+            if ds is not None and out:
+                for code in ds.levels(out)[:15]:
+                    c = str(int(code)) if isinstance(code, float) and code.is_integer() else str(code)
+                    combo.addItem(f"{c} = {ds.level_label(out, code)}", code)
+        self._update_treatments()
+
+    def _update_treatments(self) -> None:
+        out = self.outcome.currentData()
+        names = ([out] if out else []) + self.pred_sel.selected()
+        self.treatment_panel.set_variables(self.state.dataset, names)
         self._update_engine()
+
+    def _suggested_family(self) -> tuple[str, str]:
+        from ...discovery.space import suggest_family
+
+        ds, out = self.state.dataset, self.outcome.currentData()
+        if ds is None or not out:
+            return "", ""
+        try:
+            v = apply_treatments(ds, self.treatment_panel.treatments())
+        except TreatmentError:
+            v = ds
+        return suggest_family(v, out)
+
+    def _use_family(self) -> None:
+        key, _ = self._suggested_family()
+        if key:
+            self.family.setCurrentIndex(self.family.findData(key))
 
     def _spec(self) -> mixed.MixedSpec:
         return mixed.MixedSpec(
             outcome=self.outcome.currentData(), id=self.idv.currentData(), time=self.time.currentData(),
             time_type=self.time_type.currentData(), cluster=self.cluster.currentData(),
-            predictors=[self.preds.item(i).data(Qt.UserRole) for i in range(self.preds.count())
-                        if self.preds.item(i).checkState() == Qt.Checked],
+            predictors=self.pred_sel.selected(),
             interactions=self.interactions.currentData(), random=self.random.currentData(),
-            residual=self.residual.currentData(), method=self.method.currentText(), n_trajectories=self.ntraj.value())
+            residual=self.residual.currentData(), method=self.method.currentText(), n_trajectories=self.ntraj.value(),
+            treatments=[t.to_dict() for t in self.treatment_panel.treatments()],
+            family=self.family.currentData(), estimator=self.estimator.currentData(),
+            inference=self.inference.currentData(), event=self.event_combo.currentData(),
+            reference=self.reference_combo.currentData(), nagq=self.nagq.value(),
+            gee_corstr=self.gee_corstr.currentData())
 
-    def _update_engine(self) -> None:
+    def _update_engine(self, *_args) -> None:
         if self.residual.currentData() == "unstructured" and self.random.currentData() != "none":
             self.random.setCurrentIndex(self.random.findData("none"))
             self.time_type.setCurrentIndex(self.time_type.findData("categorical"))
-        engine = mixed.MixedSpec(outcome="", id="", residual=self.residual.currentData()).engine
-        self.engine_label.setText(f"Engine: {ENGINE_TEXT[engine]}")
+        fam, est = self.family.currentData(), self.estimator.currentData()
+        gauss_lme4 = fam == "gaussian" and est == "mixed" and self.residual.currentData() == "independent"
+        self.inference.setEnabled(gauss_lme4)
+        self.event_combo.setEnabled(fam == "binomial")
+        self.reference_combo.setEnabled(fam == "multinomial")
+        self.nagq.setEnabled(fam in ("binomial", "ordinal") and est == "mixed")
+        self.gee_corstr.setEnabled(est == "gee")
+        for w in (self.random, self.residual, self.method):
+            w.setEnabled(est == "mixed")
+        engine = mixed.MixedSpec(outcome="", id="", residual=self.residual.currentData(), family=fam, estimator=est).engine
+        txt = f"Engine: {ENGINE_TEXT[engine]}"
+        if gauss_lme4:
+            txt += f" · inference: {mixed.INFERENCE[self.inference.currentData()]}"
+        if est == "gee":
+            txt += (" · GEE estimates population-average effects; mixed models estimate subject-specific effects. "
+                    "They are different estimands.")
+        self.engine_label.setText(txt)
+        key, why = self._suggested_family()
+        if key:
+            self.family_hint.setText(f"Suggested family: {mixed.FAMILIES[key]}. {why}"
+                                     + ("" if key == fam else " (The selected family is kept until you change it.)"))
+        else:
+            self.family_hint.setText(why)
+        self.use_family.setEnabled(bool(key) and key != fam)
+        self._preflight()
+
+    def _preflight(self, *_args) -> None:
+        """Availability by time point for the current outcome / participant / time (§12), before fitting."""
+        import html as _html
+
+        from ...analysis.longitudinal_preflight import preflight
+
+        ds = self.state.dataset
+        out, idv = self.outcome.currentData(), self.idv.currentData()
+        if ds is None or not out or not idv or out == idv:
+            self.preflight_view.setHtml("<i>Choose an outcome and a participant ID.</i>")
+            return
+        try:
+            view = apply_treatments(ds, self.treatment_panel.treatments())
+            rep = preflight(view, out, idv, self.time.currentData(), self.pred_sel.selected(), self._spec())
+        except Exception as e:  # an incomplete selection must never break the form
+            self.preflight_view.setHtml(f"<i>{_html.escape(str(e))}</i>")
+            return
+        parts = [f"<p><b>{rep.n_records:,}</b> records · <b>{rep.n_participants:,}</b> participants · "
+                 f"{len(rep.time_points)} time points · {rep.n_multi_obs:,} participants with 2+ observations, "
+                 f"{rep.n_one_obs:,} with one, {rep.n_no_obs:,} with none · duplicate participant-time rows: "
+                 f"{rep.duplicates}</p>"]
+        parts += [f"<p style='color:#8d6e00'>⚠ {_html.escape(w)}</p>" for w in rep.warnings]
+        parts += [f"<p class='note'>{_html.escape(n)}</p>" for n in rep.notes]
+        from ..result_view import table_html
+
+        parts.append(table_html(rep.tables(view)[1]))
+        self.preflight_view.setHtml("".join(parts))
 
     def _validated(self) -> mixed.MixedSpec | None:
         ds = self.state.dataset

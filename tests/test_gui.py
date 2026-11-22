@@ -26,12 +26,12 @@ def window(qtbot, tmp_path, monkeypatch):
 
 
 def test_sidebar_sections(window):
-    assert window.sidebar.count() == len(SECTIONS) == 11
+    assert window.sidebar.count() == len(SECTIONS) == 13   # v1.1: + Survey Analysis, R Console
     for i, name in enumerate(SECTIONS):
         window.sidebar.setCurrentRow(i)
         assert window.stack.currentIndex() == i
         assert window.sidebar.item(i).text().startswith(name)
-    planned = [window.sidebar.item(i).text() for i in range(10) if "(Phase" in window.sidebar.item(i).text()]
+    planned = [window.sidebar.item(i).text() for i in range(window.sidebar.count()) if "(Phase" in window.sidebar.item(i).text()]
     assert len(planned) == len(PLANNED)
 
 

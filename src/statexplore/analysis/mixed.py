@@ -23,6 +23,22 @@ RANDOM = {"intercept": "Random intercept", "slope": "Random intercept + time slo
 RESIDUAL = {"independent": "Independent", "ar1": "AR(1) — equally spaced occasions",
             "car1": "Continuous-time AR(1) — actual time values", "unstructured": "Unstructured (marginal, mmrm)"}
 INTERACTIONS = {"none": "None", "time": "Time × each predictor", "all": "All two-way"}
+FAMILIES = {"gaussian": "Gaussian (continuous)", "binomial": "Binary logistic", "ordinal": "Ordinal logistic (cumulative logit)",
+            "multinomial": "Multinomial nominal (baseline-category logit)"}
+ESTIMATORS = {"mixed": "Mixed-effects model (subject-specific)", "gee": "GEE (population-average, geepack)"}
+INFERENCE = {"satterthwaite": "Satterthwaite df (lmerTest; default)", "kenward_roger": "Kenward-Roger df (lmerTest + pbkrtest; REML)",
+             "lrt": "Likelihood-ratio tests (ML refits)"}
+GEE_CORSTR = {"exchangeable": "Exchangeable", "ar1": "AR(1) (occasion order)", "independence": "Independence",
+              "unstructured": "Unstructured"}
+ENGINE_TITLES = {
+    "lme4": "Linear mixed model", "nlme": "Linear mixed model with residual autocorrelation",
+    "mmrm": "Marginal repeated-measures model (unstructured)",
+    "glmer": "Binary logistic mixed model (lme4::glmer)", "clmm": "Ordinal logistic mixed model (ordinal::clmm)",
+    "mblogit": "Multinomial logistic mixed model (mclogit::mblogit, PQL)",
+    "geepack": "Generalized estimating equations (geepack::geeglm)",
+}
+ENGINE_PACKAGES = {"lme4": ["lme4", "lmerTest", "performance"], "nlme": ["nlme", "performance"], "mmrm": ["mmrm", "car"],
+                   "glmer": ["lme4", "MASS"], "clmm": ["ordinal"], "mblogit": ["mclogit"], "geepack": ["geepack"]}
 
 
 class MixedInputError(ValueError):
@@ -46,12 +62,24 @@ class MixedSpec:
     seed: int = 20261121
     force_nlme: bool = False            # comparisons of residual structures fit every variant in nlme
     treatments: list[dict[str, Any]] = field(default_factory=list)   # analysis-specific encodings (v1.1)
+    # ---- v1.1 (§11): outcome family, estimator and inference ----
+    family: str = "gaussian"            # gaussian | binomial | ordinal | multinomial
+    estimator: str = "mixed"            # mixed (subject-specific) | gee (population-average, geepack)
+    inference: str = "satterthwaite"    # Gaussian lme4: satterthwaite | kenward_roger | lrt
+    event: Any = None                   # binomial: event category code (None = second category)
+    reference: Any = None               # multinomial: baseline category code (None = first category)
+    nagq: int = 1                       # GLMM: 1 = Laplace; > 1 = adaptive Gauss-Hermite (one random intercept)
+    gee_corstr: str = "exchangeable"    # GEE working correlation
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
     @property
     def engine(self) -> str:
+        if self.estimator == "gee":
+            return "geepack"
+        if self.family != "gaussian":
+            return {"binomial": "glmer", "ordinal": "clmm", "multinomial": "mblogit"}[self.family]
         if self.residual == "unstructured":
             return "mmrm"
         if self.residual in ("ar1", "car1") or self.force_nlme:
@@ -69,11 +97,69 @@ def view(ds: Dataset, s: MixedSpec) -> Dataset:
         raise MixedInputError(str(e)) from None
 
 
+def _validate_family(ds: Dataset, s: MixedSpec) -> None:
+    """Model-family-specific outcome and structure rules (§11), replacing v1.0's continuous-only rule."""
+    v = ds.var(s.outcome)
+    dn = v.display_name
+    k = ds.analysis_frame([s.outcome])[s.outcome].dropna().nunique()
+    if s.family not in FAMILIES or s.estimator not in ESTIMATORS or s.inference not in INFERENCE:
+        raise MixedInputError("Invalid option.")
+    if s.family == "gaussian":
+        if not (v.measure is Measure.CONTINUOUS and v.storage is Storage.NUMERIC):
+            hint = (f" It is {v.measure.value}: choose the ordinal or multinomial family, or tick \"Treat {dn} as "
+                    "continuous for this analysis\" to model its numeric codes." if v.is_categorical else "")
+            raise MixedInputError(f"A Gaussian model needs a continuous outcome.{hint}")
+    elif s.family == "binomial":
+        if k != 2:
+            raise MixedInputError(f"Binary logistic models need exactly two outcome values; {dn} has {k}.")
+        if s.event is not None and s.event not in ds.levels(s.outcome):
+            raise MixedInputError(f"{s.event!r} is not a value of {dn}.")
+    else:
+        if not v.is_categorical or k < 3:
+            raise MixedInputError(f"{FAMILIES[s.family]} models need a categorical outcome with 3+ categories.")
+        if s.family == "ordinal" and v.measure is not Measure.ORDINAL:
+            raise MixedInputError(f"{dn} is {v.measure.value}: ordinal models need ordered categories (approve an ordinal "
+                                  "level in Dataset Explorer ▸ Measurement Review), or choose the multinomial family.")
+        if s.family == "multinomial" and s.reference is not None and s.reference not in ds.levels(s.outcome):
+            raise MixedInputError(f"{s.reference!r} is not a category of {dn}.")
+    if s.estimator == "gee":
+        if s.family not in ("gaussian", "binomial"):
+            raise MixedInputError("GEE is available for continuous and binary outcomes.")
+        if s.gee_corstr not in GEE_CORSTR:
+            raise MixedInputError("Invalid working correlation.")
+        if s.gee_corstr in ("ar1", "unstructured") and not s.time:
+            raise MixedInputError("AR(1) and unstructured working correlations need a time variable (occasion order).")
+        if s.cluster:
+            raise MixedInputError("GEE here clusters on participants only; remove the higher-level cluster.")
+        return
+    if s.family != "gaussian":
+        if s.residual != "independent":
+            raise MixedInputError("Residual correlation structures (AR(1), unstructured) belong to Gaussian models. "
+                                  f"{FAMILIES[s.family]} mixed models use random effects only; for serial dependence in "
+                                  "a binary outcome consider GEE with an AR(1) working correlation.")
+        if s.random == "none":
+            raise MixedInputError("A mixed model needs at least a random intercept (or choose GEE).")
+        if s.family == "multinomial" and (s.random != "intercept" or s.cluster):
+            raise MixedInputError("Multinomial mixed models (mclogit::mblogit) are supported with a random intercept per "
+                                  "participant only (no random slopes, no higher-level cluster).")
+        if s.nagq > 1 and (s.random != "intercept" or s.cluster or s.family == "multinomial"):
+            raise MixedInputError("Adaptive Gauss-Hermite quadrature (nAGQ > 1) needs a single random intercept; use "
+                                  "the Laplace approximation (nAGQ = 1) for this structure.")
+        if s.inference != "satterthwaite":
+            raise MixedInputError("Satterthwaite / Kenward-Roger denominator df and the inference option apply to "
+                                  "Gaussian lme4 models only; GLMMs report Wald z tests and likelihood-ratio term tests.")
+    elif s.inference != "satterthwaite":
+        if s.engine != "lme4":
+            raise MixedInputError("Kenward-Roger and likelihood-ratio inference are offered for lme4 models (independent "
+                                  "residuals). nlme and mmrm models report their own df.")
+        if s.inference == "kenward_roger" and s.method != "REML":
+            raise MixedInputError("Kenward-Roger df are defined for REML fits: set estimation to REML.")
+
+
 def validate(ds: Dataset, s: MixedSpec) -> None:
     ds = view(ds, s)
+    _validate_family(ds, s)
     v = ds.var(s.outcome)
-    if not (v.measure is Measure.CONTINUOUS and v.storage is Storage.NUMERIC):
-        raise MixedInputError("The outcome must be continuous (binary mixed models are not available yet).")
     names = [s.outcome, s.id] + ([s.time] if s.time else []) + ([s.cluster] if s.cluster else []) + s.predictors
     if len(set(names)) != len(names):
         raise MixedInputError("Each variable can have only one role.")
@@ -94,7 +180,7 @@ def validate(ds: Dataset, s: MixedSpec) -> None:
         tv = ds.var(s.time)
         if s.time_type in ("continuous", "quadratic") and tv.storage is not Storage.NUMERIC:
             raise MixedInputError("Continuous time needs a numeric time variable.")
-    needs_time = s.random in ("slope", "slope_uncorrelated") or s.residual != "independent"
+    needs_time = (s.random in ("slope", "slope_uncorrelated") and s.estimator != "gee") or s.residual != "independent"
     if needs_time and not s.time:
         raise MixedInputError("This random-effects or residual structure needs a time variable.")
     if s.residual == "unstructured":
@@ -104,7 +190,7 @@ def validate(ds: Dataset, s: MixedSpec) -> None:
             raise MixedInputError("Unstructured covariance needs categorical time (one parameter per occasion).")
         if s.cluster:
             raise MixedInputError("Clusters are not supported with the unstructured marginal model.")
-    elif s.random == "none":
+    elif s.random == "none" and s.estimator != "gee":
         raise MixedInputError("Random-effects models need at least a random intercept "
                               "(choose unstructured covariance for a marginal model).")
     if s.method not in ("REML", "ML") or s.time_type not in TIME_TYPES or s.random not in RANDOM \
@@ -132,13 +218,32 @@ def _fixed_rhs(ds: Dataset, s: MixedSpec) -> str:
 def build(ds: Dataset, s: MixedSpec, plot_paths: list[str]) -> str:
     ds = view(ds, s)
     validate(ds, s)
+    if s.family != "gaussian" or s.estimator == "gee":
+        return _build_generalized(ds, s, plot_paths)
+    a = lambda n: alias(ds.var(n).alias)  # noqa: E731
+    y = a(s.outcome)
+    conf = r_num(s.conf)
+    reml = "TRUE" if s.method == "REML" else "FALSE"
+    L = _prep(ds, s) + [f"sx_fixed <- {y} ~ {_fixed_rhs(ds, s)}"]
+    return _build_gaussian(ds, s, plot_paths, L, y, conf, reml)
+
+
+def _prep(ds: Dataset, s: MixedSpec) -> list[str]:
+    """Shared data preparation: complete cases, participant / cluster factors, time coding, ordering."""
     a = lambda n: alias(ds.var(n).alias)  # noqa: E731
     y, idv = a(s.outcome), a(s.id)
     used = [y, idv] + ([a(s.time)] if s.time else []) + ([a(s.cluster)] if s.cluster else []) + [a(p) for p in s.predictors]
-    conf = r_num(s.conf)
-    reml = "TRUE" if s.method == "REML" else "FALSE"
-    L = [
-        f"sx_used <- {r_vec(used)}",
+    L = [f"sx_used <- {r_vec(used)}"]
+    if s.time:
+        L += [
+            "# outcome availability by time point (all rows; unobserved occasions stay missing, never zero-filled)",
+            f"sx_av_t <- dat${a(s.time)}; sx_av_t <- if (is.factor(sx_av_t)) sx_av_t else factor(sx_av_t)",
+            f"sx_av <- data.frame(time = levels(sx_av_t), records = as.vector(table(sx_av_t)),",
+            f"  observed = as.vector(tapply(!is.na(dat${y}), sx_av_t, sum)))",
+            "sx_av$observed[is.na(sx_av$observed)] <- 0",
+            "sx_av$missing <- sx_av$records - sx_av$observed; sx_av$percent_missing <- 100 * sx_av$missing / sx_av$records",
+        ]
+    L += [
         "sx_d <- sx_complete(dat, sx_used)",
         f"sx_d$sx_id <- factor(sx_d${idv})",
     ]
@@ -165,14 +270,20 @@ def build(ds: Dataset, s: MixedSpec, plot_paths: list[str]) -> str:
             "sx_d$sx_tidx <- as.integer(factor(sx_d$sx_tnum))  # occasion order (AR(1) assumes equal spacing)",
             "sx_d <- sx_d[order(sx_d$sx_id, sx_d$sx_tnum), ]",
         ]
-        if s.residual != "independent":
+        if s.residual != "independent" or (s.estimator == "gee" and s.gee_corstr in ("ar1", "unstructured")):
             L += ["if (anyDuplicated(sx_d[, c(\"sx_id\", \"sx_tnum\")])) stop(\"Some participants have more than one row "
                   "at the same time point; residual correlation structures need one row per participant per occasion.\")"]
+    else:
+        L.append("sx_d <- sx_d[order(sx_d$sx_id), ]")
     L += [
         "sx_counts <- table(sx_d$sx_id)",
         "if (length(sx_counts) < 3) stop(\"Fewer than 3 participants with complete data.\")",
-        f"sx_fixed <- {y} ~ {_fixed_rhs(ds, s)}",
     ]
+    return L
+
+
+def _build_gaussian(ds: Dataset, s: MixedSpec, plot_paths: list[str], L: list[str], y: str, conf: str,
+                    reml: str) -> str:
     tslope = "sx_time" if s.time_type == "continuous" else "sx_tnum"
     grp = "sx_cluster/sx_id" if s.cluster else "sx_id"
     if s.engine == "lme4":
@@ -182,12 +293,7 @@ def build(ds: Dataset, s: MixedSpec, plot_paths: list[str]) -> str:
             re = "(1 | sx_cluster) + " + re.replace(grp, "sx_id")
         L += [
             f"sx_fit <- lmerTest::lmer(stats::update(sx_fixed, . ~ . + {re}), data = sx_d, REML = {reml})",
-            "sx_co <- as.data.frame(coef(summary(sx_fit)))",
-            "sx_fx <- data.frame(term = rownames(sx_co), estimate = sx_co$Estimate, se = sx_co[[\"Std. Error\"]],",
-            "  df = sx_co$df, t = sx_co[[\"t value\"]], p = sx_co[[\"Pr(>|t|)\"]])",
-            "sx_at <- as.data.frame(stats::anova(sx_fit, type = 3))",
-            "sx_terms <- data.frame(term = rownames(sx_at), F = sx_at[[\"F value\"]], df1 = sx_at$NumDF, df2 = sx_at$DenDF,",
-            "  p = sx_at[[\"Pr(>F)\"]])",
+            *_lme4_inference(s),
             "sx_vc <- as.data.frame(lme4::VarCorr(sx_fit))",
             "sx_vc_tab <- data.frame(group = sx_vc$grp, term = ifelse(is.na(sx_vc$var1), \"(residual)\", sx_vc$var1),",
             "  with = ifelse(is.na(sx_vc$var2), \"\", sx_vc$var2), variance_or_cov = sx_vc$vcov, sd_or_corr = sx_vc$sdcor)",
@@ -195,7 +301,7 @@ def build(ds: Dataset, s: MixedSpec, plot_paths: list[str]) -> str:
             "sx_conv <- unlist(sx_fit@optinfo$conv$lme4$messages)",
             "sx_conv <- sx_conv[!grepl(\"singular\", sx_conv)]  # reported by the singular-fit check",
             "sx_beta <- lme4::fixef(sx_fit); sx_V <- as.matrix(stats::vcov(sx_fit))",
-            "sx_df_note <- \"Satterthwaite degrees of freedom (lmerTest); Type III F-tests.\"",
+            f"sx_df_note <- {r_str(INFERENCE_NOTES[s.inference])}",
             "sx_fitted <- stats::fitted(sx_fit); sx_resid <- stats::residuals(sx_fit)",
         ]
     elif s.engine == "nlme":
@@ -290,12 +396,327 @@ def build(ds: Dataset, s: MixedSpec, plot_paths: list[str]) -> str:
         "  notes = paste0(\"Correlation of within-participant residuals k occasions apart (normalized residuals for \",",
         "  \"nlme/mmrm). Large values suggest an AR(1) residual structure.\"))",
     ]
+    if s.time:
+        L.append("sx_tabs[[length(sx_tabs) + 1]] <- sx_table(\"Outcome availability by time point\", sx_av, notes = "
+                 "\"Observed = non-missing outcome. Time points with 0 observed values are structurally unobserved and "
+                 "are not part of the analysis range.\")")
     L += _trajectory(ds, s, plot_paths[:3] if s.time else [])
     L += _extra_plots(s, plot_paths[3:])
     L.append("sx_result <- list(tables = sx_tabs, checks = sx_checks, n_used = nrow(sx_d), n_excluded = nrow(dat) - nrow(sx_d),")
     L.append("  notes = c(\"Mixed and marginal models use every available observation: participants with missing \",")
     L.append("    \"occasions still contribute. Estimates are unbiased if data are missing at random given the model (MAR).\"))")
     return "\n".join(L) + "\n"
+
+
+# ---- generalized outcomes: GLMM (glmer / clmm / mblogit) and GEE (geepack) — v1.1 §11.4-11.7 -------
+
+GLMM_HELPERS = r"""# Joint Wald test of each model term (all its coefficients) from a coefficient vector and covariance.
+sx_wald_terms <- function(beta, V, assign, labels) {
+  out <- lapply(seq_along(labels), function(j) {
+    idx <- which(assign == j); idx <- idx[idx <= length(beta)]
+    if (!length(idx)) return(NULL)
+    b <- beta[idx]; W <- tryCatch(as.numeric(t(b) %*% solve(V[idx, idx, drop = FALSE]) %*% b), error = function(e) NA_real_)
+    data.frame(term = labels[j], df = length(idx), Wald_chi2 = W, p = stats::pchisq(W, length(idx), lower.tail = FALSE))
+  })
+  do.call(rbind, out)
+}
+# Likelihood-ratio tests of droppable terms (marginality respected) by refitting without each.
+sx_lr_terms <- function(fit, fixed, refit) {
+  sc <- stats::drop.scope(fixed)
+  do.call(rbind, lapply(sc, function(tl) {
+    f0 <- stats::update(fixed, stats::as.formula(paste(". ~ . -", tl)))
+    m0 <- tryCatch(refit(f0), error = function(e) NULL)
+    if (is.null(m0)) return(data.frame(term = tl, df = NA_real_, LR_chi2 = NA_real_, p = NA_real_))
+    lr <- 2 * (as.numeric(stats::logLik(fit)) - as.numeric(stats::logLik(m0)))
+    d <- attr(stats::logLik(fit), "df") - attr(stats::logLik(m0), "df")
+    data.frame(term = tl, df = d, LR_chi2 = lr, p = stats::pchisq(max(lr, 0), d, lower.tail = FALSE))
+  }))
+}
+"""
+
+
+def _outcome_lines(ds: Dataset, s: MixedSpec, y: str) -> list[str]:
+    """sx_y: explicit outcome coding for the chosen family (event / ordered levels / baseline)."""
+    from .eda import category_codes
+
+    v = ds.var(s.outcome)
+    if s.family == "gaussian":
+        return [f"sx_d$sx_y <- sx_d${y}"]
+    if s.family == "binomial":
+        observed = [c for c in ds.levels(s.outcome) if c in set(ds.analysis_column(s.outcome).dropna().unique())]
+        if v.is_categorical and v.reference_level in observed:
+            observed = [v.reference_level] + [c for c in observed if c != v.reference_level]
+        event = s.event if s.event is not None else observed[1]
+        ref = next(c for c in observed if c != event)
+        ev, rf = ds.level_label(s.outcome, event), ds.level_label(s.outcome, ref)
+        cmp = f"as.character(sx_d${y}) == {r_str(ev)}" if v.is_categorical else f"sx_d${y} == {r_num(event)}"
+        return [f"sx_d$sx_y <- as.integer({cmp})",
+                f"sx_event <- {r_str(ev)}; sx_nonevent <- {r_str(rf)}  # modelled event vs reference"]
+    _codes, labels = category_codes(ds, s.outcome)
+    if s.family == "ordinal":
+        return [f"sx_d$sx_y <- droplevels(factor(as.character(sx_d${y}), levels = {r_vec(labels)}, ordered = TRUE))",
+                "if (nlevels(sx_d$sx_y) < 3) stop(\"Fewer than three outcome categories are observed.\")"]
+    ref = s.reference if s.reference is not None else ds.levels(s.outcome)[0]
+    return [f"sx_d$sx_y <- droplevels(factor(as.character(sx_d${y}), levels = {r_vec(labels)}))",
+            f"sx_ref <- {r_str(ds.level_label(s.outcome, ref))}",
+            "if (!(sx_ref %in% levels(sx_d$sx_y))) stop(\"The reference category is not observed in the analysed rows.\")",
+            "sx_d$sx_y <- stats::relevel(sx_d$sx_y, ref = sx_ref)",
+            "if (nlevels(sx_d$sx_y) < 3) stop(\"Fewer than three outcome categories are observed.\")"]
+
+
+def _build_generalized(ds: Dataset, s: MixedSpec, plot_paths: list[str]) -> str:
+    a = lambda n: alias(ds.var(n).alias)  # noqa: E731
+    y = a(s.outcome)
+    conf = r_num(s.conf)
+    L = _prep(ds, s) + [GLMM_HELPERS] + _outcome_lines(ds, s, y) + [
+        f"sx_fixed <- sx_y ~ {_fixed_rhs(ds, s)}",
+        f"sx_z <- stats::qnorm(1 - (1 - {conf}) / 2)",
+        "sx_checks <- character()",
+    ]
+    tslope = "sx_time" if s.time_type == "continuous" else "sx_tnum"
+    grp = "sx_cluster/sx_id" if s.cluster else "sx_id"
+    re = {"intercept": f"(1 | {grp})", "slope": f"(1 + {tslope} | {grp})",
+          "slope_uncorrelated": f"(1 + {tslope} || {grp})", "none": ""}[s.random]
+    if s.cluster and s.random not in ("intercept", "none"):
+        re = "(1 | sx_cluster) + " + re.replace(grp, "sx_id")
+    eng = s.engine
+    if eng == "geepack":
+        fam = "stats::binomial()" if s.family == "binomial" else "stats::gaussian()"
+        waves = ", waves = sx_tidx" if s.time else ""
+        L += [
+            f"sx_fit <- geepack::geeglm(sx_fixed, id = sx_id, data = sx_d, family = {fam}, corstr = {r_str(s.gee_corstr)}{waves})",
+            "sx_co <- as.data.frame(summary(sx_fit)$coefficients)",
+            "sx_b <- sx_co$Estimate; sx_se <- sx_co[[\"Std.err\"]]",
+            "sx_fx <- data.frame(term = rownames(sx_co), estimate = sx_b, robust_se = sx_se, Wald_chi2 = sx_co$Wald,",
+            "  p = sx_co[[\"Pr(>|W|)\"]], ci_low = sx_b - sx_z * sx_se, ci_high = sx_b + sx_z * sx_se)",
+        ]
+        if s.family == "binomial":
+            L += ["sx_fx$odds_ratio <- exp(sx_fx$estimate); sx_fx$or_ci_low <- exp(sx_fx$ci_low); sx_fx$or_ci_high <- exp(sx_fx$ci_high)"]
+        L += [
+            "sx_X <- stats::model.matrix(sx_fit)",
+            "sx_terms <- sx_wald_terms(stats::coef(sx_fit), as.matrix(sx_fit$geese$vbeta), attr(sx_X, \"assign\"),",
+            "  attr(stats::terms(sx_fixed), \"term.labels\"))",
+            "sx_corr <- summary(sx_fit)$corr",
+            "sx_qic <- tryCatch(geepack::QIC(sx_fit), error = function(e) NULL)",
+            "sx_tabs <- list(",
+            "  sx_table(\"Coefficients (population-average)\", sx_fx, notes = paste0(\"GEE estimates average (marginal) effects \",",
+            "    \"over the population of participants, with robust (sandwich) standard errors that remain valid if the \",",
+            "    \"working correlation is wrong. They answer a different question from mixed-model (subject-specific) \",",
+            "    \"coefficients and are not interchangeable with them.\"" + (", \" Modelled event: \", sx_event, \".\"" if s.family == "binomial" else "") + ")),",
+            "  sx_table(\"Term tests (robust Wald)\", sx_terms, notes = \"Joint Wald chi-square of each term's coefficients with the robust covariance.\"),",
+            f"  sx_table(\"Working correlation\", data.frame(structure = {r_str(GEE_CORSTR[s.gee_corstr])},",
+            "    parameter = if (is.null(sx_corr) || !nrow(sx_corr)) NA_character_ else rownames(sx_corr),",
+            "    estimate = if (is.null(sx_corr) || !nrow(sx_corr)) NA_real_ else sx_corr$Estimate),",
+            "    notes = \"Nuisance correlation used to weight observations within a participant; inference relies on the sandwich SE.\"),",
+            "  sx_table(\"Model fit\", data.frame(observations = nrow(sx_d), participants = nlevels(droplevels(sx_d$sx_id)),",
+            "    clusters_max_size = max(sx_counts), QIC = if (is.null(sx_qic)) NA_real_ else unname(sx_qic[[\"QIC\"]]),",
+            "    scale = as.numeric(summary(sx_fit)$dispersion$Estimate[1]))))",
+            "sx_beta <- stats::coef(sx_fit); sx_V <- as.matrix(sx_fit$geese$vbeta)",
+            "if (nlevels(droplevels(sx_d$sx_id)) < 40) sx_checks <- c(sx_checks, paste0(\"Only \", nlevels(droplevels(sx_d$sx_id)),",
+            "  \" participants: robust (sandwich) standard errors can be too small with few clusters.\"))",
+        ]
+        inference = "Robust (sandwich) Wald tests; population-average estimand."
+    elif eng == "glmer":
+        L += [
+            f"sx_fit <- lme4::glmer(stats::update(sx_fixed, . ~ . + {re}), data = sx_d, family = stats::binomial(), nAGQ = {int(s.nagq)})",
+            "sx_co <- as.data.frame(coef(summary(sx_fit)))",
+            "sx_b <- sx_co[[1]]; sx_se <- sx_co[[2]]",
+            "sx_fx <- data.frame(term = rownames(sx_co), log_odds = sx_b, se = sx_se, z = sx_co[[3]], p = sx_co[[4]],",
+            "  odds_ratio = exp(sx_b), or_ci_low = exp(sx_b - sx_z * sx_se), or_ci_high = exp(sx_b + sx_z * sx_se))",
+            "sx_terms <- sx_lr_terms(sx_fit, sx_fixed, function(f0) lme4::glmer(stats::update(f0, . ~ . + "
+            + re + f"), data = sx_d, family = stats::binomial(), nAGQ = {int(s.nagq)}))",
+            "sx_vc <- as.data.frame(lme4::VarCorr(sx_fit))",
+            "sx_vc_tab <- data.frame(group = sx_vc$grp, term = sx_vc$var1, with = ifelse(is.na(sx_vc$var2), \"\", sx_vc$var2),",
+            "  variance_or_cov = sx_vc$vcov, sd_or_corr = sx_vc$sdcor)",
+            "sx_singular <- lme4::isSingular(sx_fit)",
+            "sx_conv <- unlist(sx_fit@optinfo$conv$lme4$messages); sx_conv <- sx_conv[!grepl(\"singular\", sx_conv)]",
+            "if (isTRUE(sx_singular)) sx_checks <- c(sx_checks, \"Singular fit: a random-effect variance is (near) zero or a correlation is +/-1. Simplify the random effects.\")",
+            "if (length(sx_conv)) sx_checks <- c(sx_checks, paste(\"Convergence:\", sx_conv))",
+            "sx_beta <- lme4::fixef(sx_fit); sx_V <- as.matrix(stats::vcov(sx_fit))",
+            "sx_events <- sum(sx_d$sx_y); sx_ne <- nrow(sx_d) - sx_events",
+            "sx_tabs <- list(",
+            "  sx_table(\"Fixed effects (log-odds and odds ratios)\", sx_fx, notes = paste0(\"Modelled event: \", sx_event,",
+            "    \" (vs \", sx_nonevent, \"). Odds ratios are conditional (subject-specific): they compare observations of the \",",
+            "    \"same participant, holding the random effects fixed. They are not population-average odds ratios and not \",",
+            "    \"risk ratios. Wald z tests and CIs; estimation: \", " + r_str("Laplace approximation" if s.nagq == 1 else f"adaptive Gauss-Hermite quadrature ({s.nagq} points)") + ", \".\")),",
+            "  sx_table(\"Term tests (likelihood-ratio)\", sx_terms, notes = \"Each term dropped in turn (marginality respected) and the model refitted.\"),",
+            "  sx_table(\"Random effects (variance components, logit scale)\", sx_vc_tab),",
+            "  sx_table(\"Model fit\", data.frame(observations = nrow(sx_d), participants = nlevels(droplevels(sx_d$sx_id)),",
+            "    events = sx_events, non_events = sx_ne, logLik = as.numeric(stats::logLik(sx_fit)), AIC = stats::AIC(sx_fit),",
+            "    BIC = stats::BIC(sx_fit), singular = sx_singular, converged = !length(sx_conv))))",
+        ]
+        L += _glmm_probabilities(ds, s, plot_paths[:1])
+        inference = "Wald z tests (Laplace/AGQ likelihood); likelihood-ratio term tests. No denominator-df procedure (lmerTest does not apply to GLMMs)."
+    elif eng == "clmm":
+        L += [
+            f"sx_fit <- ordinal::clmm(stats::update(sx_fixed, . ~ . + {re}), data = sx_d, link = \"logit\", nAGQ = {int(s.nagq)})",
+            "sx_co <- as.data.frame(summary(sx_fit)$coefficients)",
+            "sx_isb <- rownames(sx_co) %in% names(sx_fit$beta)",
+            "sx_bb <- sx_co[sx_isb, , drop = FALSE]; sx_th <- sx_co[!sx_isb, , drop = FALSE]",
+            "sx_fx <- data.frame(term = rownames(sx_bb), log_odds = sx_bb[[1]], se = sx_bb[[2]], z = sx_bb[[3]], p = sx_bb[[4]],",
+            "  odds_ratio = exp(sx_bb[[1]]), or_ci_low = exp(sx_bb[[1]] - sx_z * sx_bb[[2]]), or_ci_high = exp(sx_bb[[1]] + sx_z * sx_bb[[2]]))",
+            "sx_Xc <- stats::model.matrix(sx_fixed, sx_d)",
+            "sx_Vc <- as.matrix(stats::vcov(sx_fit))[names(sx_fit$beta), names(sx_fit$beta), drop = FALSE]",
+            "sx_terms <- sx_wald_terms(sx_fit$beta, sx_Vc, attr(sx_Xc, \"assign\")[-1], attr(stats::terms(sx_fixed), \"term.labels\"))",
+            "sx_vcl <- ordinal::VarCorr(sx_fit)",
+            "sx_vc_tab <- do.call(rbind, lapply(names(sx_vcl), function(g) { m <- as.matrix(sx_vcl[[g]])",
+            "  data.frame(group = g, term = if (is.null(rownames(m))) \"(Intercept)\" else rownames(m), variance = diag(m),",
+            "    sd = sqrt(diag(m))) }))",
+            "sx_conv_ok <- identical(as.integer(sx_fit$optRes$convergence), 0L)",
+            "if (!sx_conv_ok) sx_checks <- c(sx_checks, \"The optimizer reported a convergence problem.\")",
+            "sx_condH <- summary(sx_fit)$condHess",
+            "if (isTRUE(sx_condH > 1e4)) sx_checks <- c(sx_checks, sprintf(\"Large Hessian condition number (%.3g): estimates may be unstable.\", sx_condH))",
+            "if (any(sx_vc_tab$variance < 1e-6)) sx_checks <- c(sx_checks, \"A random-effect variance is (near) zero.\")",
+            "sx_small <- min(table(sx_d$sx_y))",
+            "if (sx_small < 10) sx_checks <- c(sx_checks, sprintf(\"The smallest outcome category has only %d rows.\", sx_small))",
+            "sx_tabs <- list(",
+            "  sx_table(\"Fixed effects (cumulative logit)\", sx_fx, notes = paste0(\"Category order: \", paste(levels(sx_d$sx_y), collapse = \" < \"),",
+            "    \". A positive coefficient (OR > 1) shifts responses towards higher categories, for the same participant \",",
+            "    \"(conditional on the random effects). Proportional-odds model: one OR for every cut-point; the assumption is \",",
+            "    \"not tested inside the mixed model (check it with Ordinal logistic regression, which runs a nominal test).\""
+            + (", " + r_str(" Coding direction: " + ds.var(s.outcome).coding_direction + ".") if ds.var(s.outcome).coding_direction else "") + ")),",
+            "  sx_table(\"Thresholds (cut-points)\", data.frame(cut = rownames(sx_th), estimate = sx_th[[1]], se = sx_th[[2]])),",
+            "  sx_table(\"Term tests (joint Wald)\", sx_terms, notes = \"Joint Wald chi-square of each term's coefficients.\"),",
+            "  sx_table(\"Random effects (variance components, latent logit scale)\", sx_vc_tab),",
+            "  sx_table(\"Model fit\", data.frame(observations = nrow(sx_d), participants = nlevels(droplevels(sx_d$sx_id)),",
+            "    categories = nlevels(sx_d$sx_y), logLik = as.numeric(stats::logLik(sx_fit)), AIC = stats::AIC(sx_fit),",
+            "    BIC = stats::BIC(sx_fit), condition_hessian = sx_condH, converged = sx_conv_ok)))",
+        ]
+        inference = "Wald z tests and joint Wald term tests (" + ("Laplace approximation" if s.nagq == 1 else f"AGQ, {s.nagq} points") + "). Not a Gaussian model."
+    else:  # mblogit
+        L += [
+            "sx_fit <- mclogit::mblogit(sx_fixed, random = ~ 1 | sx_id, data = sx_d, method = \"PQL\")",
+            "sx_s <- summary(sx_fit)",
+            "sx_co <- as.data.frame(sx_s$coefficients)",
+            "sx_parts <- do.call(rbind, strsplit(rownames(sx_co), \"~\", fixed = TRUE))",
+            "sx_fx <- data.frame(category = sx_parts[, 1], term = sx_parts[, 2], B = sx_co[[1]], se = sx_co[[2]], z = sx_co[[3]],",
+            "  p = sx_co[[4]], RRR = exp(sx_co[[1]]), ci_low = exp(sx_co[[1]] - sx_z * sx_co[[2]]), ci_high = exp(sx_co[[1]] + sx_z * sx_co[[2]]))",
+            "sx_Vb <- as.matrix(sx_s$vcov.coef)",
+            "sx_tl <- attr(stats::terms(sx_fixed), \"term.labels\")",
+            "sx_Xa <- attr(stats::model.matrix(sx_fixed, sx_d), \"assign\")",
+            "sx_assign <- sx_Xa[match(sx_parts[, 2], colnames(stats::model.matrix(sx_fixed, sx_d)))]",
+            "sx_terms <- sx_wald_terms(sx_co[[1]], sx_Vb, sx_assign, sx_tl)",
+            "sx_vcm <- as.matrix(sx_fit$VarCov[[1]])",
+            "sx_vc_tab <- data.frame(category_contrast = rownames(sx_vcm), variance = diag(sx_vcm), sd = sqrt(diag(sx_vcm)))",
+            "if (!isTRUE(sx_fit$converged)) sx_checks <- c(sx_checks, \"The PQL algorithm did not converge.\")",
+            "sx_small <- min(table(sx_d$sx_y))",
+            "if (sx_small < 10) sx_checks <- c(sx_checks, sprintf(\"The smallest outcome category has only %d rows.\", sx_small))",
+            "sx_tabs <- list(",
+            "  sx_table(\"Fixed effects (baseline-category logits)\", sx_fx, notes = paste0(\"Each category is compared with the \",",
+            "    \"reference '\", sx_ref, \"'. RRR = conditional relative risk ratio. Wald z tests and CIs.\")),",
+            "  sx_table(\"Term tests (joint Wald)\", sx_terms, notes = paste0(\"Joint Wald test of each term over all outcome \",",
+            "    \"contrasts. Likelihood-ratio tests are not available: PQL maximizes a quasi-likelihood.\")),",
+            "  sx_table(\"Random intercepts (variance per category contrast)\", sx_vc_tab),",
+            "  sx_table(\"Model fit\", data.frame(observations = nrow(sx_d), participants = nlevels(droplevels(sx_d$sx_id)),",
+            "    categories = nlevels(sx_d$sx_y), deviance = sx_fit$deviance, iterations = sx_fit$iter, converged = isTRUE(sx_fit$converged),",
+            "    estimation = \"PQL (penalized quasi-likelihood)\")))",
+        ]
+        inference = ("Approximate: penalized quasi-likelihood (PQL, mclogit::mblogit). PQL can underestimate random-effect "
+                     "variances and bias fixed effects towards zero, especially with few observations per participant or "
+                     "rare categories. Wald tests only.")
+    if s.time:
+        L.append("sx_tabs[[length(sx_tabs) + 1]] <- sx_table(\"Outcome availability by time point\", sx_av, notes = "
+                 "\"Observed = non-missing outcome. Time points with 0 observed values are structurally unobserved and "
+                 "are not part of the analysis range.\")")
+    L += [
+        f"sx_inference <- {r_str(inference)}",
+        "sx_result <- list(tables = sx_tabs, checks = sx_checks, n_used = nrow(sx_d), n_excluded = nrow(dat) - nrow(sx_d),",
+        "  notes = c(sx_inference, \" Every available observation is used (participants with missing occasions still \",",
+        "    \"contribute); estimates assume data are missing at random given the model.\"))",
+    ]
+    if eng == "glmer":
+        L += _extra_plots(s, plot_paths[1:2])
+    return "\n".join(L) + "\n"
+
+
+def _glmm_probabilities(ds: Dataset, s: MixedSpec, paths: list[str]) -> list[str]:
+    """Predicted probabilities across time (or the first predictor): conditional on a typical participant
+    (random effects = 0) and population-average (averaged over simulated random effects)."""
+    a = lambda n: alias(ds.var(n).alias)  # noqa: E731
+    xvar = "sx_time" if s.time else (a(s.predictors[0]) if s.predictors else None)
+    if xvar is None:
+        return []
+    others = [a(p) for p in s.predictors if a(p) != xvar]
+    xlab = r_str(ds.var(s.time).display_name) if s.time else f"sx_names[[{r_str(xvar)}]]"
+    L = [
+        "# ---- predicted probabilities (conditional vs population-average) ----",
+        f"sx_xv <- sx_d${xvar}",
+        "sx_grid <- if (is.factor(sx_xv)) factor(levels(sx_xv), levels = levels(sx_xv)) else seq(min(sx_xv), max(sx_xv), length.out = 40)",
+        f"sx_held <- lapply(sx_d[, {r_vec(others) if others else 'character(0)'}, drop = FALSE],",
+        "  function(v) if (is.factor(v)) factor(levels(v)[1], levels = levels(v)) else mean(v))",
+        f"sx_nd <- do.call(data.frame, c(list({xvar} = sx_grid), sx_held))",
+    ]
+    if s.time:
+        L.append("sx_nd$sx_tnum <- if (is.factor(sx_nd$sx_time)) as.numeric(sx_nd$sx_time) else sx_nd$sx_time")
+    L += [
+        "sx_tt <- stats::delete.response(stats::terms(sx_fixed))",
+        "sx_xlev <- lapply(Filter(is.factor, sx_d[, intersect(names(sx_d), all.vars(sx_tt)), drop = FALSE]), levels)",
+        "sx_X <- stats::model.matrix(sx_tt, stats::model.frame(sx_tt, sx_nd, xlev = sx_xlev))[, names(sx_beta), drop = FALSE]",
+        "sx_eta <- as.vector(sx_X %*% sx_beta); sx_eta_se <- sqrt(rowSums((sx_X %*% sx_V) * sx_X))",
+        f"set.seed({int(s.seed)})",
+        "sx_tot <- matrix(0, 4000, nrow(sx_nd))",
+        "for (sx_g in names(lme4::VarCorr(sx_fit))) {",
+        "  sx_S <- as.matrix(lme4::VarCorr(sx_fit)[[sx_g]])",
+        "  sx_B <- matrix(MASS::mvrnorm(4000, rep(0, ncol(sx_S)), sx_S), nrow = 4000)",
+        "  sx_Z <- sapply(colnames(sx_S), function(cn) if (cn == \"(Intercept)\") rep(1, nrow(sx_nd)) else as.numeric(sx_nd[[cn]]))",
+        "  sx_tot <- sx_tot + sx_B %*% t(matrix(sx_Z, nrow = nrow(sx_nd)))",
+        "}",
+        "sx_pa <- colMeans(stats::plogis(sweep(sx_tot, 2, sx_eta, \"+\")))",
+        "sx_pred <- data.frame(x = sx_nd[[1]], conditional = stats::plogis(sx_eta),",
+        "  ci_low = stats::plogis(sx_eta - sx_z * sx_eta_se), ci_high = stats::plogis(sx_eta + sx_z * sx_eta_se),",
+        "  population_average = sx_pa)",
+        f"names(sx_pred)[1] <- {r_str(xvar)}",
+        "sx_tabs[[length(sx_tabs) + 1]] <- sx_table(\"Predicted probabilities\", sx_pred[unique(round(seq(1, nrow(sx_pred), length.out = min(nrow(sx_pred), 8)))), ],",
+        f"  notes = paste0(\"P(\", sx_event, \"). conditional = for a participant with random effects at 0 (CI from the fixed effects); \",",
+        f"    \"population_average = averaged over 4,000 simulated participants (seed {int(s.seed)}). Other predictors held at their mean or first category.\"))",
+    ]
+    if paths:
+        L += [
+            "sx_pl <- rbind(data.frame(x = sx_pred[[1]], p = sx_pred$conditional, type = \"Conditional (random effects = 0)\"),",
+            "  data.frame(x = sx_pred[[1]], p = sx_pred$population_average, type = \"Population-average\"))",
+            "sx_p <- ggplot2::ggplot(sx_pl, ggplot2::aes(x = x, y = p, colour = type, group = type)) +",
+            "  (if (is.factor(sx_pl$x)) ggplot2::geom_point(size = 2.5) else NULL) + ggplot2::geom_line(linewidth = 1.1) +",
+            "  (if (is.factor(sx_pred[[1]])) NULL else ggplot2::geom_ribbon(data = cbind(sx_pred, sx_xx = sx_pred[[1]]),",
+            "    inherit.aes = FALSE, ggplot2::aes(x = sx_xx, ymin = ci_low, ymax = ci_high), alpha = 0.15)) +",
+            "  ggplot2::coord_cartesian(ylim = c(0, 1)) +",
+            f"  ggplot2::labs(title = paste0(\"Predicted probability of \", sx_event), x = {xlab},",
+            "    y = \"Probability\", colour = NULL, subtitle = \"Conditional and population-average predictions differ in a logistic mixed model\") +",
+            "  ggplot2::theme_minimal() + ggplot2::theme(legend.position = \"bottom\")",
+            f"ggplot2::ggsave({r_str(paths[0])}, sx_p, width = 7, height = 4.8, dpi = 120)",
+        ]
+    return L
+
+
+INFERENCE_NOTES = {
+    "satterthwaite": "Inference: Satterthwaite degrees of freedom (lmerTest); Type III F-tests of fixed effects.",
+    "kenward_roger": "Inference: Kenward-Roger degrees of freedom and small-sample adjusted covariance (lmerTest via "
+                     "pbkrtest; REML); Type III F-tests of fixed effects.",
+    "lrt": "Inference: coefficient t tests use Satterthwaite df; term tests are likelihood-ratio tests of ML refits "
+           "(each term dropped in turn, marginality respected). These are model comparisons, not Type III F-tests.",
+}
+
+
+def _lme4_inference(s: MixedSpec) -> list[str]:
+    """Coefficient table and term tests for lmerTest fits under the chosen inference method (§11.3)."""
+    ddf = "\"Kenward-Roger\"" if s.inference == "kenward_roger" else "\"Satterthwaite\""
+    L = [
+        f"sx_co <- as.data.frame(coef(summary(sx_fit, ddf = {ddf})))",
+        "sx_fx <- data.frame(term = rownames(sx_co), estimate = sx_co$Estimate, se = sx_co[[\"Std. Error\"]],",
+        "  df = sx_co$df, t = sx_co[[\"t value\"]], p = sx_co[[\"Pr(>|t|)\"]])",
+    ]
+    if s.inference == "lrt":
+        L += [
+            "sx_ml <- methods::as(if (lme4::isREML(sx_fit)) stats::update(sx_fit, REML = FALSE) else sx_fit, \"lmerMod\")",
+            "sx_at <- as.data.frame(stats::drop1(sx_ml, test = \"Chisq\"))[-1, , drop = FALSE]",
+            "sx_terms <- data.frame(term = rownames(sx_at), df = sx_at$npar, LR_chi2 = sx_at$LRT, p = sx_at[[\"Pr(Chi)\"]])",
+        ]
+    else:
+        L += [
+            f"sx_at <- as.data.frame(stats::anova(sx_fit, type = 3, ddf = {ddf}))",
+            "sx_terms <- data.frame(term = rownames(sx_at), F = sx_at[[\"F value\"]], df1 = sx_at$NumDF, df2 = sx_at$DenDF,",
+            "  p = sx_at[[\"Pr(>F)\"]])",
+        ]
+    return L
 
 
 def _extra_plots(s: MixedSpec, paths: list[str]) -> list[str]:
@@ -434,12 +855,14 @@ def run(session: RSession, ds: Dataset, s: MixedSpec) -> tuple[AnalysisResult, d
     from .framework import _alias_map, _as_list, _parse_table
     from .measurement import record
 
+    from .longitudinal_preflight import preflight
+
     ds = view(ds, s)
+    pre = preflight(ds, s.outcome, s.id, s.time, s.predictors, s)
     paths = [session.new_plot_path() for _ in range(5)]  # 3 trajectory/diagnostic + random effects + ACF
     body = build(ds, s, [p.as_posix() for p in paths])
-    pk = {"lme4": ["lme4", "lmerTest", "performance"], "nlme": ["nlme", "performance"], "mmrm": ["mmrm", "car"]}[s.engine]
-    title = {"lme4": "Linear mixed model", "nlme": "Linear mixed model with residual autocorrelation",
-             "mmrm": "Marginal repeated-measures model (unstructured)"}[s.engine]
+    pk = ENGINE_PACKAGES[s.engine] + (["pbkrtest"] if s.inference == "kenward_roger" else [])
+    title = ENGINE_TITLES[s.engine]
     result, raw = session.run(ds, kind="mixed_model", title=title, body=body, packages=pk + ["ggplot2"],
                               inputs={"spec": s.to_dict(), "filters": [f.describe() for f in ds.filters]})
     result.missing_data = "All available observations (complete on the model variables within each row); MAR assumed."
@@ -455,7 +878,20 @@ def run(session: RSession, ds: Dataset, s: MixedSpec) -> tuple[AnalysisResult, d
     result.n_used = raw.get("n_used")
     result.values["n_excluded"] = raw.get("n_excluded")
     result.values["notes"] = ["".join(str(x) for x in _as_list(raw.get("notes")))]
+    if pre.analysis_range is not None and s.time:
+        result.values["analysis_range"] = pre._range_text(ds)
+    for w in pre.warnings:
+        result.messages.append(f"Check: {w}")
+        if result.status is Status.OK:
+            result.status = Status.WARNING
+    result.values.setdefault("notes", [])
+    result.values["notes"] = list(result.values["notes"]) + pre.notes
     result.values["engine_choice"] = s.engine
+    result.values["family"] = FAMILIES[s.family]
+    result.values["estimator"] = ESTIMATORS[s.estimator]
+    result.values["inference"] = (INFERENCE_NOTES[s.inference] if s.engine == "lme4" else
+                                  result.values["notes"][0] if s.family != "gaussian" or s.estimator == "gee" else
+                                  "nlme containment df" if s.engine == "nlme" else "mmrm Satterthwaite df")
     checks = [str(c) for c in _as_list(raw.get("checks"))]
     # an R warning that a check already reports (e.g. lme4 convergence) is shown once
     result.messages = [m for m in result.messages if not any(m.removeprefix("R warning: ") in c for c in checks)]
