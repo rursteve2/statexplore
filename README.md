@@ -16,6 +16,18 @@ ordinal and multinomial outcomes in Discovery and regression, binary / ordinal /
 models and GEE, a longitudinal data check before fitting, survey-weighted analysis, an **R Console**
 for your own R code, and an offline **R Package Manager**.
 
+**New in 1.2:** Discovery searches **every combination of interactions** (main effects only, one
+interaction, several interactions at once, full factorial models) within six distinct predictors per
+model, and reports each tested hypothesis separately (interaction terms, joint interaction tests,
+main effects, whole-model tests, each with its own multiple-testing family). Results tables sort
+numbers correctly, **highlight** findings with adjusted p < .05 by default (or a stricter rule that also
+requires the confidence interval of the same coefficient to exclude its null value), and stay fast with
+hundreds of thousands of rows. **Longitudinal discovery** is set up explicitly (participant ID + time)
+with random slopes, AR(1) / continuous-time AR(1), marginal (mmrm) models, binary and ordinal mixed
+models and GEE, plus a separate comparison of covariance structures. The **treatment panel** now lists
+the outcome and every selected predictor with its status, and manual models have adjustable complexity
+limits.
+
 > **Important:** StatExplore is built for *exploration and teaching*, not for publishing or making
 > decisions. Searching many models will always turn up some "significant" results by chance. The
 > program is designed to show you that, so treat its discoveries as ideas to test, not as proof.
@@ -62,9 +74,9 @@ yourself (see 2B).
 ### Download it (for most people)
 1. Go to the **[Releases page](https://github.com/rursteve2/statexplore/releases/latest)**.
 2. Under **Assets**, download **one** of:
-   - **`StatExplore-1.1.0-Setup.exe`**: the installer (recommended). Double-click it and click
+   - **`StatExplore-1.2.0-Setup.exe`**: the installer (recommended). Double-click it and click
      through; then start **StatExplore** from the Start menu or the desktop shortcut.
-   - **`StatExplore-1.1.0-portable.zip`**: no installation. Right-click ▸ *Extract All…* into, for
+   - **`StatExplore-1.2.0-portable.zip`**: no installation. Right-click ▸ *Extract All…* into, for
      example, your Documents folder, open the extracted `StatExplore` folder and double-click
      **`StatExplore.exe`**.
 3. **If Windows says "Windows protected your PC":** click **More info**, then **Run anyway**. This
@@ -176,22 +188,40 @@ logistic regression. Choose an analysis on the left, put variables into the boxe
 
 ### Step 6: Search for interactions (the main feature)
 In **Automated Model Discovery**:
-1. Choose the **dependent variable** (the outcome, e.g. `CESD8`).
+1. Choose the **dependent variable** (the outcome, e.g. `CESD8`) and confirm its **model family**.
 2. Tick the **candidate predictors** (up to 39).
-3. Leave the other settings at their defaults the first time.
-4. If your data has several rows per person, choose the participant ID under **Repeated
-   measures** (or filter to one wave first).
-5. Click **Calculate search space** to see how many models will be tested, then **Start search**.
+3. Under **Study structure**, keep *Independent observations* for one row per person. If your data has
+   several rows per person, choose **Repeated measures / longitudinal**, then the **participant ID** and
+   the **time** variable; the preflight shows rows, participants, waves and observed outcomes by wave.
+4. Choose a **search strategy**. The default, *All eligible interaction combinations*, fits every
+   hierarchical combination of interactions on every subset of predictors (for three predictors:
+   main effects only, each two-way interaction, each pair of interactions and all three; with
+   three-way interactions enabled, also `X1 * X2 * X3`). *Single focal interaction*, *Full factorial*,
+   *Main effects only* and (longitudinal) *Time × each predictor* are the alternatives.
+5. Click **Calculate search space** to see how many models and model fits the search needs, then
+   **Start search**.
 
-Results appear in four tabs:
-- **Summary:** how many models were tested, how many look significant, and how many you'd expect
-  by chance alone.
-- **Discovery significance ranking:** sorted by p-value.
+The **maximum of six predictors** counts *distinct variables*: `Y ~ X1 + X2 + X3 + X1:X2 + X2:X3` uses
+3 of 6, has 5 model terms and 6 estimated coefficients. The tables show all three numbers.
+
+Results appear in five tabs:
+- **Summary:** how many models and hypotheses were tested, by hypothesis type, how many look
+  significant, and how many you'd expect by chance alone.
+- **Discovery significance ranking:** one row per tested hypothesis (what was tested, against which
+  reference model, with which test), sorted by p-value.
 - **Statistical support ranking:** better-supported findings first (clean checks and significant
   after correction).
+- **Model comparison:** fitted models with AIC / BIC / R² — only compared when they use the same rows.
 - **All attempts:** every model, including ones that couldn't be fitted, with the reason.
 
-Select a row to **Open full analysis**, **Plot in Teaching Studio**, or **Add to comparison**.
+The **Highlight findings** bar marks rows with adjusted p < .05 (change α, switch to raw p, the strict
+same-estimand-CI rule, or off; *Show highlighted only*; counts of highlighted rows). Highlighting never
+refits anything. Use **Show** to look at one hypothesis type or model type at a time; screening warnings
+(convergence, singular fits, sparse cells) are flagged separately from significance.
+
+Select a row to **Open full analysis**, **Plot in Teaching Studio** (longitudinal models open in **Mixed
+& Longitudinal Models**, refitted with the same formula and structure), **Add to comparison** or
+**Compare with main-effects model**.
 
 ### Step 7: Understand an interaction
 **Teaching Studio** draws the interaction from the fitted model, with lines for each group or
@@ -222,7 +252,7 @@ In **Validation & Uncertainty**:
 | **Dataset Explorer** | **Overview** of every variable; **Data** spreadsheet view (tick *Show value labels* to see "Male" instead of 1; red = a declared missing code); **Variables** to set measurement level, role, reference group and display name; **Derived & Filters**; **Missing data** (how much is missing, common patterns, how many rows each model can use). |
 | **Exploratory Data Analysis** | Descriptive statistics (psych) for continuous variables; **Frequencies** (counts, %, valid %, missing, mode, number of categories; cumulative % and median category for ordinal) for categorical ones — no means of category codes; **Cross-tabulation** (row / column / total %, expected counts, chi-square with Fisher advice); bar, percentage, horizontal, clustered, stacked, 100 % stacked, mosaic and ordinal-distribution plots; correlation tests (Spearman ranks ordinal categories; Pearson needs "treat as continuous"). Every list has search, *Check visible*, *Clear visible*, *Check all*, *Clear all* and a count. |
 | **Analysis Builder** | Standard tests and regressions with effect sizes, confidence intervals, assumption checks and diagnostic plots. **Categorical Association**: chi-square / Fisher's exact (r × c, Cramér's V) and the **2 × 2 table** (you choose the event and reference outcome categories and the exposed and comparison groups; the table is shown before anything is computed; odds ratio, risk ratio, risk difference with labelled CI methods, phi). **Ordinal** and **multinomial** logistic regression, a **Likert sensitivity** comparison (Gaussian on the codes vs ordinal), **Mediation** and **Scale reliability**. **Copy tables** pastes the results into Word or Excel. |
-| **Automated Model Discovery** | Systematic search for interaction effects (see Step 6). You must confirm the **outcome model family** (Gaussian, binary logistic, ordinal logistic or multinomial logistic; a suggestion is shown); interactions are tested with the family's own nested-model test. Modes: *Exhaustive* tests everything in the defined space; *First significant* / *Target number* stop early (labelled incomplete); *Budget-limited* stops after a set number of models or minutes. Profiles Fast / Balanced / Thorough set sensible budgets. You can **Cancel** and later **Resume**. |
+| **Automated Model Discovery** | Systematic search over main effects and interactions (see Step 6). You must confirm the **outcome model family** (Gaussian, binary logistic, ordinal logistic or multinomial logistic; a suggestion is shown); every hypothesis is tested with the family's own nested-model test. Longitudinal searches lock one random-effect / covariance structure (workflow A) or compare structures with the fixed part locked (workflow B, REML). Modes: *Exhaustive* tests everything in the defined space; *First significant* / *Target number* stop early (labelled incomplete); *Budget-limited* stops after a set number of models or minutes. Profiles Fast / Balanced / Thorough set sensible budgets. You can **Cancel** and later **Resume**. |
 | **Model Comparison** | Put models side by side (AIC, BIC, R²). Models that contain one another get a formal test. **Edit a copy** changes a model without losing the original. |
 | **Validation & Uncertainty** | Holdout, cross-validation, stability, full-procedure CV, prediction intervals (see Step 8). |
 | **Mixed & Longitudinal Models** | For repeated measurements. **Detect structure** suggests the ID and time variables; **Wide → long** converts one-row-per-person data. The **preflight** panel shows, before fitting, how many records, participants and observed values each time point has (e.g. `R_LTACTX` is not asked in HRS waves 1–6, so the analysis range is waves 7–16). Outcome families: **Gaussian** (random intercepts or slopes, AR(1), unstructured; inference by Satterthwaite, Kenward–Roger or likelihood-ratio tests), **binary logistic** (glmer: odds ratios, conditional *and* population-average predicted probabilities), **ordinal** (clmm) and **multinomial** (mblogit, an approximate PQL method — limitations are shown). **GEE** fits population-average models with robust standard errors. |
@@ -241,9 +271,12 @@ StatExplore keeps three things apart:
 
 1. **Source level** — what the file declares (e.g. SPSS *nominal*). Never changed.
 2. **Project level** — what you approved in the Measurement Review or the Variables tab. Logged and undoable.
-3. **Treatment for one analysis** — how a variable is used in *this* analysis only. Wherever a numeric
-   categorical or ordinal variable is selected, a checkbox appears: **Treat this variable as continuous
-   for this analysis**. Ticking it asks you to acknowledge that this assumes the numeric codes can be
+3. **Treatment for one analysis** — how a variable is used in *this* analysis only. The treatment panel
+   always lists the **outcome** (directly under the outcome family) and **every selected predictor**:
+   eligible numeric ordinal / nominal variables get a checkbox **Treat … as continuous for this
+   analysis**; continuous ones say *Already continuous — no override needed*; others say *Unavailable*
+   with the reason (text categories, constant, identifier). *All eligible dataset variables* lets you
+   preconfigure treatments, which apply only when that variable is in the model. Ticking it asks you to acknowledge that this assumes the numeric codes can be
    read as quantities (and, for a nominal variable, to confirm that the codes really are numbers).
    The analysis then uses the original codes (1–5 for `R_LTACTX`; higher = *less* frequent activity),
    never an arbitrary factor index. The treatment is shown with the result, in the R code, in exports
@@ -376,11 +409,14 @@ undoable setting.
 - Games-Howell post hoc for Welch ANOVA, omega / factor analysis, robust standard errors outside GEE.
 - **Multinomial mixed models** use penalized quasi-likelihood (PQL), an approximation that can
   underestimate random-effect variances; results say so. Likelihood-ratio tests are not available for them.
-- Discovery with repeated measures fits Gaussian mixed models only; binary / ordinal / nominal repeated
-  outcomes are modelled in **Mixed & Longitudinal Models**. Resampling stability and full-procedure CV
-  are available for Gaussian and binary searches, not yet for ordinal or multinomial ones.
-- Mixed-model discovery results can't yet be opened directly in the Teaching Studio; refit them in
-  **Mixed & Longitudinal Models**.
+- Repeated **multinomial** outcomes are not offered in Discovery (the PQL approximation has no valid
+  likelihood-ratio test); use **Mixed & Longitudinal Models**. Resampling stability and full-procedure CV
+  are available for single-level Gaussian and binary searches only.
+- Longitudinal discovery candidates are refitted in **Mixed & Longitudinal Models** for graphs (labelled as
+  a refit); mmrm compound-symmetry / AR(1) structures are fitted in Discovery but not offered there.
+- Four-way and higher interactions are not searched (maximum interaction order 3). Very large searches
+  (hundreds of thousands of hypotheses) take a few seconds to display.
+- Confidence intervals of models selected from a search are not corrected for the selection.
 - R packages installed through the Package Manager are specific to the R version (4.6); source
   packages with compiled code need Rtools, which StatExplore does not include.
 - Multiple imputation of missing values isn't included. Missing data is handled by complete cases,
@@ -391,8 +427,10 @@ undoable setting.
 ## 11. For developers
 
 How each requirement of the original specification is met: **[docs/spec-compliance.md](docs/spec-compliance.md)**;
-for the 1.1 upgrade: **[docs/spec-compliance-v1.1.md](docs/spec-compliance-v1.1.md)**. Release notes:
-[docs/RELEASE_NOTES_v1.1.0.md](docs/RELEASE_NOTES_v1.1.0.md).
+for the 1.1 upgrade: **[docs/spec-compliance-v1.1.md](docs/spec-compliance-v1.1.md)**; for 1.2:
+**[docs/spec-compliance-v1.2.md](docs/spec-compliance-v1.2.md)** (with a feature matrix). Release notes:
+[docs/RELEASE_NOTES_v1.2.0.md](docs/RELEASE_NOTES_v1.2.0.md), [1.1.0](docs/RELEASE_NOTES_v1.1.0.md).
+The discovery grammar is in [docs/formula-grammar.md](docs/formula-grammar.md).
 
 Building, testing, packaging and the architecture are described in
 **[docs/DEVELOPER.md](docs/DEVELOPER.md)**. The development plan and per-phase reviews are in

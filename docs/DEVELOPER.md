@@ -70,9 +70,11 @@ src/statexplore/
   analysis/    session, framework + builders (Analysis Builder specs), models (ModelSpec),
                teaching, comparison, mixed (Gaussian + glmer/clmm/mblogit/GEE), validation, eda,
                measurement (suggestions, approval, per-analysis treatments), longitudinal_preflight,
-               survey, interpret (brief interpretations), teaching_finder
-  discovery/   space (grammar, enumeration, counts), rcode, engine (worker pool, modes,
-               adjustments, rankings), detail
+               survey, interpret (brief interpretations), teaching_finder, complexity (manual limits)
+  discovery/   space (grammar, strategies, enumeration, counts, test plans, longitudinal settings),
+               modelspec (canonical term sets, counting, formula parsing), rcode (R fitting, one
+               function for every engine), engine (worker pool, modes, fit identity / cache, typed
+               hypotheses, families, highlighting), detail
   export/      exporters (xlsx, docx, pdf, R, py, history)
   gui/         main_window, state, models, result_view, model_editor, derive_dialogs, pages/
                (+ measurement_review, survey, r_console), widgets/ (variable_selector, treatment_panel)
@@ -93,6 +95,24 @@ tests/         pytest suite
 - **Project format 2** is additive; `Project.save` copies a v1 file to `*.v1-backup.sxp` before the first
   overwrite. `tests/fixtures/v1_0_project.sxp` was written by the real v1.0.0 code
   (`tests/fixtures/make_v1_0_fixture.py`).
+
+## v1.2 design notes
+- **Model row vs hypothesis rows.** A discovery row is one fitted model; `row["tests"]` lists its typed
+  hypotheses (`discovery/space.candidate_tests` plans them, R evaluates them, `engine._test_record` adds CI
+  metadata). `engine.tests_frame` is the hypothesis table (families = test types); `results_frame` is the
+  model table with the declared focal test. v1.0/v1.1 rows get one synthesized test (`_legacy_test`).
+  Nested fields (`tests`, `inter`) are stored as JSON text inside the project's parquet.
+- **Fit identity** (`engine.fit_identity`) decides cache reuse; add any new setting that changes a fit to it.
+  Presentation settings must stay out of it.
+- **R reduced-model cache** (`sx_disc_cache`) is valid only for the exact rows (`sx_cache_for` checks
+  `rownames(d)`); callers may re-point `sx_dd` at resampled rows.
+- **Longitudinal engines** share `sx_discover_one`: `sx_disc_family` is `lmm` (lme4 / nlme / mmrm by
+  `sx_disc_struct`), `glmm`, `clmm` or `gee` (robust Wald, no reduced fits). Time enters as `sx_time`
+  (numeric codes) / `sx_timef` (factor); `sx_occ` is the occasion index. AIC/BIC of mixed engines are
+  recomputed uniformly in Python (mmrm's own AIC omits fixed effects).
+- **Result tables** use `gui/models.ResultFrameModel` (vectorised sort/search, lazy columns). Small tables
+  elsewhere use `NumericSortProxy`. Both sort missing values last in both directions.
+- **Manual limits** live in `analysis/complexity.LIMITS`; `install()` adds the options and the backend check.
 
 ## Safety rules for contributors
 - Build R text only through `rbridge/codegen.py` helpers: `r_str` for any user-derived text and

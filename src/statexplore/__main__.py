@@ -132,6 +132,24 @@ def _full_selftest(say, rscript, tmp: Path) -> bool:
         say(f"  {'ok ' if run.status == 'complete' else 'BAD'} discovery: {run.status}")
         ok &= run.status == "complete"
         proj.searches.append(run)
+        # v1.2: interaction combinations, longitudinal structures (nlme / mmrm / GEE), structure comparison
+        for label, st in [("discovery (combinations)", SearchSettings(outcome="y", candidates=["x", "g"],
+                                                                      strategy="combinations", include_main=True)),
+                          ("discovery (longitudinal nlme AR1)", SearchSettings(
+                              outcome="y", candidates=["x"], participant="id", time="t", strategy="time", structure="ar1")),
+                          ("discovery (GEE)", SearchSettings(outcome="yb", candidates=["x"], family="binomial",
+                                                             participant="id", time="t", strategy="time",
+                                                             structure="gee_exch")),
+                          ("discovery (structure comparison)", SearchSettings(
+                              outcome="y", candidates=["x"], required=["t"], participant="id", time="t",
+                              workflow="structure", structures=["ri", "rs", "mmrm_cs"]))]:
+            st.workers, st.max_models, st.max_minutes = 1, None, None
+            st.family = st.family or "gaussian"
+            r2 = execute(create_run(ds, st), ds, rscript=str(rscript))
+            good = r2.status == "complete" and all(r["status"] in ("ok", "warning") for r in r2.rows)
+            say(f"  {'ok ' if good else 'BAD'} {label}: {r2.status}"
+                + ("" if good else f" {[r['reason'] for r in r2.rows if r['status'] not in ('ok', 'warning')][:1]}"))
+            ok &= good
         out = export(proj, [r.id for r in proj.results], tmp / "export", {"xlsx", "docx", "pdf", "R", "py"},
                      [run.id])
         say(f"  ok  exports: {len(out)} files")

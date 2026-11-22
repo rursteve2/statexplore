@@ -307,18 +307,20 @@ def validate_settings(ds: Dataset, s: SearchSettings) -> str:
         if n_fixed > MAX_PREDICTORS_LIMIT:
             raise SearchSpaceError(f"The locked fixed part has {n_fixed} distinct predictors (limit "
                                    f"{MAX_PREDICTORS_LIMIT}).")
-    needs_pair = s.strategy in ("focal", "factorial")
+    structure_run = bool(s.participant) and s.workflow == "structure"     # strategy does not apply
+    needs_pair = s.strategy in ("focal", "factorial") and not structure_run
     if len(s.candidates) < (2 if needs_pair else 1):
         raise SearchSpaceError("Choose at least two candidate predictors." if needs_pair else
                                "Choose at least one candidate predictor.")
-    if not (1 if s.strategy in ("main", "combinations") else 2) <= s.max_predictors <= MAX_PREDICTORS_LIMIT:
+    if not (1 if s.strategy in ("main", "combinations", "time") or structure_run else 2) <= s.max_predictors \
+            <= MAX_PREDICTORS_LIMIT:
         raise SearchSpaceError(f"Maximum predictors per model must be between 2 and {MAX_PREDICTORS_LIMIT}.")
     if s.max_order not in (2, 3):
         raise SearchSpaceError("Interaction order must be 2 or 3.")
     if needs_pair and 2 + len(s.required) > s.max_predictors:
         raise SearchSpaceError("Required covariates leave no room for a two-way interaction "
                                "within the maximum number of predictors.")
-    if len(s.required) >= s.max_predictors and s.strategy in ("main", "combinations", "time"):
+    if len(s.required) >= s.max_predictors and s.strategy in ("main", "combinations", "time") and not structure_run:
         raise SearchSpaceError("Required covariates leave no room for a candidate predictor "
                                "within the maximum number of predictors.")
     if not 1 <= s.min_predictors <= s.max_predictors:

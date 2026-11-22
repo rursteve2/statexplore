@@ -43,7 +43,8 @@ def test_final_acceptance_workflow(qtbot, tmp_path, hrs_path, monkeypatch, r_wor
     w = MainWindow(AppState())
     try:
         step(1, f"PASS: window '{w.windowTitle()}', {w.sidebar.count()} sections")
-        assert w.windowTitle() == "StatExplore 1.1.0" and w.sidebar.count() == len(SECTIONS) == 13
+        from statexplore import __version__
+        assert w.windowTitle() == f"StatExplore {__version__}" and w.sidebar.count() == len(SECTIONS) == 13
 
         w.import_path(str(hrs_path))
         qtbot.waitUntil(lambda: w.state.dataset is not None, timeout=60000)

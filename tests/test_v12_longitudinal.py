@@ -216,3 +216,9 @@ def test_K_grouping_and_time_counting(long_ds):
         assert "pid" not in c.variables and n == len(set(c.variables)) <= 3        # time counts, ID never does
     assert fit_identity(long_ds, LS(structure="ri"), "lmm") != fit_identity(long_ds, LS(structure="rs"), "lmm")
     assert fit_identity(long_ds, LS(), "lmm") != fit_identity(long_ds, LS(time_type="categorical"), "lmm")
+
+
+def test_structure_workflow_ignores_strategy_rules(long_ds):
+    # workflow B locks the fixed part: the strategy's "two candidates" rule does not apply
+    validate_settings(long_ds, LS(candidates=["trt"], strategy="focal", workflow="structure",
+                                  structures=["ri", "rs"], required=["t"]))
