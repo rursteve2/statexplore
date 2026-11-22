@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import html
 
-from PySide6.QtCore import QSortFilterProxyModel, Qt
+from PySide6.QtCore import Qt
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView, QComboBox, QDialog, QDialogButtonBox, QFormLayout, QGridLayout, QHBoxLayout, QLabel,
@@ -18,7 +18,7 @@ from ...analysis.measurement import TreatmentError, apply_treatments
 from ...core.overview import suggest_plots
 from ...core.schema import AnalysisResult, Status
 from ...core.variables import Measure, Role, Storage
-from ..models import FrameModel, table_to_frame
+from ..models import FrameModel, NumericSortProxy, table_to_frame
 from ..result_view import render
 from ..state import AppState
 from ..widgets.treatment_panel import TreatmentPanel
@@ -138,7 +138,7 @@ class EdaPage(QWidget):
         self.image = ImageView("Plots appear here.")
         self.out_tabs.addTab(self.image, "Plot")
         self.desc_model = FrameModel()
-        proxy = QSortFilterProxyModel()
+        proxy = NumericSortProxy()
         proxy.setSourceModel(self.desc_model)
         proxy.setSortRole(Qt.UserRole)
         dv = QTableView()

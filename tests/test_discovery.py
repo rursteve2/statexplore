@@ -317,7 +317,10 @@ def test_mixed_model_discovery(tmp_path):
     assert run.family == "lmm" and run.status == "complete"
     df_r = results_frame(run)
     top = discovery_ranking(df_r).iloc[0]
-    assert top["interaction"] == "a × b" and top["sig_adj"] and top["df2"] == n_id
+    # M §9: the participant count is n_groups, never a denominator df; the LRT carries chi-square df
+    assert top["interaction"] == "a × b" and top["sig_adj"] and top["n_groups"] == n_id
+    assert top["df2"] is None or top["df2"] != top["df2"]
+    assert top["lrt_df"] == 1 and top["df_den"] != top["df_den"]
     full = smf.mixedlm("y ~ a * b", df, groups=df["pid"]).fit(reml=False)
     red = smf.mixedlm("y ~ a + b", df, groups=df["pid"]).fit(reml=False)
     assert top["statistic"] == pytest.approx(2 * (full.llf - red.llf), rel=1e-3)

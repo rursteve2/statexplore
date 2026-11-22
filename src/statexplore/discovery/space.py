@@ -1,9 +1,15 @@
 """Discovery search space: settings, candidate grammar, deterministic enumeration, exact counts.
 
-A candidate is a (focal interaction, covariate set) pair. Its full model contains the
-focal variables' complete hierarchy (every lower-order term), the covariates and the
-required covariates as main effects. The reduced model drops only the focal term, and
-the focal interaction is tested by comparing the two (see docs/formula-grammar.md).
+Strategies (docs/formula-grammar.md):
+  focal         a (focal interaction, covariate set) pair (v1.0/v1.1 grammar). Full model = the focal
+                variables' complete hierarchy + covariates + required covariates; the reduced model
+                drops only the focal term.
+  combinations  every hierarchical set of interaction terms (up to the maximum order) on every subset
+                of candidate predictors, main-effects-only models included (v1.2 default).
+  factorial     the full hierarchical factorial model of every predictor subset.
+  main          main-effects-only models on every predictor subset.
+Each candidate carries a test plan: the typed hypotheses it tests (focal / individual interaction
+term / joint interaction / main-effect term / whole model), each a nested comparison.
 """
 from __future__ import annotations
 
@@ -57,6 +63,11 @@ class SearchSettings:
     event: Any = None                  # binomial: event category code (None = second category, as in v1.0)
     reference: Any = None              # multinomial: baseline category code (None = first category)
     treatments: list[dict[str, Any]] = field(default_factory=list)   # analysis-specific encodings
+    # ---- v1.2: model-structure strategies (X §3; M §7) ----
+    strategy: str = "focal"            # focal | combinations | factorial | main  (v1.1 runs load as focal)
+    include_main: bool = False         # add main-effects-only models (focal / factorial); keep them (combinations)
+    min_predictors: int = 1            # smallest predictor subset in combinations / main / factorial
+    min_obs: int = 0                   # minimum complete rows for a model to be fitted (0 = no minimum)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -72,13 +83,25 @@ class SearchSettings:
             setattr(self, k, v)
 
 
+STRATEGIES = {
+    "combinations": "All eligible interaction combinations (every hierarchical set of interactions)",
+    "focal": "Single focal interaction (+ optional covariates)",
+    "factorial": "Full factorial model per predictor subset",
+    "main": "Main effects only",
+}
+MODEL_TYPES = {"main": "Main effects only", "one": "One interaction", "multi": "Multiple interactions",
+               "factorial": "Full factorial", "focal": "Single focal interaction",
+               "focal_cov": "Focal interaction + covariates", "all_two_way": "All two-way interactions"}
+
+
 @dataclass(frozen=True)
 class Candidate:
     index: int
-    focal: tuple[str, ...]          # variable names, in candidate order
-    covariates: tuple[str, ...]     # other subset members (subset mode)
+    focal: tuple[str, ...]          # focal kind: variable names, in candidate order
+    covariates: tuple[str, ...]     # focal kind: other subset members; main/combo/factorial: the predictor subset
     required: tuple[str, ...]
-    kind: str = "focal"             # "focal" | "all_two_way" (focal = every pair among `focal`, tested jointly)
+    kind: str = "focal"             # focal | all_two_way | main | combo | factorial
+    inter: tuple[tuple[str, ...], ...] = ()   # combo / factorial: the interaction terms
 
     @property
     def order(self) -> int:
@@ -204,15 +227,24 @@ def validate_settings(ds: Dataset, s: SearchSettings) -> str:
         raise SearchSpaceError("Duplicate variables in the selection.")
     if 1 + len(s.candidates) + len(s.required) > MAX_VARIABLES:
         raise SearchSpaceError(f"At most {MAX_VARIABLES} variables (outcome included) may be selected.")
-    if len(s.candidates) < 2:
-        raise SearchSpaceError("Choose at least two candidate predictors.")
-    if not 2 <= s.max_predictors <= MAX_PREDICTORS_LIMIT:
+    if s.strategy not in STRATEGIES:
+        raise SearchSpaceError(f"Unknown search strategy {s.strategy!r}.")
+    needs_pair = s.strategy in ("focal", "factorial")
+    if len(s.candidates) < (2 if needs_pair else 1):
+        raise SearchSpaceError("Choose at least two candidate predictors." if needs_pair else
+                               "Choose at least one candidate predictor.")
+    if not (1 if s.strategy in ("main", "combinations") else 2) <= s.max_predictors <= MAX_PREDICTORS_LIMIT:
         raise SearchSpaceError(f"Maximum predictors per model must be between 2 and {MAX_PREDICTORS_LIMIT}.")
     if s.max_order not in (2, 3):
         raise SearchSpaceError("Interaction order must be 2 or 3.")
-    if 2 + len(s.required) > s.max_predictors:
+    if needs_pair and 2 + len(s.required) > s.max_predictors:
         raise SearchSpaceError("Required covariates leave no room for a two-way interaction "
                                "within the maximum number of predictors.")
+    if len(s.required) >= s.max_predictors and s.strategy in ("main", "combinations"):
+        raise SearchSpaceError("Required covariates leave no room for a candidate predictor "
+                               "within the maximum number of predictors.")
+    if not 1 <= s.min_predictors <= s.max_predictors:
+        raise SearchSpaceError("The minimum number of predictors must be between 1 and the maximum.")
     if s.covariate_mode not in ("focal", "subsets") or s.mode not in "ABCD" or s.sample not in ("shared", "per_model"):
         raise SearchSpaceError("Invalid search option.")
     if not 0 < s.alpha < 1:
@@ -236,7 +268,36 @@ def _orders(s: SearchSettings) -> list[int]:
     return [o for o in (2, 3) if o <= s.max_order and o <= room]
 
 
+def _room(s: SearchSettings) -> int:
+    return s.max_predictors - len(s.required)
+
+
+def _sizes(s: SearchSettings, smallest: int = 1) -> range:
+    return range(max(smallest, s.min_predictors), min(_room(s), len(s.candidates)) + 1)
+
+
+def _block_counts(s: SearchSettings) -> list[tuple[str, int]]:
+    from .modelspec import n_interaction_sets
+
+    p = len(s.candidates)
+    blocks: list[tuple[str, int]] = []
+    if s.strategy in ("focal", "factorial") and s.include_main or s.strategy == "main":
+        blocks.append(("main", sum(comb(p, k) for k in _sizes(s))))
+    if s.strategy == "combinations":
+        drop = 0 if s.include_main else 1
+        blocks.append(("combinations", sum(comb(p, k) * (n_interaction_sets(k, s.max_order) - drop) for k in _sizes(s))))
+    elif s.strategy == "factorial":
+        blocks.append(("factorial", sum(comb(p, k) for k in _sizes(s, 2))))
+    elif s.strategy == "focal":
+        blocks.append(("focal", _count_focal(s)))
+    return blocks
+
+
 def count_candidates(s: SearchSettings) -> int:
+    return sum(n for _, n in _block_counts(s))
+
+
+def _count_focal(s: SearchSettings) -> int:
     p, r = len(s.candidates), len(s.required)
     orders = _orders(s)
     if s.covariate_mode == "focal":
@@ -247,11 +308,75 @@ def count_candidates(s: SearchSettings) -> int:
 
 
 def enumerate_candidates(s: SearchSettings, start: int = 0) -> Iterator[Candidate]:
-    """Deterministic order. Focal mode: all pairs, then all triples (lexicographic).
-    Subset mode: by subset size, then subset (lexicographic), then focal pairs, then triples."""
+    """Deterministic order: the main-effects block (when included), then the strategy's block.
+    Resuming from `start` skips whole blocks and subsets by their exact counts."""
+    offset = 0
+    for name, n in _block_counts(s):
+        if start < offset + n:
+            gen = {"main": _enum_main, "combinations": _enum_combinations, "factorial": _enum_factorial,
+                   "focal": _enum_focal}[name]
+            yield from gen(s, offset, max(start, offset))
+        offset += n
+
+
+def _enum_main(s: SearchSettings, idx: int, start: int) -> Iterator[Candidate]:
+    names, req = s.candidates, tuple(s.required)
+    for size in _sizes(s):
+        n = comb(len(names), size)
+        if idx + n <= start:
+            idx += n
+            continue
+        for sub in combinations(names, size):
+            if idx >= start:
+                yield Candidate(idx, (), sub, req, "main")
+            idx += 1
+
+
+def _enum_combinations(s: SearchSettings, idx: int, start: int) -> Iterator[Candidate]:
+    from .modelspec import interaction_sets, n_interaction_sets
+
+    names, req = s.candidates, tuple(s.required)
+    for size in _sizes(s):
+        per = n_interaction_sets(size, s.max_order) - (0 if s.include_main else 1)
+        n = comb(len(names), size) * per
+        if idx + n <= start:
+            idx += n
+            continue
+        for sub in combinations(names, size):
+            if idx + per <= start:
+                idx += per
+                continue
+            for inter in interaction_sets(sub, s.max_order):
+                if not inter and not s.include_main:
+                    continue
+                if idx >= start:
+                    yield Candidate(idx, (), sub, req, "combo" if inter else "main", inter)
+                idx += 1
+
+
+def _factorial_terms(sub: tuple[str, ...], max_order: int) -> tuple[tuple[str, ...], ...]:
+    return tuple(c for k in range(2, min(max_order, len(sub)) + 1) for c in combinations(sub, k))
+
+
+def _enum_factorial(s: SearchSettings, idx: int, start: int) -> Iterator[Candidate]:
+    names, req = s.candidates, tuple(s.required)
+    for size in _sizes(s, 2):
+        n = comb(len(names), size)
+        if idx + n <= start:
+            idx += n
+            continue
+        for sub in combinations(names, size):
+            if idx >= start:
+                yield Candidate(idx, (), sub, req, "factorial", _factorial_terms(sub, s.max_order))
+            idx += 1
+
+
+def _enum_focal(s: SearchSettings, base: int, start: int) -> Iterator[Candidate]:
+    """v1.1 grammar. Focal mode: all pairs, then all triples (lexicographic). Subset mode: by subset
+    size, then subset (lexicographic), then focal pairs, then triples."""
     names, req = s.candidates, tuple(s.required)
     orders = _orders(s)
-    idx = 0
+    idx = base
 
     def emit(focal_idx: tuple[int, ...], subset_idx: tuple[int, ...]) -> Candidate:
         return Candidate(idx, tuple(names[i] for i in focal_idx),
@@ -284,8 +409,15 @@ def hierarchy(focal: tuple[str, ...]) -> list[tuple[str, ...]]:
     return [c for k in range(1, len(focal) + 1) for c in combinations(focal, k)]
 
 
+def _mains(c: Candidate) -> list[tuple[str, ...]]:
+    return [(v,) for v in c.covariates]
+
+
 def model_terms(c: Candidate) -> tuple[list[tuple[str, ...]], list[tuple[str, ...]]]:
-    """(full terms, reduced terms) as tuples of variable names."""
+    """(full terms, reduced terms of the declared focal test) as tuples of variable names."""
+    if c.kind in ("main", "combo", "factorial"):
+        full = full_terms(c)
+        return full, candidate_tests(c)[0]["reduced"]
     if c.kind == "all_two_way":
         mains = [(v,) for v in c.focal]
         req = [(v,) for v in c.required]
@@ -295,7 +427,58 @@ def model_terms(c: Candidate) -> tuple[list[tuple[str, ...]], list[tuple[str, ..
     return full, reduced
 
 
+def full_terms(c: Candidate) -> list[tuple[str, ...]]:
+    if c.kind in ("main", "combo", "factorial"):
+        return _mains(c) + list(c.inter) + [(v,) for v in c.required]
+    return model_terms(c)[0]
+
+
+def candidate_tests(c: Candidate) -> list[dict[str, Any]]:
+    """The typed hypotheses a candidate tests, the declared focal test first. Each is a nested
+    comparison of the full model with `reduced` (= full minus `drop`). Main effects of variables
+    in an interaction are not tested (marginality); interaction terms contained in a higher-order
+    term are not dropped alone (hierarchy)."""
+    full = full_terms(c)
+    req = [(v,) for v in c.required]
+    if c.kind == "focal":
+        return [{"id": 0, "type": "focal_interaction", "drop": [c.focal], "reduced": model_terms(c)[1]}]
+    if c.kind == "all_two_way":
+        return [{"id": 0, "type": "joint_interaction", "drop": list(combinations(c.focal, 2)),
+                 "reduced": model_terms(c)[1]}]
+    tests: list[dict[str, Any]] = []
+    inter = list(c.inter)
+    mains = _mains(c)
+    if inter:
+        top = [t for t in inter if not any(set(t) < set(u) for u in inter)]
+        if len(inter) > 1:
+            tests.append({"type": "joint_interaction", "drop": inter, "reduced": mains + req})
+        for t in top:
+            tests.append({"type": "interaction_term", "drop": [t], "reduced": [u for u in full if u != t]})
+    tests.append({"type": "overall", "drop": mains + inter, "reduced": req})
+    if not inter and len(mains) > 1:
+        for m in mains:
+            tests.append({"type": "main_term", "drop": [m], "reduced": [u for u in full if u != m]})
+    for i, t in enumerate(tests):
+        t["id"] = i
+    return tests
+
+
+def model_type(c: Candidate) -> str:
+    if c.kind == "focal":
+        return MODEL_TYPES["focal_cov" if c.covariates else "focal"]
+    if c.kind == "all_two_way":
+        return MODEL_TYPES["all_two_way"]
+    if c.kind == "factorial":
+        return MODEL_TYPES["factorial"]
+    n = len(c.inter)
+    return MODEL_TYPES["main" if n == 0 else "one" if n == 1 else "multi"]
+
+
 def candidate_key(c: Candidate) -> str:
+    if c.kind in ("main", "combo", "factorial"):
+        from .modelspec import canonical_key
+
+        return f"{c.kind}|{canonical_key(full_terms(c))}"
     full, _ = model_terms(c)
     terms = sorted(":".join(sorted(t)) for t in full)
     prefix = "ALL2|" if c.kind == "all_two_way" else ""
@@ -304,6 +487,12 @@ def candidate_key(c: Candidate) -> str:
 
 def display_formula(ds: Dataset, outcome: str, c: Candidate) -> str:
     dn = lambda n: ds.var(n).display_name  # noqa: E731
+    if c.kind in ("main", "combo", "factorial"):
+        from .modelspec import display
+
+        body = display(_mains(c) + list(c.inter), dn(outcome), dn, order=list(c.covariates),
+                       extra=[dn(v) for v in c.required])
+        return body
     if c.kind == "all_two_way":
         parts = ["(" + " + ".join(dn(v) for v in c.focal) + ")^2"] + [dn(v) for v in c.required]
         return f"{dn(outcome)} ~ {' + '.join(parts)}"
@@ -311,9 +500,29 @@ def display_formula(ds: Dataset, outcome: str, c: Candidate) -> str:
     return f"{dn(outcome)} ~ {' + '.join(parts)}"
 
 
+def term_label(ds: Dataset, t: tuple[str, ...]) -> str:
+    return " × ".join(ds.var(v).display_name for v in t)
+
+
+def test_label(ds: Dataset, c: Candidate, t: dict[str, Any]) -> str:
+    """What one hypothesis tests, in words."""
+    if t["type"] in ("focal_interaction", "interaction_term", "main_term"):
+        return term_label(ds, t["drop"][0])
+    if t["type"] == "joint_interaction":
+        return "all interactions jointly: " + ", ".join(term_label(ds, d) for d in t["drop"])
+    base = ", ".join(ds.var(v).display_name for v in c.required)
+    return "whole model vs " + (f"required covariates only ({base})" if base else "intercept only")
+
+
 def focal_label(ds: Dataset, c: Candidate) -> str:
     if c.kind == "all_two_way":
         return "all two-way: " + ", ".join(ds.var(v).display_name for v in c.focal)
+    if c.kind in ("main", "combo", "factorial"):
+        if not c.inter:
+            return "main effects: " + ", ".join(ds.var(v).display_name for v in c.covariates)
+        if c.kind == "factorial":
+            return "full factorial: " + " × ".join(ds.var(v).display_name for v in c.covariates)
+        return ", ".join(term_label(ds, t) for t in c.inter)
     return " × ".join(ds.var(v).display_name for v in c.focal)
 
 
@@ -348,7 +557,8 @@ def describe_space(ds: Dataset, s: SearchSettings) -> dict[str, Any]:
     warnings = []
     if total >= LARGE_SEARCH:
         warnings.append(f"{total:,} candidate models: an exhaustive search will take a long time. "
-                        "Consider fewer candidates, a smaller maximum, or focal mode.")
+                        "Consider fewer candidates, a smaller maximum, two-way interactions only, or the "
+                        "single-focal-interaction strategy.")
     n_shared = shared_sample_size(ds, s)
     n_all = len(ds.analysis_frame([s.outcome]))
     if s.sample == "shared" and n_shared < 0.5 * n_all:
@@ -367,7 +577,20 @@ def describe_space(ds: Dataset, s: SearchSettings) -> dict[str, Any]:
                            f"{k - 1} coefficients per term (one per non-reference category)")
                         + "; the parameter limit applies to the total, so fewer predictors fit.")
     return {"family": family, "total": total, "n_shared": n_shared, "n_rows": n_all, "warnings": warnings,
-            "coding": coding(ds, s, family)}
+            "coding": coding(ds, s, family), "blocks": _block_counts(s), "fits": estimate_fits(s, total)}
+
+
+def estimate_fits(s: SearchSettings, total: int, sample: int = 2000) -> int:
+    """Upper bound on R model fits: each candidate's full model plus one reduced model per planned
+    test (reduced fits shared between candidates are cached on the shared sample, so the real number
+    is usually lower). Averaged over the first `sample` candidates."""
+    from itertools import islice
+
+    first = list(islice(enumerate_candidates(s), sample))
+    if not first:
+        return 0
+    per = sum(1 + len(candidate_tests(c)) for c in first) / len(first)
+    return int(round(per * total))
 
 
 def binomial_levels(ds: Dataset, s: SearchSettings) -> tuple[Any, Any]:

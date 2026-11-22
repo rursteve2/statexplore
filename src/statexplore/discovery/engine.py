@@ -25,8 +25,9 @@ from ..core.dataset import Dataset
 from ..rbridge.worker import REngineError, RScriptError, RWorker
 from .rcode import batch_script, setup_script
 from .space import (
-    FAMILIES, Candidate, SearchSettings, candidate_key, coding, count_candidates, dependence_warning,
-    display_formula, enumerate_candidates, focal_label, validate_settings, view,
+    FAMILIES, Candidate, SearchSettings, candidate_key, candidate_tests, coding, count_candidates,
+    dependence_warning, display_formula, enumerate_candidates, focal_label, full_terms, model_type, test_label,
+    validate_settings, view,
 )
 
 log = logging.getLogger(__name__)
@@ -75,6 +76,7 @@ class DiscoveryRun:
     warnings: list[str] = field(default_factory=list)
     validation: dict[int, str] = field(default_factory=dict)   # candidate index -> stability summary
     coding: dict[str, Any] = field(default_factory=dict)       # v1.1: family, outcome treatment, event/reference
+    fit_id: str = ""                                           # v1.2: fit identity hash (F6)
 
     @property
     def is_complete(self) -> bool:
@@ -87,7 +89,7 @@ class DiscoveryRun:
     def meta_dict(self) -> dict[str, Any]:
         return {k: getattr(self, k) for k in ("id", "family", "total", "signature", "created_at", "status",
                                                "stop_reason", "n_done", "stop_index", "elapsed_s",
-                                               "n_sample", "engine", "warnings", "coding")} | {
+                                               "n_sample", "engine", "warnings", "coding", "fit_id")} | {
             "settings": self.settings.to_dict(), "validation": {str(k): v for k, v in self.validation.items()}}
 
     @classmethod
@@ -100,6 +102,7 @@ class DiscoveryRun:
             setattr(run, k, meta[k])
         run.warnings = list(meta.get("warnings", []))
         run.coding = dict(meta.get("coding") or {})
+        run.fit_id = str(meta.get("fit_id") or "")
         run.validation = {int(k): v for k, v in (meta.get("validation") or {}).items()}
         run.rows = rows
         return run
@@ -137,34 +140,73 @@ def default_workers(s: SearchSettings) -> int:
 
 def create_run(ds: Dataset, s: SearchSettings) -> DiscoveryRun:
     family = validate_settings(ds, s)
+    fit_id = fit_identity(ds, s, family)
     ds = view(ds, s)
     run = DiscoveryRun(settings=s, family=family, total=count_candidates(s), signature=data_signature(ds))
     run.coding = coding(ds, s, family)
+    run.fit_id = fit_id
     dep = dependence_warning(ds, s)
     if dep:
         run.warnings.append(dep)
     return run
 
 
-CACHE_FIELDS = ("outcome", "sample", "max_params", "conf", "participant")
+def fit_identity(ds: Dataset, s: SearchSettings, family: str) -> str:
+    """Everything that changes a fitted model (F6): the analysed data and metadata as this search
+    sees them (treatments, filters, derived variables, holdout, missing codes, category order,
+    reference levels), the outcome family and its resolved coding (event / reference category,
+    ordered levels), the grouping and time structure, the sample strategy and the variable pool
+    that defines the shared sample, and fitting settings. Presentation settings (alpha, adjustment,
+    highlighting, sorting) are deliberately excluded: changing them never refits."""
+    from .space import binomial_levels
+
+    v = view(ds, s)
+    coding_id: dict[str, Any] = {"levels": [str(x) for x in v.levels(s.outcome)] if v.var(s.outcome).is_categorical else None}
+    if family == "binomial":
+        ev, ref = binomial_levels(v, s)
+        coding_id["event"], coding_id["reference"] = str(ev), str(ref)
+    if family == "multinomial":
+        coding_id["reference"] = str(s.reference if s.reference is not None else v.levels(s.outcome)[0])
+    payload = {
+        "data": data_signature(v), "family": family, "outcome": s.outcome, "coding": coding_id,
+        "participant": s.participant, "time": getattr(s, "time", None), "time_type": getattr(s, "time_type", None),
+        "structure": getattr(s, "structure", None), "gee_corstr": getattr(s, "gee_corstr", None),
+        "sample": s.sample, "pool": sorted(s.candidates + s.required) if s.sample == "shared" else None,
+        "required": sorted(s.required), "max_params": s.max_params, "conf": s.conf,
+        "min_obs": getattr(s, "min_obs", 0),
+    }
+    return hashlib.sha256(json.dumps(payload, sort_keys=True, default=str).encode()).hexdigest()
 
 
-def cache_from(run: DiscoveryRun, previous: list[DiscoveryRun]) -> dict[str, dict[str, Any]]:
-    """Rows already fitted by earlier searches that used exactly the same data, sample and model
-    settings (§21 caching). The shared complete-case sample depends on the whole variable pool,
-    so the pool must match too."""
-    s = run.settings
-    pool = sorted(s.candidates + s.required)
+ENGINE_PACKAGES = ["detectseparation", "lme4", "ordinal", "nnet", "stats"]
+
+
+def _engine_id(engine: dict[str, Any]) -> tuple:
+    pk = engine.get("packages") or {}
+    return (engine.get("r_version"), tuple((k, pk.get(k)) for k in ENGINE_PACKAGES))
+
+
+def cache_from(run: DiscoveryRun, previous: list[DiscoveryRun], ds: Dataset | None = None) -> dict[str, dict[str, Any]]:
+    """Rows already fitted by earlier searches with the same fit identity (§21 caching, F6).
+    Without `ds`, runs are matched on their stored identity (runs created by v1.2)."""
+    ident = run.fit_id or (fit_identity(ds, run.settings, run.family) if ds is not None else "")
     out: dict[str, dict[str, Any]] = {}
+    if not ident:
+        return out
     for prev in previous:
-        ps = prev.settings
         if prev is run or prev.signature != run.signature or prev.family != run.family:
             continue
-        if any(getattr(ps, f) != getattr(s, f) for f in CACHE_FIELDS) or sorted(ps.candidates + ps.required) != pool:
+        pid = prev.fit_id
+        if not pid and ds is not None:
+            try:
+                pid = fit_identity(ds, prev.settings, prev.family)
+            except Exception:  # an old run whose variables no longer exist
+                continue
+        if pid != ident:
             continue
         for r in prev.rows:
             if r["status"] != "failed" and not r.get("speculative"):
-                out.setdefault(r["key"], r)
+                out.setdefault(r["key"], dict(r, _engine=_engine_id(prev.engine), _from=prev.id))
     return out
 
 
@@ -201,7 +243,12 @@ def execute(run: DiscoveryRun, ds: Dataset, *, rscript: str | None = None,
             for f in starts:
                 f.result()
             run.n_sample = pooled[0].n_sample if s.sample == "shared" else None
-            _dispatch(run, ds, pooled, ex, cancel, progress, t_start, elapsed_before, cache or {})
+            current = pooled[0].session.worker.request("versions", {"packages": ENGINE_PACKAGES}).result
+            if not run.engine:
+                run.engine = current
+            # cached fits are reused only when R and the fitting packages are the same versions (F6)
+            usable = {k: r for k, r in (cache or {}).items() if r.get("_engine") == _engine_id(current)}
+            _dispatch(run, ds, pooled, ex, cancel, progress, t_start, elapsed_before, usable)
     except Exception as e:
         run.status, run.stop_reason = "failed", str(e)
         raise
@@ -247,7 +294,12 @@ def _dispatch(run: DiscoveryRun, ds: Dataset, pooled: list[_PooledSession], ex: 
             dispatched_to = batch[-1].index + 1
             cached = [c for c in batch if candidate_key(c) in cache]
             for c in cached:  # identical model already fitted on identical data: reuse its result
-                row = dict(cache[candidate_key(c)], idx=c.index, cached=True, speculative=False)
+                src = cache[candidate_key(c)]
+                row = {k: v for k, v in src.items() if not k.startswith("_")}
+                row.update(idx=c.index, cached=True, speculative=False, run_id=run.id,
+                           candidate_id=f"{run.id}:{c.index}",
+                           cache_reason=f"reused from search {src.get('_from')}: identical fit identity "
+                                        "(data, coding, structure, sample) and R/package versions")
                 run.rows.append(row)
                 n_sig += _qualifies(row, s.alpha)
             batch = [c for c in batch if candidate_key(c) not in cache]
@@ -321,28 +373,85 @@ def _num(x: Any) -> float | None:
     return None if np.isnan(f) else f
 
 
+CI_SCALES = {"gaussian": "coefficient", "lmm": "coefficient", "binomial": "log-odds", "ordinal": "log-odds"}
+
+
+def _test_record(ds: Dataset, run: DiscoveryRun, c: Candidate, plan: dict[str, Any], r: dict[str, Any]) -> dict[str, Any]:
+    fam = run.family
+    out = {"test_id": int(plan["id"]), "type": plan["type"], "label": test_label(ds, c, plan),
+           "drop": [":".join(t) for t in plan["drop"]],
+           **{k: _num(r.get(k)) for k in ("statistic", "df1", "df_den", "p", "effect", "partial_eta2",
+                                          "estimate", "se", "ci_low", "ci_high")}}
+    single = len(plan["drop"]) == 1 and out["df1"] == 1 and fam != "multinomial"
+    has_ci = out["ci_low"] is not None and out["ci_high"] is not None
+    out["ci_applicable"] = "same_estimand" if single and has_ci else (
+        "joint" if (out["df1"] or 0) > 1 or len(plan["drop"]) > 1 or fam == "multinomial" else "unavailable")
+    out["ci_scale"] = CI_SCALES.get(fam, "")
+    out["ci_null"] = 0.0
+    out["ci_level"] = run.settings.conf
+    out["ci_effect_id"] = out["p_test_id"] = "+".join(out["drop"])
+    if out["ci_applicable"] == "same_estimand":
+        out["ci_method"] = "Wald (t, residual df)" if fam == "gaussian" else "Wald (normal approximation)"
+        out["ci_note"] = ("The 1-df F test and the t-based CI are the same test." if fam == "gaussian" else
+                          "p-value from the likelihood-ratio test, CI from the Wald approximation: they can "
+                          "disagree near the significance boundary.")
+        if fam in ("binomial", "ordinal"):
+            out["odds_ratio"] = float(np.exp(out["estimate"]))
+            out["or_low"], out["or_high"] = float(np.exp(out["ci_low"])), float(np.exp(out["ci_high"]))
+    else:
+        out["ci_method"] = ""
+        out["ci_note"] = ("Joint test of several coefficients: there is no single-coefficient CI. Use "
+                          "conditional slopes or contrasts (Teaching Studio) for interval estimates."
+                          if out["ci_applicable"] == "joint" else "")
+    return out
+
+
 def _row(ds: Dataset, run: DiscoveryRun, c: Candidate, r: dict[str, Any]) -> dict[str, Any]:
-    keys = ("n", "n_params", "statistic", "df1", "df2", "p", "effect", "partial_eta2", "estimate", "se",
-            "ci_low", "ci_high", "r2", "aic", "bic")
+    from .modelspec import counts
+
+    keys = ("n", "n_params", "n_groups", "statistic", "df1", "df2", "p", "effect", "partial_eta2", "estimate",
+            "se", "ci_low", "ci_high", "r2", "adj_r2", "aic", "bic", "loglik")
     flags = r.get("flags") or ""
     if isinstance(flags, list):
         flags = "; ".join(flags)
-    return {
+    status = str(r.get("status", "failed"))
+    tests: list[dict[str, Any]] = []
+    if status in ("ok", "warning"):
+        got = r.get("tests") or []
+        by_id = {int(t["id"]): t for t in (got if isinstance(got, list) else [got])}
+        tests = [_test_record(ds, run, c, plan, by_id[plan["id"]]) for plan in candidate_tests(c)
+                 if plan["id"] in by_id]
+    terms = full_terms(c)
+    cnt = counts(terms)
+    row = {
         "idx": c.index,
         "key": candidate_key(c),
         "focal": list(c.focal),
         "covariates": list(c.covariates),
         "kind": c.kind,
-        "order": c.order,
+        "inter": [list(t) for t in c.inter],
+        "order": max((len(t) for t in terms), default=1) if c.kind != "focal" else c.order,
         "interaction": focal_label(ds, c),
         "formula": display_formula(ds, run.settings.outcome, c),
+        "model_type": model_type(c),
+        **cnt,
+        "n_re_params": 2 if run.family == "lmm" else None,   # random-intercept variance + residual variance
         "cached": False,
-        "status": str(r.get("status", "failed")),
+        "status": status,
         "reason": str(r.get("reason") or ""),
         "flags": str(flags),
         "speculative": False,
         **{k: _num(r.get(k)) for k in keys},
+        "tests": tests,
+        "run_id": run.id,
+        "candidate_id": f"{run.id}:{c.index}",
+        "model_id": hashlib.sha256(f"{run.fit_id}|{candidate_key(c)}".encode()).hexdigest()[:16],
+        "fitted_at": _dt.datetime.now().isoformat(timespec="seconds"),
+        "cache_reason": "",
     }
+    if run.family == "lmm":
+        row["df2"] = None       # v1.1 stored the participant count here; it is n_groups (M §9)
+    return row
 
 
 # ---- adjustments & rankings -------------------------------------------------------------
@@ -371,29 +480,271 @@ def holm(p: np.ndarray) -> np.ndarray:
     return out
 
 
-def results_frame(run: DiscoveryRun) -> pd.DataFrame:
-    """All attempts with adjusted p-values, significance and support tiers."""
+TEST_TYPES = {
+    "focal_interaction": "Focal interaction (nested-model test)",
+    "interaction_term": "Individual interaction term",
+    "joint_interaction": "Joint test of all interaction terms",
+    "main_term": "Main-effect term",
+    "overall": "Whole-model test",
+}
+CI_APPLICABILITY = {
+    "same_estimand": "CI of the tested coefficient (same estimand as the p-value)",
+    "joint": "Joint test; no single focal-coefficient CI",
+    "unavailable": "CI unavailable",
+}
+LRT_FAMILIES = ("lmm", "binomial", "ordinal", "multinomial")
+
+
+def _legacy_test(row: dict[str, Any], family: str, conf: float) -> dict[str, Any]:
+    """v1.0/v1.1 rows hold one focal test in the row itself. For mixed searches, v1.1 stored the
+    number of participants in `df2`; it is not a denominator df (M §9)."""
+    kind = row.get("kind") or "focal"
+    one_coef = row.get("ci_low") is not None and row.get("ci_high") is not None
+    df1 = row.get("df1")
+    return {
+        "test_id": 0, "type": "joint_interaction" if kind == "all_two_way" else "focal_interaction",
+        "label": row.get("interaction", ""), "statistic": row.get("statistic"),
+        "df1": df1, "df_den": row.get("df2") if family == "gaussian" else None,
+        "p": row.get("p"), "effect": row.get("effect"), "partial_eta2": row.get("partial_eta2"),
+        "estimate": row.get("estimate"), "se": row.get("se"), "ci_low": row.get("ci_low"),
+        "ci_high": row.get("ci_high"),
+        "ci_applicable": "same_estimand" if one_coef else (
+            "joint" if kind == "all_two_way" or (df1 is not None and df1 > 1) or family == "multinomial"
+            else "unavailable"),
+        "ci_scale": "log-odds" if family in ("binomial", "ordinal") else "coefficient",
+        "ci_null": 0.0, "ci_level": conf,
+        "ci_method": ("Wald (t, residual df)" if family == "gaussian" else "Wald (normal)") if one_coef else "",
+    }
+
+
+def row_tests(row: dict[str, Any], family: str, conf: float = 0.95) -> list[dict[str, Any]]:
+    """The hypotheses tested in one model attempt; the first is the model's declared focal test."""
+    tests = row.get("tests")
+    if isinstance(tests, str):
+        tests = json.loads(tests)
+    if tests:
+        return list(tests)
+    if row.get("status") in ("invalid", "failed"):
+        return []
+    return [_legacy_test(row, family, conf)]
+
+
+def test_method(test_type: str, family: str) -> str:
+    if test_type == "structure":
+        return "model-fit comparison"
+    if family == "gaussian":
+        return "nested-model F test"
+    if family == "gee":
+        return "robust (sandwich) Wald test"
+    return "likelihood-ratio test (ML fits)" if family == "lmm" else "likelihood-ratio test"
+
+
+def _null_flags(df: pd.DataFrame) -> pd.Series:
+    return df["status"].isin(["ok", "warning"]) & df["p"].notna() & ~df["speculative"].astype(bool)
+
+
+def tests_frame(run: DiscoveryRun) -> pd.DataFrame:
+    """One row per tested hypothesis, with its model's fields. Multiplicity families are the test
+    types within this run (F2): BH and Holm are computed separately for each type."""
     s = run.settings
+    recs = []
+    for r in run.rows:
+        tests = row_tests(r, run.family, s.conf)
+        for j, t in enumerate(tests):
+            rec = {k: r.get(k) for k in MODEL_FIELDS if k in r}
+            rec.update({k: v for k, v in t.items() if k != "test_id"})
+            rec["test_id"] = f"{r['idx']}.{t.get('test_id', j)}"
+            rec["idx"] = r["idx"]
+            rec["primary"] = j == 0
+            rec["test_type"] = t.get("type", "focal_interaction")
+            recs.append(rec)
+    df = pd.DataFrame(recs)
+    if df.empty:
+        return df
+    for c in ("statistic", "df1", "df_den", "p", "effect", "partial_eta2", "estimate", "se", "ci_low", "ci_high",
+              "ci_null", "ci_level"):
+        if c not in df:
+            df[c] = np.nan
+        df[c] = pd.to_numeric(df[c], errors="coerce")
+    for c, default in (("speculative", False), ("flags", ""), ("ci_applicable", "unavailable"), ("ci_scale", ""),
+                       ("ci_method", ""), ("label", "")):
+        if c not in df:
+            df[c] = default
+        df[c] = df[c].fillna(default)
+    df["speculative"] = df["speculative"].astype(bool)
+    df["n_groups"] = pd.to_numeric(df.get("n_groups", np.nan), errors="coerce")
+    if run.family == "lmm" and "n_groups" in df and df["n_groups"].isna().all() and "df2" in df:
+        df["n_groups"] = pd.to_numeric(df["df2"], errors="coerce")       # legacy v1.1 mixed rows
+    df["lrt_df"] = np.where(run.family in LRT_FAMILIES, df["df1"], np.nan)
+    df["test_label"] = df["test_type"].map(TEST_TYPES).fillna(df["test_type"])
+    df["test_method"] = [test_method(t, run.family) for t in df["test_type"]]
+    df["in_family"] = _null_flags(df)
+    df["p_bh"] = np.nan
+    df["p_holm"] = np.nan
+    df["family_size"] = 0
+    for ttype, idx in df[df["in_family"]].groupby("test_type").groups.items():
+        p = df.loc[idx, "p"].to_numpy(float)
+        df.loc[idx, "p_bh"] = bh(p)
+        df.loc[idx, "p_holm"] = holm(p)
+        df.loc[idx, "family_size"] = len(idx)
+    df["p_adj"] = df["p_bh"] if s.correction == "BH" else df["p_holm"]
+    df["sig_raw"] = df["in_family"] & (df["p"] < s.alpha)
+    df["sig_adj"] = df["in_family"] & (df["p_adj"] < s.alpha)
+    clean = df["status"] == "ok"
+    df["tier"] = np.select(
+        [~df["in_family"], df["sig_adj"] & clean, df["sig_raw"] & clean, df["sig_raw"]],
+        ["", "A", "B", "C"], default="D")
+    df["ci_status"] = df["ci_applicable"].map(CI_APPLICABILITY).fillna("CI unavailable")
+    df["search_scope"] = "complete search" if run.status == "complete" else "partial search (provisional)"
+    df["adj_method"] = ("Benjamini-Hochberg" if s.correction == "BH" else "Holm") + " within " + df["test_label"]
+    df["validation"] = [run.validation.get(int(i), "not validated" if f else "")
+                        for i, f in zip(df["idx"], df["in_family"])]
+    df["interpretation"] = [interpret_row(r, s, run.family) for r in df.to_dict("records")]
+    return df
+
+
+MODEL_FIELDS = ("idx", "key", "focal", "covariates", "kind", "order", "interaction", "formula", "cached", "status",
+                "reason", "flags", "speculative", "n", "n_params", "n_groups", "r2", "adj_r2", "aic", "bic",
+                "loglik", "model_type", "predictors", "n_predictors", "n_main", "n_two_way", "n_three_way",
+                "n_terms", "n_re_params", "candidate_id", "model_id", "cache_reason", "df2", "inter", "run_id",
+                "fitted_at")
+
+
+def results_frame(run: DiscoveryRun) -> pd.DataFrame:
+    """All attempts (one row per model) with the model's declared focal test, its adjusted
+    p-value (within its test-type family), significance and support tier."""
     df = pd.DataFrame(run.rows)
     if df.empty:
         return df
-    in_family = df["status"].isin(["ok", "warning"]) & df["p"].notna() & ~df["speculative"]
-    df["in_family"] = in_family
-    p = df.loc[in_family, "p"].to_numpy(float)
-    df["p_bh"] = np.nan
-    df["p_holm"] = np.nan
-    df.loc[in_family, "p_bh"] = bh(p)
-    df.loc[in_family, "p_holm"] = holm(p)
-    df["p_adj"] = df["p_bh"] if s.correction == "BH" else df["p_holm"]
-    df["sig_raw"] = in_family & (df["p"] < s.alpha)
-    df["sig_adj"] = in_family & (df["p_adj"] < s.alpha)
-    clean = df["status"] == "ok"
-    df["tier"] = np.select(
-        [~in_family, df["sig_adj"] & clean, df["sig_raw"] & clean, df["sig_raw"]],
-        ["", "A", "B", "C"], default="D")
-    df["validation"] = [run.validation.get(int(i), "not validated" if f else "") for i, f in zip(df["idx"], in_family)]
-    df["interpretation"] = [interpret_row(r, s, run.family) for r in df.to_dict("records")]
+    if "tests" in df:
+        df = df.drop(columns=["tests"])
+    tf = tests_frame(run)
+    prim = tf[tf["primary"]].set_index("idx") if len(tf) else pd.DataFrame()
+    cols = ("test_type", "test_label", "label", "statistic", "df1", "df_den", "lrt_df", "p", "effect",
+            "partial_eta2", "estimate", "se", "ci_low", "ci_high", "ci_applicable", "ci_scale", "ci_null",
+            "ci_status", "in_family", "p_bh", "p_holm", "p_adj", "sig_raw", "sig_adj", "tier", "family_size",
+            "validation", "interpretation", "test_method")
+    for c in cols:
+        if len(prim) and c in prim:
+            df[c] = df["idx"].map(prim[c])
+        elif c not in df:
+            df[c] = np.nan
+    if "n_groups" in prim:
+        df["n_groups"] = df["idx"].map(prim["n_groups"])
+    for c in ("in_family", "sig_raw", "sig_adj"):
+        df[c] = df[c].fillna(False).astype(bool)
+    df["tier"] = df["tier"].fillna("")
+    df["validation"] = df["validation"].fillna("")
+    df["interpretation"] = [r if isinstance(r, str) else (f"Not tested: {reason}" if reason else "")
+                            for r, reason in zip(df["interpretation"], df.get("reason", ""))]
+    df["n_tests"] = df["idx"].map(tf.groupby("idx").size()).fillna(0).astype(int) if len(tf) else 0
     return df
+
+
+def legacy_model_type(row: dict[str, Any]) -> str:
+    kind = row.get("kind") or "focal"
+    if kind == "all_two_way":
+        return "All two-way interactions"
+    return "Focal interaction + covariates" if list(row.get("covariates") or []) else "Single focal interaction"
+
+
+def add_display_columns(df: pd.DataFrame, run: DiscoveryRun) -> pd.DataFrame:
+    """Columns for presentation: model type, 'Predictors k / max', term counts for legacy rows,
+    diagnostics status text. Does not change any statistic."""
+    if df.empty:
+        return df
+    df = df.copy()
+    s = run.settings
+    req = len(s.required)
+    recs = df.to_dict("records")
+    if "model_type" not in df or df["model_type"].isna().any():
+        mt = [r.get("model_type") if isinstance(r.get("model_type"), str) else legacy_model_type(r) for r in recs]
+        df["model_type"] = mt
+    if "n_predictors" not in df or df["n_predictors"].isna().any():
+        df["n_predictors"] = [r["n_predictors"] if _num(r.get("n_predictors")) is not None else
+                              len(set(list(r.get("focal") or []) + list(r.get("covariates") or []))) + req
+                              for r in recs]
+    if "n_terms" not in df or df["n_terms"].isna().any():
+        from .space import Candidate, model_terms
+
+        def nterms(r):
+            if _num(r.get("n_terms")) is not None:
+                return r["n_terms"]
+            c = Candidate(int(r["idx"]), tuple(r.get("focal") or ()), tuple(r.get("covariates") or ()),
+                          tuple(s.required), r.get("kind") or "focal")
+            return len(model_terms(c)[0])
+        df["n_terms"] = [nterms(r) for r in recs]
+    df["predictors_txt"] = [f"{int(k)} / {s.max_predictors}" if _num(k) is not None else ""
+                            for k in df["n_predictors"]]
+    df["status_text"] = ""          # filled per row by the table from the current highlight mode
+    df["diag_text"] = ["not fitted" if st in ("invalid", "failed") else ("⚠ " + f if f else "clean")
+                       for st, f in zip(df["status"], df["flags"].fillna("").astype(str))]
+    return df
+
+
+def model_comparison(df: pd.DataFrame, run: DiscoveryRun) -> tuple[pd.DataFrame, str]:
+    """Fitted models ordered by AIC with ΔAIC / ΔBIC — only when every model was fitted to the same
+    rows (shared sample) and family; otherwise information criteria are not comparable (X §9)."""
+    fitted = df[df["status"].isin(["ok", "warning"]) & df["aic"].notna()].copy()
+    if fitted.empty:
+        return fitted, ""
+    shared = run.settings.sample == "shared" and fitted["n"].nunique() <= 1
+    fitted = fitted.sort_values(["aic", "idx"], kind="stable")
+    if shared:
+        fitted["d_aic"] = fitted["aic"] - fitted["aic"].min()
+        fitted["d_bic"] = fitted["bic"] - fitted["bic"].min()
+        note = (f"All {len(fitted):,} fitted models use the same {int(fitted['n'].iloc[0]):,} rows and the same "
+                "outcome family, so AIC/BIC are comparable. Smaller is better; ΔAIC < 2 is usually not a meaningful "
+                "difference. Information criteria are not p-values, and a model chosen from many is optimistic.")
+    else:
+        fitted["d_aic"] = np.nan
+        fitted["d_bic"] = np.nan
+        note = ("Models were fitted to different rows (complete cases per model): AIC/BIC are not comparable "
+                "across them, so no ΔAIC is shown.")
+    return fitted, note
+
+
+HIGHLIGHT_MODES = {
+    "adjusted": "Adjusted p < α",
+    "raw": "Raw p < α",
+    "strict": "Strict: adjusted p < α AND the same-estimand CI excludes its null value",
+    "off": "Off",
+}
+
+
+def ci_excludes_null(df: pd.DataFrame) -> pd.Series:
+    """True only for a finite CI of the tested coefficient itself (same estimand) that excludes the
+    null value of its scale; boundary values do not exclude. Joint tests, missing, non-finite or
+    unlabelled intervals never qualify."""
+    lo = pd.to_numeric(df["ci_low"], errors="coerce")
+    hi = pd.to_numeric(df["ci_high"], errors="coerce")
+    null = pd.to_numeric(df["ci_null"], errors="coerce")
+    finite = np.isfinite(lo) & np.isfinite(hi) & np.isfinite(null) & (lo <= hi)
+    same = df["ci_applicable"] == "same_estimand"
+    return (same & finite & ((lo > null) | (hi < null))).astype(bool)
+
+
+def highlight_mask(df: pd.DataFrame, mode: str = "adjusted", alpha: float = 0.05) -> pd.Series:
+    """Presentation only: which hypothesis rows to highlight. Never refits or re-tests."""
+    if df.empty or mode == "off":
+        return pd.Series(False, index=df.index)
+    ok = df["in_family"].astype(bool)
+    p = pd.to_numeric(df["p"], errors="coerce")
+    pa = pd.to_numeric(df["p_adj"], errors="coerce")
+    if mode == "raw":
+        return (ok & (p < alpha)).fillna(False).astype(bool)
+    sig = (ok & (pa < alpha)).fillna(False).astype(bool)
+    if mode == "strict":
+        return sig & ci_excludes_null(df)
+    return sig
+
+
+def warning_mask(df: pd.DataFrame) -> pd.Series:
+    """Serious screening flags (non-convergence, singularity, separation, sparse cells, …) — shown
+    independently of significance."""
+    if df.empty:
+        return pd.Series(False, index=df.index)
+    return (df["status"] == "warning") | (df["flags"].fillna("").astype(str) != "")
 
 
 def _p(p: float) -> str:
@@ -401,35 +752,50 @@ def _p(p: float) -> str:
 
 
 def interpret_row(r: dict[str, Any], s: SearchSettings, family: str = "gaussian") -> str:
-    """One-sentence teaching interpretation for a results row (§10.8)."""
+    """Short teaching interpretation of one tested hypothesis (§10.8, M §11): what was tested,
+    the result with its test and family, direction when one coefficient is tested, and caveats."""
     if r["status"] in ("invalid", "failed"):
         return f"Not tested: {r['reason']}"
     if r.get("speculative"):
         return "Evaluated after the stop point; not part of this search's results."
     outcome = r["formula"].split(" ~ ")[0]
-    parts = r["interaction"].split(" × ")
-    if r.get("kind") == "all_two_way":
-        what = f"the two-way interactions among {r['interaction'].split(': ', 1)[1]} jointly improve the model of {outcome}"
+    ttype = r.get("test_type") or ("joint_interaction" if r.get("kind") == "all_two_way" else "focal_interaction")
+    label = r.get("label") or r["interaction"]
+    parts = label.split(" × ")
+    if ttype == "joint_interaction":
+        what = f"the interaction terms ({label.split(': ', 1)[-1]}) jointly improve the model of {outcome}"
+    elif ttype == "main_term":
+        what = f"{label} is associated with {outcome} when the model's other predictors are held constant"
+    elif ttype == "overall":
+        what = f"the model's predictors together explain {outcome} better than the {label.split(' vs ', 1)[-1]}"
     elif len(parts) == 2:
         what = f"the {parts[0]}–{outcome} relationship differs across {parts[1]}"
     else:
         what = f"the {parts[0]} × {parts[1]} interaction on {outcome} differs across {parts[2]}"
     p, pa = r["p"], r.get("p_adj")
-    if r.get("effect") is None:
+    if r.get("effect") is None or r.get("effect") != r.get("effect"):
         eff = ""
     elif family == "gaussian":
-        eff = f"; it explains {100 * r['effect']:.1f}% of the outcome's variation"
+        eff = f"; it uniquely explains {100 * r['effect']:.1f}% of the outcome's variation"
     elif family == "lmm":
         eff = f"; marginal R² rises by {100 * r['effect']:.1f} points"
     else:
         eff = f"; McFadden pseudo-R² rises by {r['effect']:.3f}"
+    fam = r.get("family_size")
+    within = f" among {int(fam):,} {TEST_TYPES.get(ttype, ttype).lower()} tests" if fam else ""
     if r.get("sig_adj"):
-        text = f"Evidence that {what} (p {_p(p)}, adjusted p {_p(pa)}{eff}). Still exploratory: check stability and new data."
+        text = (f"Evidence that {what} (p {_p(p)}, adjusted p {_p(pa)}{within}{eff}). Still exploratory: "
+                "check stability and new data.")
     elif r.get("sig_raw"):
         text = (f"Possible sign that {what} (p {_p(p)}), but not after adjusting for the number of tests "
-                f"(adjusted p {_p(pa)}): plausibly a chance finding.")
+                f"(adjusted p {_p(pa)}{within}): plausibly a chance finding.")
     else:
         text = f"No clear evidence that {what} (p {_p(p)}); this is not proof that there is no difference."
+    est = r.get("estimate")
+    if r.get("ci_applicable") == "same_estimand" and est is not None and est == est and est != 0:
+        scale = "log-odds" if family in ("binomial", "ordinal") else "coefficient"
+        text += (f" The {scale} is {'positive' if est > 0 else 'negative'} ({est:.3g}, "
+                 f"{100 * float(r.get('ci_level') or s.conf):.0f}% CI {r['ci_low']:.3g} to {r['ci_high']:.3g}).")
     if r.get("flags"):
         text += f" Screening flags: {r['flags']}."
     return text
@@ -438,7 +804,7 @@ def interpret_row(r: dict[str, Any], s: SearchSettings, family: str = "gaussian"
 def discovery_ranking(df: pd.DataFrame, by: str = "p") -> pd.DataFrame:
     if df.empty:
         return df
-    return df[df["in_family"]].sort_values([by, "idx"], kind="stable")
+    return df[df["in_family"]].sort_values([by, "idx"], kind="stable", na_position="last")
 
 
 def support_ranking(df: pd.DataFrame) -> pd.DataFrame:
@@ -468,4 +834,19 @@ def summary(run: DiscoveryRun, df: pd.DataFrame) -> dict[str, Any]:
         "sig_adj": int(df["sig_adj"].sum()) if n_attempted else 0,
         "expected_false_raw": fam * run.settings.alpha,
         "provisional": run.status != "complete",
+        "families": _family_counts(run),
     }
+
+
+def _family_counts(run: DiscoveryRun) -> list[dict[str, Any]]:
+    """Per test type: tests in the family, raw / adjusted significant, joint tests without a CI."""
+    tf = tests_frame(run)
+    if tf.empty:
+        return []
+    out = []
+    for ttype, g in tf[tf["in_family"]].groupby("test_type", sort=False):
+        out.append({"type": ttype, "label": TEST_TYPES.get(ttype, ttype), "tests": len(g),
+                    "sig_raw": int(g["sig_raw"].sum()), "sig_adj": int(g["sig_adj"].sum()),
+                    "no_ci": int((g["ci_applicable"] != "same_estimand").sum()),
+                    "expected_false_raw": len(g) * run.settings.alpha})
+    return out

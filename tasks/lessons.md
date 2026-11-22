@@ -50,3 +50,9 @@
 
 ## Disk space
 - Drive C: is nearly full on this machine; E: has the space. Run tests with `--basetemp` on E: and put builds/scratch on E:. A full C: made R workers exit at startup with no error text.
+
+## Caches in R workers
+- A per-worker cache of fitted statistics must be keyed to the exact rows, not just the formula: other code (stability, procedure CV) re-points `sx_dd` at resampled rows. Validate the cache against `rownames(d)` before reuse. (v1.2: caught by test_stability_and_procedure_cv.)
+
+## pytest naming
+- Never import a helper whose name starts with `test` (e.g. `tests_frame`) into a test module: pytest collects it. Alias it.

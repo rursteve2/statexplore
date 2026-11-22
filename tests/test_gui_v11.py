@@ -77,8 +77,9 @@ def test_analysis_builder_treat_as_continuous(hrs_window, qtbot, r_worker):
         if preds.item(i).data(Qt.UserRole) == "R_BMI":
             preds.item(i).setCheckState(Qt.Checked)
     panel = page.treatment_panel
-    assert "R_LTACTX" in panel._boxes and "R_BMI" not in panel._boxes
-    assert panel._boxes["R_LTACTX"].text() == "Treat R_LTACTX as continuous for this analysis"
+    assert panel.is_offered("R_LTACTX") and not panel.is_offered("R_BMI")       # v1.2: R_BMI shown, no override
+    assert panel.status("R_BMI")[0] == "continuous" and "R_BMI" in panel.model_variables()
+    assert panel.outcome_check.text() == "Treat outcome R_LTACTX as continuous for this analysis"
     panel.ask = False
     panel.set_treated("R_LTACTX")
     assert [t.variable for t in panel.treatments()] == ["R_LTACTX"]
@@ -110,7 +111,7 @@ def test_eda_page_categorical_workflow(hrs_window, qtbot, r_worker):
     assert r.kind == "eda_plot" and r.inputs["group"]["name"] == "RAGENDER" and r.plots
     # treat-as-continuous inside EDA: describe R_LTACTX with psych
     page.selector.set_selected(["R_LTACTX"])
-    assert "R_LTACTX" in page.treatment_panel._boxes
+    assert page.treatment_panel.is_offered("R_LTACTX")
     page.treatment_panel.ask = False
     page.treatment_panel.set_treated("R_LTACTX")
     page._describe()

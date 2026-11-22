@@ -164,7 +164,10 @@ class MixedPage(QWidget):
         fam_row.setContentsMargins(0, 0, 0, 0)
         fam_row.addWidget(self.family_hint, 1)
         fam_row.addWidget(self.use_family)
+        self.treatment_panel = TreatmentPanel()
+        self.treatment_panel.changed.connect(self._update_engine)
         for label, w in [("Outcome", self.outcome), ("Outcome family", self.family), ("", fam_box),
+                         ("", self.treatment_panel.outcome_box),
                          ("Estimator", self.estimator), ("Participant ID", self.idv), ("Time", self.time),
                          ("Time as", self.time_type), ("Cluster (optional)", self.cluster),
                          ("Interactions", self.interactions), ("Random effects", self.random),
@@ -183,8 +186,6 @@ class MixedPage(QWidget):
         pbox = QGroupBox("Fixed-effect predictors (besides time)")
         QVBoxLayout(pbox).addWidget(self.pred_sel)
         ll.addWidget(pbox)
-        self.treatment_panel = TreatmentPanel()
-        self.treatment_panel.changed.connect(self._update_engine)
         ll.addWidget(self.treatment_panel)
         pre_box = QGroupBox("Longitudinal data preflight (before fitting)")
         pl = QVBoxLayout(pre_box)
@@ -199,8 +200,9 @@ class MixedPage(QWidget):
         self.engine_label.setWordWrap(True)
         self.engine_label.setObjectName("hint")
         ll.addWidget(self.engine_label)
-        for w in (self.residual, self.random, self.family, self.estimator, self.inference):
+        for w in (self.residual, self.random, self.estimator, self.inference):
             w.currentIndexChanged.connect(self._update_engine)
+        self.family.currentIndexChanged.connect(self._update_treatments)
         self.outcome.currentIndexChanged.connect(self._outcome_changed)
         for w in (self.idv, self.time):
             w.currentIndexChanged.connect(self._preflight)
@@ -303,10 +305,10 @@ class MixedPage(QWidget):
                     combo.addItem(f"{c} = {ds.level_label(out, code)}", code)
         self._update_treatments()
 
-    def _update_treatments(self) -> None:
-        out = self.outcome.currentData()
-        names = ([out] if out else []) + self.pred_sel.selected()
-        self.treatment_panel.set_variables(self.state.dataset, names)
+    def _update_treatments(self, *_args) -> None:
+        """Re-render every model variable's treatment row (outcome first) whenever the outcome,
+        predictors, family or metadata change (M §6.2)."""
+        self.treatment_panel.set_model(self.state.dataset, self.outcome.currentData(), self.pred_sel.selected())
         self._update_engine()
 
     def _suggested_family(self) -> tuple[str, str]:

@@ -278,6 +278,45 @@ def continuous_problem(ds: Dataset, name: str) -> str:
     return ""
 
 
+def treatment_status(ds: Dataset, name: str) -> tuple[str, str]:
+    """(status, explanation) for the 'treat as continuous' control of one variable (M §6.1):
+    eligible | continuous (already continuous — no override needed) | unavailable (with the reason)."""
+    from ..core.variables import Role
+
+    v = ds.var(name)
+    if v.role is Role.ID:
+        return "unavailable", f"Unavailable: {v.display_name} is an identifier (ID role), not a measurement."
+    if v.storage is Storage.DATETIME:
+        return "unavailable", "Unavailable: dates and times cannot be treated as numeric codes here."
+    if v.storage is not Storage.NUMERIC:
+        return "unavailable", "Unavailable: text categories have no numeric codes."
+    if v.measure is Measure.CONTINUOUS:
+        return "continuous", "Already continuous — no override needed."
+    k = ds.analysis_column(name).dropna().nunique()
+    if k == 0:
+        return "unavailable", "Unavailable: no valid values in the analysed rows."
+    if k < 2:
+        return "unavailable", "Unavailable: constant in the analysed rows (after filters and missing codes)."
+    codes = sorted(ds.analysis_column(name).dropna().unique().tolist())
+    lo, hi = _code(codes[0]), _code(codes[-1])
+    extra = " (needs a second confirmation: nominal codes)" if needs_numeric_confirmation(ds, name) else ""
+    return "eligible", f"Eligible: {k} numeric {v.measure.value} codes from {lo} to {hi}{extra}."
+
+
+def coding_fingerprint(ds: Dataset, name: str) -> str:
+    """Changes whenever the variable's values or coding change; an acknowledgement is only valid
+    for the exact coding it was given for (M §6.2)."""
+    import hashlib
+    import json
+
+    v = ds.var(name)
+    col = ds.analysis_column(name).dropna()
+    payload = [v.measure.value, v.storage.value, sorted(map(str, col.unique().tolist())),
+               sorted((str(k), str(lab)) for k, lab in v.value_labels.items()),
+               [str(x) for x in v.missing_values], [list(map(str, r)) for r in v.missing_ranges]]
+    return hashlib.sha1(json.dumps(payload).encode()).hexdigest()
+
+
 def needs_numeric_confirmation(ds: Dataset, name: str) -> bool:
     v = ds.var(name)
     return v.measure in (Measure.NOMINAL, Measure.BINARY) and ds.analysis_column(name).dropna().nunique() > 2

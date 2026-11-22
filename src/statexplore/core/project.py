@@ -48,6 +48,7 @@ class Project:
         self.artifacts: dict[str, bytes] = {}
         self.searches: list = []  # discovery.engine.DiscoveryRun
         self.models: list = []    # analysis.models.ModelSpec (comparison set)
+        self.settings: dict[str, Any] = {}   # per-project presentation preferences (e.g. discovery highlighting)
         self.path: Path | None = None
         self.loaded_version = PROJECT_VERSION   # format version of the file this project was opened from
         self.backup_path: Path | None = None
@@ -98,6 +99,7 @@ class Project:
             "filters": [f.to_dict() for f in ds.filters],
             "models": [m.to_dict() for m in self.models],
             "holdout": ds.holdout.to_dict() if ds.holdout else None,
+            "settings": self.settings,
         }
         con.executemany("INSERT INTO meta VALUES (?, ?)", [(k, json.dumps(v)) for k, v in meta.items()])
         con.executemany(
@@ -118,7 +120,7 @@ class Project:
         con.executemany("INSERT INTO artifacts VALUES (?, ?)", list(self.artifacts.items()))
         for i, run in enumerate(self.searches):
             buf = io.BytesIO()
-            pd.DataFrame(run.rows).to_parquet(buf, engine="pyarrow", index=False)
+            pd.DataFrame([_flat_row(r) for r in run.rows]).to_parquet(buf, engine="pyarrow", index=False)
             con.execute("INSERT INTO searches VALUES (?, ?, ?, ?)",
                         (i, run.id, json.dumps(run.meta_dict()), buf.getvalue()))
 
@@ -160,6 +162,7 @@ class Project:
             from ..analysis.models import ModelSpec
 
             project.models = [ModelSpec.from_dict(m) for m in meta.get("models", [])]
+            project.settings = dict(meta.get("settings") or {})
         except sqlite3.DatabaseError as e:
             raise ProjectError(f"Project file is damaged or unreadable: {e}") from e
         finally:
@@ -167,6 +170,17 @@ class Project:
         project.path = path
         project.loaded_version = int(meta.get("version", 1))
         return project
+
+
+NESTED_ROW_FIELDS = ("tests", "inter")   # v1.2 discovery rows: kept as JSON text inside the parquet
+
+
+def _flat_row(r: dict[str, Any]) -> dict[str, Any]:
+    out = dict(r)
+    for k in NESTED_ROW_FIELDS:
+        if k in out and not isinstance(out[k], str):
+            out[k] = json.dumps(out[k], default=float)
+    return out
 
 
 def _load_searches(con: sqlite3.Connection) -> list:
@@ -182,6 +196,9 @@ def _load_searches(con: sqlite3.Connection) -> list:
         for rec in frame.to_dict("records"):
             rec["focal"] = list(rec.get("focal", []))
             rec["covariates"] = list(rec.get("covariates", []))
+            for k in NESTED_ROW_FIELDS:
+                if isinstance(rec.get(k), str):
+                    rec[k] = json.loads(rec[k])
             rows.append({k: (None if isinstance(v, float) and v != v else v) for k, v in rec.items()})
         runs.append(DiscoveryRun.from_meta(json.loads(meta), rows))
     return runs

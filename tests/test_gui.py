@@ -117,6 +117,8 @@ def test_discovery_page_end_to_end(window, qtbot, tmp_path, r_worker):
     for i in range(page.cands.count()):
         page.cands.item(i).setCheckState(Qt.Checked)
     page.workers.setValue(1)
+    page.strategy.setCurrentIndex(page.strategy.findData("focal"))            # the v1.1 grammar (v1.2 default differs)
+    page.include_main.setChecked(False)
     assert page._estimate() is None and "Confirm the outcome model family" in page.estimate.text()   # v1.1
     page._use_suggestion()
     assert page.family.currentData() == "gaussian"
@@ -125,7 +127,7 @@ def test_discovery_page_end_to_end(window, qtbot, tmp_path, r_worker):
     page._start()
     qtbot.waitUntil(lambda: page.run is not None and page.run.status == "complete", timeout=120000)
     qtbot.waitUntil(lambda: page.discovery_table.model.rowCount() == 6, timeout=10000)
-    assert page.discovery_table.model.frame.iloc[0]["Interaction"] == "a × b"
+    assert page.discovery_table.model.frame.iloc[0]["Tested effect"] == "a × b"     # v1.2 hypothesis table
     assert "Complete" in page.summary_view.toPlainText()
     assert window.state.project.searches == [page.run]
     page.tabs.setCurrentWidget(page.discovery_table)

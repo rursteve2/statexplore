@@ -5,10 +5,11 @@ import html
 import threading
 from typing import Any
 
+import numpy as np
 import pandas as pd
-from PySide6.QtCore import QObject, QSortFilterProxyModel, Qt, Signal
+from PySide6.QtCore import QObject, Qt, Signal
 from PySide6.QtWidgets import (
-    QAbstractItemView, QComboBox, QDialog, QDoubleSpinBox, QFormLayout, QGroupBox, QHBoxLayout, QLabel,
+    QAbstractItemView, QCheckBox, QComboBox, QDialog, QDoubleSpinBox, QFormLayout, QGroupBox, QHBoxLayout, QLabel,
     QLineEdit, QListWidget, QListWidgetItem, QMessageBox, QProgressBar, QPushButton, QScrollArea, QSpinBox,
     QSplitter, QTableView, QTabWidget, QTextBrowser, QVBoxLayout, QWidget,
 )
@@ -19,28 +20,45 @@ from ...discovery import engine
 from ...discovery.detail import candidate_from_row, full_analysis
 from ...discovery.rcode import candidate_script
 from ...discovery.space import view as search_view
-from ...discovery.space import FAMILIES, PROFILES, SearchSettings, SearchSpaceError, describe_space, suggest_family
+from ...discovery.space import (
+    FAMILIES, MAX_PREDICTORS_LIMIT, PROFILES, STRATEGIES, SearchSettings, SearchSpaceError, describe_space,
+    suggest_family,
+)
 from ...analysis.measurement import TreatmentError, apply_treatments
 from ..widgets.treatment_panel import TreatmentPanel
 from ..widgets.variable_selector import VariableSelector
-from ..models import FrameModel
+from ..models import FrameModel, NumericSortProxy
 from ..result_view import render
 from ..state import AppState
 from .eda import CodeDialog
 
 P_COLS = ("p", "p (adjusted)", "p (BH)", "p (Holm)")
-DISCOVERY_COLS = {"idx": "#", "interaction": "Interaction", "formula": "Model", "statistic": "Statistic",
-                  "df1": "df1", "df2": "df2", "p": "p", "p_adj": "p (adjusted)", "effect": "Effect",
-                  "estimate": "Estimate", "ci_low": "CI low", "ci_high": "CI high", "n": "n",
-                  "n_params": "Parameters", "status": "Status", "flags": "Flags",
-                  "validation": "Validation status", "interpretation": "Teaching interpretation"}
-SUPPORT_COLS = {"tier": "Tier", "idx": "#", "interaction": "Interaction", "formula": "Model", "effect": "Effect",
-                "p": "p", "p_adj": "p (adjusted)", "estimate": "Estimate", "ci_low": "CI low",
-                "ci_high": "CI high", "n_params": "Parameters", "aic": "AIC", "r2": "R² (full model)",
-                "flags": "Flags", "validation": "Validation status", "interpretation": "Teaching interpretation"}
-ALL_COLS = {"idx": "#", "interaction": "Interaction", "formula": "Model", "status": "Status", "reason": "Reason",
-            "flags": "Flags", "n": "n", "n_params": "Parameters", "p": "p", "p_bh": "p (BH)",
-            "p_holm": "p (Holm)", "speculative": "After stop point", "interpretation": "Teaching interpretation"}
+STATUS_COL = "Highlight"
+_TEST_COLS = {"status_text": STATUS_COL, "test_id": "Test ID", "idx": "#", "model_type": "Model type",
+              "label": "Tested effect", "test_label": "Test type", "formula": "Model", "statistic": "Statistic",
+              "df1": "df1", "df_den": "df (denominator)", "p": "p", "p_adj": "p (adjusted)",
+              "adj_method": "Adjusted p method", "effect": "Effect", "estimate": "Estimate", "ci_low": "CI low",
+              "ci_high": "CI high", "ci_scale": "Effect scale", "ci_status": "CI applicability",
+              "predictors_txt": "Predictors", "n_terms": "Model terms", "n_params": "Estimated parameters",
+              "n": "n", "n_groups": "Groups (participants)", "diag_text": "Diagnostics status", "flags": "Flags",
+              "search_scope": "Search complete/partial", "validation": "Validation status",
+              "interpretation": "Teaching interpretation"}
+DISCOVERY_COLS = dict(_TEST_COLS)
+SUPPORT_COLS = {"status_text": STATUS_COL, "tier": "Tier", **{k: v for k, v in _TEST_COLS.items() if k != "status_text"},
+                "aic": "AIC", "r2": "R² (full model)"}
+ALL_COLS = {"idx": "#", "model_type": "Model type", "interaction": "Interaction", "formula": "Model",
+            "status": "Status", "reason": "Reason", "flags": "Flags", "predictors_txt": "Predictors",
+            "n_terms": "Model terms", "n_params": "Estimated parameters", "n_tests": "Hypotheses tested",
+            "n": "n", "n_groups": "Groups (participants)", "label": "Focal hypothesis", "p": "p", "p_bh": "p (BH)",
+            "p_holm": "p (Holm)", "aic": "AIC", "bic": "BIC", "r2": "R²", "adj_r2": "Adjusted R²",
+            "cached": "Reused fit", "speculative": "After stop point", "interpretation": "Teaching interpretation"}
+COMPARE_COLS = {"idx": "#", "model_type": "Model type", "formula": "Model", "predictors_txt": "Predictors",
+                "n_main": "Main-effect terms", "n_two_way": "Two-way terms", "n_three_way": "Three-way terms",
+                "n_terms": "Model terms", "n_params": "Estimated parameters", "n_re_params": "Random-effect parameters",
+                "n": "n", "n_groups": "Groups (participants)", "aic": "AIC", "d_aic": "ΔAIC", "bic": "BIC",
+                "d_bic": "ΔBIC", "r2": "R²", "adj_r2": "Adjusted R²", "loglik": "log-likelihood",
+                "diag_text": "Diagnostics status"}
+ALPHA_PRESETS = ("0.05", "0.01", "0.001")
 
 
 class _Bridge(QObject):
@@ -48,22 +66,23 @@ class _Bridge(QObject):
 
 
 class ResultTable(QWidget):
-    """Searchable, sortable table over a results frame; remembers candidate indices."""
+    """Searchable, numerically sortable table over a results frame. Keeps the sort column and
+    direction, the search text and the selected row (by its stable ID) when the data refresh."""
 
-    def __init__(self, columns: dict[str, str]):
+    def __init__(self, columns: dict[str, str], id_col: str = "#"):
         super().__init__()
         self.columns = columns
+        self.id_col = id_col
+        self.highlight_only = False
         lay = QVBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
         self.search = QLineEdit()
         self.search.setPlaceholderText("Search (variable names, status, flags…)")
         lay.addWidget(self.search)
         self.model = FrameModel(p_columns=P_COLS)
-        self.proxy = QSortFilterProxyModel()
+        self.model.status_col = STATUS_COL
+        self.proxy = NumericSortProxy()
         self.proxy.setSourceModel(self.model)
-        self.proxy.setSortRole(Qt.UserRole)
-        self.proxy.setFilterKeyColumn(-1)
-        self.proxy.setFilterCaseSensitivity(Qt.CaseInsensitive)
         self.search.textChanged.connect(self.proxy.setFilterFixedString)
         self.view = QTableView()
         self.view.setModel(self.proxy)
@@ -72,14 +91,61 @@ class ResultTable(QWidget):
         self.view.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.view.setSelectionMode(QAbstractItemView.SingleSelection)
         lay.addWidget(self.view)
+        self._highlight = np.zeros(0, bool)
 
-    def set_frame(self, df: pd.DataFrame) -> None:
+    def set_frame(self, df: pd.DataFrame, highlight=None, warning=None, text: list[str] | None = None) -> None:
+        keep = self.selected_id()
         cols = [c for c in self.columns if c in df.columns]
-        self.model.set_frame(df[cols].rename(columns=self.columns) if len(df) else pd.DataFrame(columns=list(self.columns.values())))
-        if 0 < len(df) <= 5000:  # sizing to contents scans every row; skip for very large searches
+        frame = df[cols].rename(columns=self.columns) if len(df) else pd.DataFrame(columns=list(self.columns.values()))
+        self.model.set_frame(frame)
+        self.set_status(highlight, warning, text)
+        if 0 < len(df) <= 5000 and not getattr(self, "_sized", False):
+            # sizing scans every row: only once, and never for very large searches
             self.view.resizeColumnsToContents()
             for c in range(self.model.columnCount()):
                 self.view.setColumnWidth(c, min(self.view.columnWidth(c), 320))
+            self._sized = True
+        if keep is not None:
+            self.select_id(keep)
+
+    def set_status(self, highlight=None, warning=None, text: list[str] | None = None) -> None:
+        n = len(self.model.frame)
+        self._highlight = np.zeros(n, bool) if highlight is None else np.asarray(highlight, bool)
+        self.model.set_row_status(self._highlight, warning, text=text,
+                                  tips=None if text is None else [t or None for t in text])
+        self._apply_only()
+
+    def set_highlight_only(self, on: bool) -> None:
+        self.highlight_only = on
+        self._apply_only()
+
+    def _apply_only(self) -> None:
+        self.proxy.set_only_rows(set(np.flatnonzero(self._highlight).tolist()) if self.highlight_only else None)
+
+    def counts(self) -> tuple[int, int, int]:
+        """(highlighted among shown rows, shown rows, total rows)."""
+        shown = [self.proxy.mapToSource(self.proxy.index(r, 0)).row() for r in range(self.proxy.rowCount())]
+        hl = int(sum(self._highlight[i] for i in shown if i < len(self._highlight)))
+        return hl, len(shown), len(self.model.frame)
+
+    def selected_id(self):
+        sel = self.view.selectionModel().selectedRows() if self.view.selectionModel() else []
+        if not sel or self.id_col not in self.model.frame.columns:
+            return None
+        return self.model.frame.iloc[self.proxy.mapToSource(sel[0]).row()][self.id_col]
+
+    def select_id(self, value) -> bool:
+        if self.id_col not in self.model.frame.columns:
+            return False
+        hits = np.flatnonzero((self.model.frame[self.id_col] == value).to_numpy())
+        if not len(hits):
+            return False
+        idx = self.proxy.mapFromSource(self.model.index(int(hits[0]), 0))
+        if not idx.isValid():
+            return False
+        self.view.selectRow(idx.row())
+        self.view.scrollTo(idx)
+        return True
 
     def selected_idx(self) -> int | None:
         sel = self.view.selectionModel().selectedRows()
@@ -128,6 +194,8 @@ class DiscoveryPage(QWidget):
         hint_row.addWidget(self.family_hint, 1)
         hint_row.addWidget(self.use_suggestion)
         form.addRow(hint_box)
+        self.treatment_panel = TreatmentPanel()
+        form.addRow(self.treatment_panel.outcome_box)     # outcome treatment directly below the family (M §6.1)
         self.event_combo = QComboBox()
         self.event_combo.setToolTip("Binary logistic: the category whose probability is modelled")
         self.event_combo.currentIndexChanged.connect(self._invalidate_estimate)
@@ -159,21 +227,44 @@ class DiscoveryPage(QWidget):
         self.req_sel.changed.connect(self._selection_changed)
         rb.addWidget(self.req_sel)
         cl.addWidget(req_box, 1)
-        self.treatment_panel = TreatmentPanel()
         self.treatment_panel.changed.connect(self._treatments_changed)
         cl.addWidget(self.treatment_panel)
 
         opts = QGroupBox("Search settings")
         of = QFormLayout(opts)
+        self.strategy = QComboBox()
+        for key, text in STRATEGIES.items():
+            self.strategy.addItem(text, key)
+        self.strategy.setToolTip(
+            "All eligible interaction combinations: every hierarchical set of two-way (and, if enabled, "
+            "three-way)\ninteractions on every subset of predictors — including models with several "
+            "interactions at once.\nSingle focal interaction: the v1.1 grammar (one tested interaction, "
+            "optional covariates).\nFull factorial: one model with every interaction per predictor subset.\n"
+            "Main effects only: no interactions.")
+        self.include_main = QCheckBox("Include main-effects-only models")
+        self.include_main.setChecked(True)
+        self.include_main.setToolTip("Adds Y ~ X1 + X2 + … models (every predictor subset) with a whole-model "
+                                     "test and main-effect term tests, in their own multiple-testing families.")
         self.max_pred = QSpinBox()
-        self.max_pred.setRange(2, 6)
-        self.max_pred.setValue(3)
+        self.max_pred.setRange(1, MAX_PREDICTORS_LIMIT)
+        self.max_pred.setValue(MAX_PREDICTORS_LIMIT)
+        self.max_pred.setToolTip("Distinct predictors per model (a categorical variable counts once; interaction "
+                                 "terms do not count extra).\nRequired covariates count toward it.")
+        self.min_pred = QSpinBox()
+        self.min_pred.setRange(1, MAX_PREDICTORS_LIMIT)
+        self.min_pred.setValue(1)
+        self.min_obs = QSpinBox()
+        self.min_obs.setRange(0, 10_000_000)
+        self.min_obs.setSpecialValueText("no minimum")
         self.order = QComboBox()
         self.order.addItem("Two-way", 2)
         self.order.addItem("Two- and three-way (advanced)", 3)
         self.cov_mode = QComboBox()
         self.cov_mode.addItem("Focal: required covariates only (recommended)", "focal")
         self.cov_mode.addItem("Subsets: every covariate combination (exhaustive)", "subsets")
+        self.cov_mode.setToolTip("Single-focal-interaction strategy only. Subsets mode adds extra covariates to "
+                                 "each focal interaction;\nit does not by itself add main-effects-only models "
+                                 "(use the checkbox above).")
         self.all2 = QComboBox()
         self.all2.addItem("No", False)
         self.all2.addItem("Yes: also test each subset's model with all two-way terms jointly", True)
@@ -212,18 +303,29 @@ class DiscoveryPage(QWidget):
         self.max_params = QSpinBox()
         self.max_params.setRange(2, 500)
         self.max_params.setValue(40)
-        for label, w in [("Max predictors per model", self.max_pred), ("Interaction order", self.order),
-                         ("Covariate adjustment", self.cov_mode),
+        for label, w in [("Search strategy", self.strategy), ("", self.include_main),
+                         ("Max distinct predictors per model", self.max_pred),
+                         ("Min distinct predictors per model", self.min_pred),
+                         ("Maximum interaction order", self.order),
+                         ("Covariate adjustment (focal strategy)", self.cov_mode),
                          ("All-two-way models (subset mode)", self.all2), ("Missing data", self.sample),
                          ("Significance threshold (α)", self.alpha), ("Multiple-testing adjustment", self.correction),
                          ("Search mode", self.mode), ("Target significant models (mode B)", self.target),
                          ("Search profile", self.profile), ("Model budget", self.max_models),
                          ("Time budget (minutes)", self.max_minutes), ("Parallel R workers", self.workers),
-                         ("Max parameters per model", self.max_params)]:
-            of.addRow(label, w)
-        for w in (self.max_pred, self.order, self.cov_mode, self.sample, self.mode, self.max_models):
+                         ("Max parameters per model", self.max_params),
+                         ("Minimum complete rows per model", self.min_obs)]:
+            if label:
+                of.addRow(label, w)
+            else:
+                of.addRow(w)
+        for w in (self.max_pred, self.min_pred, self.order, self.cov_mode, self.sample, self.mode, self.max_models,
+                  self.strategy, self.min_obs):
             sig = getattr(w, "valueChanged", None) or w.currentIndexChanged
             sig.connect(self._invalidate_estimate)
+        self.include_main.toggled.connect(self._invalidate_estimate)
+        self.strategy.currentIndexChanged.connect(self._strategy_changed)
+        self._strategy_changed()
         cl.addWidget(opts)
         self._apply_profile()
 
@@ -260,16 +362,64 @@ class DiscoveryPage(QWidget):
         self.history.activated.connect(self._pick_history)
         top.addWidget(self.history, 1)
         rl.addLayout(top)
+        hl = QHBoxLayout()
+        hl.addWidget(QLabel("<b>Highlight findings:</b>"))
+        self.hl_mode = QComboBox()
+        for key, text in engine.HIGHLIGHT_MODES.items():
+            self.hl_mode.addItem(text, key)
+        self.hl_mode.setToolTip("Presentation only: highlighting never refits a model or changes a p-value.\n"
+                                "Strict mode needs a confidence interval for the SAME coefficient the p-value "
+                                "tests;\njoint (multi-df) tests have none and are never highlighted in strict mode.")
+        hl.addWidget(self.hl_mode, 1)
+        hl.addWidget(QLabel("α"))
+        self.hl_alpha = QComboBox()
+        self.hl_alpha.setEditable(True)
+        self.hl_alpha.addItems(list(ALPHA_PRESETS))
+        self.hl_alpha.setToolTip("Highlight threshold (0 < α < 1); type a custom value")
+        self.hl_alpha.setMaximumWidth(90)
+        hl.addWidget(self.hl_alpha)
+        self.hl_only = QCheckBox("Show highlighted only")
+        hl.addWidget(self.hl_only)
+        self.hl_count = QLabel()
+        hl.addWidget(self.hl_count)
+        rl.addLayout(hl)
+        frow = QHBoxLayout()
+        frow.addWidget(QLabel("Show:"))
+        self.view_filter = QComboBox()
+        self.view_filter.setToolTip("Hypotheses of different types are never ranked together as if they tested "
+                                    "the same thing; each type is its own multiple-testing family.")
+        self.view_filter.addItem("All hypotheses", None)
+        frow.addWidget(self.view_filter, 1)
+        rl.addLayout(frow)
         self.tabs = QTabWidget()
         self.summary_view = QTextBrowser()
-        self.discovery_table = ResultTable(DISCOVERY_COLS)
-        self.support_table = ResultTable(SUPPORT_COLS)
+        self.discovery_table = ResultTable(DISCOVERY_COLS, id_col="Test ID")
+        self.support_table = ResultTable(SUPPORT_COLS, id_col="Test ID")
         self.all_table = ResultTable(ALL_COLS)
+        self.compare_table = ResultTable(COMPARE_COLS)
+        self.compare_note = QLabel()
+        self.compare_note.setWordWrap(True)
+        self.compare_note.setObjectName("hint")
+        compare_box = QWidget()
+        cbl = QVBoxLayout(compare_box)
+        cbl.setContentsMargins(0, 0, 0, 0)
+        cbl.addWidget(self.compare_note)
+        cbl.addWidget(self.compare_table, 1)
+        self.tests = pd.DataFrame()
+        self._table_frames: dict[int, pd.DataFrame] = {}
+        self.hl_mode.currentIndexChanged.connect(self._highlight_changed)
+        self.hl_alpha.currentTextChanged.connect(self._highlight_changed)
+        self.hl_only.toggled.connect(self._highlight_changed)
+        self.view_filter.currentIndexChanged.connect(self._refresh_tables)
         self.tabs.addTab(self.summary_view, "Summary")
         self.tabs.addTab(self.discovery_table, "Discovery significance ranking")
         self.tabs.addTab(self.support_table, "Statistical support ranking")
+        self.tabs.addTab(compare_box, "Model comparison")
         self.tabs.addTab(self.all_table, "All attempts")
         rl.addWidget(self.tabs, 1)
+        self.tabs.currentChanged.connect(self._update_counts)
+        for t in (self.discovery_table, self.support_table, self.all_table, self.compare_table):
+            t.search.textChanged.connect(self._update_counts)
         sort_row = QHBoxLayout()
         sort_row.addWidget(QLabel("Discovery ranking order:"))
         self.rank_by = QComboBox()
@@ -312,6 +462,7 @@ class DiscoveryPage(QWidget):
     # ---------- variable lists ----------
     def _reload(self) -> None:
         self.run = None
+        self._load_highlight_prefs()
         self._reload_lists()
         self._refresh_history()
         self._show_run()
@@ -418,12 +569,17 @@ class DiscoveryPage(QWidget):
         n = len(self.cand_sel.selected())
         self.n_sel.setText("Too many candidates (maximum 39)." if n > 39 else "")
         out = self.outcome.currentData()
-        names = ([out] if out else []) + self.cand_sel.selected() + self.req_sel.selected()
-        self.treatment_panel.set_variables(self.state.dataset, names)
+        self.treatment_panel.set_model(self.state.dataset, out, self.cand_sel.selected() + self.req_sel.selected())
         self._invalidate_estimate()
 
     def _invalidate_estimate(self, *_: Any) -> None:
         self.estimate.setText("")
+
+    def _strategy_changed(self, *_: Any) -> None:
+        st = self.strategy.currentData()
+        self.cov_mode.setEnabled(st == "focal")
+        self.all2.setEnabled(st == "focal")
+        self.include_main.setEnabled(st != "main")
 
     def _apply_profile(self) -> None:
         p = PROFILES[self.profile.currentData()]
@@ -455,7 +611,10 @@ class DiscoveryPage(QWidget):
             max_minutes=self.max_minutes.value() or None, workers=self.workers.value(),
             sample=self.sample.currentData(), max_params=self.max_params.value(),
             participant=self.participant.currentData(),
-            all_two_way=bool(self.all2.currentData()) and self.cov_mode.currentData() == "subsets",
+            all_two_way=bool(self.all2.currentData()) and self.cov_mode.currentData() == "subsets"
+            and self.strategy.currentData() == "focal",
+            strategy=self.strategy.currentData(), include_main=self.include_main.isChecked(),
+            min_predictors=self.min_pred.value(), min_obs=self.min_obs.value(),
         )
 
     def _estimate(self) -> dict[str, Any] | None:
@@ -477,7 +636,10 @@ class DiscoveryPage(QWidget):
         extra += [html.escape(t) for t in c.get("treatments", [])]
         coding_txt = ("<br>" + " · ".join(extra)) if extra else ""
         warn = "".join(f"<br><span style='color:#8d6e00'>⚠ {html.escape(w)}</span>" for w in info["warnings"])
-        self.estimate.setText(f"<b>{info['total']:,}</b> candidate models · {fam} · shared complete-case "
+        blocks = " + ".join(f"{n:,} {name}" for name, n in info.get("blocks", [])) if len(info.get("blocks", [])) > 1 else ""
+        work = (f" · workload: up to <b>{info['fits']:,}</b> model fits"
+                + (f" ({blocks})" if blocks else "")) if info.get("fits") else ""
+        self.estimate.setText(f"<b>{info['total']:,}</b> candidate models{work} · {fam} · shared complete-case "
                               f"sample: <b>{info['n_shared']:,}</b> of {info['n_rows']:,} rows{coding_txt}{warn}")
         return info
 
@@ -513,7 +675,7 @@ class DiscoveryPage(QWidget):
         cancel = self.cancel_event
         rscript = self.state.rscript_setting() or None
         previous = list(self.state.project.searches) if self.state.project else []
-        cache = engine.cache_from(run, previous)
+        cache = engine.cache_from(run, previous, ds)
         self._set_running(True)
         self.progress.setRange(0, max(1, run.total))
         self.state.run_io(
@@ -579,21 +741,114 @@ class DiscoveryPage(QWidget):
         self.resume_btn.setEnabled(bool(run and run.resumable))
         if run is None:
             self.summary_view.setHtml("<p>Configure a search on the left, calculate the search space, then start.</p>")
-            for t in (self.discovery_table, self.support_table, self.all_table):
+            self.frame, self.tests = pd.DataFrame(), pd.DataFrame()
+            for t in (self.discovery_table, self.support_table, self.all_table, self.compare_table):
                 t.set_frame(pd.DataFrame())
+            self._update_counts()
             return
-        self.frame = engine.results_frame(run)
+        self.frame = engine.add_display_columns(engine.results_frame(run), run)
+        self.tests = engine.add_display_columns(engine.tests_frame(run), run)
         self.summary_view.setHtml(self._summary_html(run, self.frame))
+        self._fill_view_filter()
         self._refresh_tables()
         self._refresh_history()
+
+    def _fill_view_filter(self) -> None:
+        keep = self.view_filter.currentData()
+        self.view_filter.blockSignals(True)
+        self.view_filter.clear()
+        self.view_filter.addItem("All hypotheses", None)
+        df = self.tests
+        if len(df):
+            for t in df["test_type"].dropna().unique():
+                self.view_filter.addItem(f"Hypothesis: {engine.TEST_TYPES.get(t, t)}", f"test_type={t}")
+            for m in df["model_type"].dropna().unique():
+                self.view_filter.addItem(f"Models: {m}", f"model_type={m}")
+        self.view_filter.setCurrentIndex(max(0, self.view_filter.findData(keep)))
+        self.view_filter.blockSignals(False)
+
+    def _filtered(self, df: pd.DataFrame) -> pd.DataFrame:
+        f = self.view_filter.currentData()
+        if not len(df) or not f:
+            return df
+        col, val = f.split("=", 1)
+        return df[df[col] == val] if col in df else df
 
     def _refresh_tables(self) -> None:
         if self.run is None:
             return
-        df = self.frame
-        self.discovery_table.set_frame(engine.discovery_ranking(df, by=self.rank_by.currentData()) if len(df) else df)
-        self.support_table.set_frame(engine.support_ranking(df) if len(df) else df)
-        self.all_table.set_frame(df)
+        tf = self._filtered(self.tests)
+        mf = self._filtered(self.frame) if str(self.view_filter.currentData()).startswith("model_type=") else self.frame
+        cmp_df, note = engine.model_comparison(mf, self.run) if len(mf) else (mf, "")
+        self.compare_note.setText(note)
+        frames = {id(self.discovery_table): engine.discovery_ranking(tf, by=self.rank_by.currentData()) if len(tf) else tf,
+                  id(self.support_table): engine.support_ranking(tf) if len(tf) else tf,
+                  id(self.all_table): mf, id(self.compare_table): cmp_df}
+        self._table_frames = frames
+        for table in (self.discovery_table, self.support_table, self.all_table, self.compare_table):
+            df = frames[id(table)]
+            hl, warn, text = self._status(df)
+            table.set_frame(df, hl, warn, text)
+            table.set_highlight_only(self.hl_only.isChecked())
+        self._update_counts()
+
+    def _alpha(self) -> float:
+        try:
+            a = float(self.hl_alpha.currentText())
+        except ValueError:
+            return 0.05
+        return a if 0 < a < 1 else 0.05
+
+    def _status(self, df: pd.DataFrame):
+        if not len(df):
+            return None, None, None
+        mode, alpha = self.hl_mode.currentData(), self._alpha()
+        hl = engine.highlight_mask(df, mode, alpha).to_numpy()
+        warn = engine.warning_mask(df).to_numpy()
+        tag = {"adjusted": f"adj p < {alpha:g}", "raw": f"p < {alpha:g}",
+               "strict": f"adj p < {alpha:g} + CI excludes null"}.get(mode, "")
+        text = [" · ".join(x for x in ((f"★ {tag}" if h else ""), ("⚠ flagged" if w else "")) if x)
+                for h, w in zip(hl, warn)]
+        return hl, warn, text
+
+    def _highlight_changed(self, *_: Any) -> None:
+        for table in (self.discovery_table, self.support_table, self.all_table, self.compare_table):
+            df = self._table_frames.get(id(table))
+            if df is not None and len(df):
+                table.set_status(*self._status(df))
+            table.set_highlight_only(self.hl_only.isChecked())
+        self._update_counts()
+        p = self.state.project
+        if p is not None:
+            prefs = {"mode": self.hl_mode.currentData(), "alpha": self._alpha(), "only": self.hl_only.isChecked()}
+            if p.settings.get("discovery_highlight") != prefs:
+                p.settings["discovery_highlight"] = prefs
+                self.state.dirty = True
+
+    def _load_highlight_prefs(self) -> None:
+        p = self.state.project
+        prefs = (p.settings.get("discovery_highlight") if p is not None else None) or {}
+        for w in (self.hl_mode, self.hl_alpha, self.hl_only):
+            w.blockSignals(True)
+        self.hl_mode.setCurrentIndex(max(0, self.hl_mode.findData(prefs.get("mode", "adjusted"))))
+        self.hl_alpha.setCurrentText(f"{prefs.get('alpha', 0.05):g}")
+        self.hl_only.setChecked(bool(prefs.get("only", False)))
+        for w in (self.hl_mode, self.hl_alpha, self.hl_only):
+            w.blockSignals(False)
+
+    def _current_table(self) -> "ResultTable | None":
+        w = self.tabs.currentWidget()
+        if w is not None and not isinstance(w, ResultTable):
+            w = w.findChild(ResultTable)
+        return w if isinstance(w, ResultTable) else None
+
+    def _update_counts(self) -> None:
+        table = self._current_table()
+        if isinstance(table, ResultTable):
+            hl, shown, total = table.counts()
+            self.hl_count.setText(f"{hl:,} highlighted of {shown:,} shown / {total:,} total")
+        else:
+            self.hl_count.setText("")
 
     def _summary_html(self, run: engine.DiscoveryRun, df: pd.DataFrame) -> str:
         sm = engine.summary(run, df) if len(df) else None
@@ -674,7 +929,7 @@ class DiscoveryPage(QWidget):
 
     # ---------- drill-down ----------
     def _selected_row(self) -> dict[str, Any] | None:
-        table = self.tabs.currentWidget()
+        table = self._current_table()
         if not isinstance(table, ResultTable) or self.run is None:
             QMessageBox.information(self, "Discovery", "Select a model in one of the result tables.")
             return None

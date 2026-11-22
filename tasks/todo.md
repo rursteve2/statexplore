@@ -279,3 +279,34 @@ The supplied `hrs_least_missing_1000 (1).sav` is byte-identical to the v1.0 fixt
 - Packaging: console_worker.R was missing from the PyInstaller spec (caught before building); self-test extended to every new engine + R Console; frozen build and silent-installed copy both pass `--selftest --full`; clean uninstall.
 - Docs: README (new sections, 4A measurement levels, limitations), spec-compliance-v1.1.md, RELEASE_NOTES_v1.1.0.md, DEVELOPER.md v1.1 notes, release audit.
 - Not published: GitHub release/push is outward-facing → awaiting the user's decision.
+
+---
+
+# v1.2.0 Upgrade (specs: `StatExplore_v1.2.0_Upgrade_Master_Prompt.md` = **M**, `StatExplore_Exhaustive_Interaction_Combination_Enhancement.md` = **X**; started 2026-11-22)
+
+Baseline: local main `1673df9` (= GitHub v1.1.0 release commit 99aeb93 + a docs commit; no local v1.1.0 tag).
+
+## Design decisions (v1.2)
+| # | Decision | Why |
+|---|----------|-----|
+| F1 | **One model row, many hypothesis rows.** Each fitted candidate keeps its v1.1 model row (status, n, params, AIC…) and gains `tests`: a list of typed hypotheses (`focal_interaction`, `interaction_term`, `joint_interaction`, `main_term`, `overall`, `structure`). Ranking tables list hypotheses; "All attempts"/"Model comparison" list models. Old rows get one synthesized focal test. | M §4.3/§7.2/§11, X §8/§10: never one unexplained p per multi-interaction model; never mix hypothesis types. |
+| F2 | **Multiplicity family = test type within the run** (BH/Holm per family; provisional when partial). | M §7.2 "define multiplicity families by hypothesis type"; X §12. |
+| F3 | **Canonical model spec** (`discovery/modelspec.py`): terms = frozensets, hierarchically closed, + required; key = sorted terms; parse/display formulas; counts: distinct predictors, main / 2-way / 3-way terms, total terms; fixed coefficients from R's design matrix; random-effect parameters separately. | X §2/§14; M §7.1 dedup `X1*X2 + X1 + X3` → `X1*X2 + X3`. |
+| F4 | **Strategies** (single choice): `combinations` = every hierarchical set of interaction terms (order ≤ max order) on every predictor subset (default, X §3/§16); `focal` = v1.1 grammar (Focal / Subsets covariate modes kept); `factorial` = full hierarchical factorial per subset; `main` = main effects only. `include_main` adds main-effects-only models (all subsets) to focal/factorial and can drop them from combinations. Max interaction order 2 or 3 (4-way deferred). Default max predictors 6 (both specs). | Both specs; X Test C/E. |
+| F5 | **Strict CI criterion uses typed CI metadata** per test: `ci_applicable` (same_estimand / joint / unavailable), `ci_scale` (coefficient / odds ratio), `ci_null` (0/1), `ci_method`, `ci_level`, `ci_effect_id` = `p_test_id`. Logistic/ordinal CIs stored on the OR scale. Only 1-df single-coefficient tests can qualify. | M §4.2, §9. |
+| F6 | **Fit identity hash** replaces `CACHE_FIELDS`: view data signature (metadata, treatments, filters, derived, holdout) + family + resolved event/reference + participant/time/time type/structure + sample strategy + variable pool + max_params + conf + kind; cached rows also require identical R/package versions. Highlight/sort/alpha/correction never refit. | M §5 (v1.1 ignored event/reference). |
+| F7 | `df2` for mixed fits → `n_groups`; LRT rows carry `lrt_df`; legacy lmm rows renamed on load. | M §9. |
+| F8 | Longitudinal discovery = explicit **Study structure** (independent / repeated) + ID + Time + one locked structure per search (Workflow A) or a structure comparison with a locked fixed formula (Workflow B). Engines: lme4 RI / RS / uncorrelated RS, nlme RI / RS / AR(1) / CAR(1), mmrm (marginal, labelled), glmer RI/RS, clmm RI/RS, GEE (gaussian/binomial; robust Wald). Fixed-effect tests: ML LRT (Gaussian, GLMM, CLMM), Wald (GEE, robust). Multinomial repeated outcomes: refused with reason (deferred). | M §8. |
+| F9 | Treatment panel shows **every** model variable with a status (eligible checkbox / already continuous / unavailable + reason), outcome always first; view toggle for all eligible dataset variables (preconfigured, applied only when in the model); acknowledgements invalidated when the variable's coding fingerprint changes. Built on `VariableSelector`. | M §6. |
+| F10 | Milestone 1 (sorting, highlight, cache, labels, treatment visibility) gets a local `v1.1.1` tag; one installer build at v1.2.0. Publishing (push/release) waits for the user. | M §14; outward-facing. |
+
+## Phases (gates = tests pass before moving on)
+- [x] 0 Baseline: 247/247 on a clean worktree of 1673df9 (E:\sx_baseline); v1.1 sort bug reproduced (numpy scalars + NaN unsortable by Qt)
+- [x] 1 Numeric sort proxy (missing last both directions), sort/filter/selection preserved; highlight toolbar (adj p default, raw, strict, off; α presets/custom; highlighted-only; counters; warnings separate); project persistence of highlight prefs
+- [x] 2 Fit identity + provenance (run_id, candidate_id, model_id, signatures, cache reason); typed CI/test metadata; n_groups vs df; tests: event/reference/treatment/structure changes never reuse
+- [x] 3 Variable Treatment Manager (outcome section, all predictors with status, all-eligible view, ack fingerprint) in Discovery + Mixed (+ any other users); HRS R_LTACTX/R_SHLT tests
+- [ ] 4 Canonical spec + counts; strategies (combinations/focal/factorial/main); R multi-test evaluation; families by type; result views (hypothesis-type filter, model comparison tab, columns Predictors "3 / 6", Model terms, Estimated parameters); X Tests A–L; M Test D
+- [ ] 5 Longitudinal setup UI (study structure, ID/time validation + preflight) and Gaussian structures (lme4 RI/RS, nlme AR1/CAR1, mmrm); Workflow B structure comparison
+- [ ] 6 glmer / clmm / GEE discovery; R reference checks
+- [ ] 7 Discovery → Teaching Studio / Mixed handoff (exact terms, refit labelled); "Compare with main-effects model"; adjustable manual-model limits; exports carry new schema
+- [ ] 8 Regression suite, docs (README, DEVELOPER, release notes, spec-compliance-v1.2, feature matrix), version 1.2.0, build + frozen self-test

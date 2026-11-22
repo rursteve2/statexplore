@@ -257,7 +257,9 @@ class AnalysisBuilderPage(QWidget):
 
     def _update_treatments(self) -> None:
         names = [n for w in self.slot_widgets.values() for n in w.values()]
-        self.treatment_panel.set_variables(self.state.dataset, names)
+        dep = self.slot_widgets.get("dependent")
+        outcome = (dep.values() or [None])[0] if dep is not None else None
+        self.treatment_panel.set_variables(self.state.dataset, names, outcome=outcome)
 
     @staticmethod
     def _restore(w: SlotWidget, values: list[str]) -> None:

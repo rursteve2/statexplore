@@ -1,7 +1,7 @@
 """Dataset Explorer: overview, spreadsheet preview, and variable management."""
 from __future__ import annotations
 
-from PySide6.QtCore import QSortFilterProxyModel, Qt
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QAbstractItemView, QCheckBox, QComboBox, QDialog, QFormLayout, QGroupBox, QHBoxLayout, QHeaderView,
     QLabel, QLineEdit, QListWidget, QListWidgetItem, QMessageBox, QPlainTextEdit, QPushButton, QSplitter, QTableView, QTextBrowser,
@@ -14,7 +14,7 @@ from ...core.dataset import DatasetError
 from ..derive_dialogs import DeriveDialog, FilterDialog
 from ...core.overview import as_frame, summarize
 from ...core.variables import Measure, Role
-from ..models import DataPreviewModel, FrameModel, fmt
+from ..models import DataPreviewModel, FrameModel, NumericSortProxy, fmt
 from ..state import AppState
 from .measurement_review import MeasurementReviewWidget
 
@@ -56,7 +56,7 @@ class DatasetExplorerPage(QWidget):
         self.stats_label.setTextFormat(Qt.RichText)
         lay.addWidget(self.stats_label)
         self.overview_model = FrameModel()
-        proxy = QSortFilterProxyModel()
+        proxy = NumericSortProxy()
         proxy.setSourceModel(self.overview_model)
         proxy.setSortRole(Qt.UserRole)
         self.overview_view = QTableView()
