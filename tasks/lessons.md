@@ -47,3 +47,6 @@
 
 ## JSON from R
 - `jsonlite::toJSON(auto_unbox = TRUE)` turns a length-1 vector into a scalar: a list of one plot path arrived as a string and Python iterated its characters. Wrap vectors that are semantically lists in `I()`, and make the Python side accept a scalar too.
+
+## Disk space
+- Drive C: is nearly full on this machine; E: has the space. Run tests with `--basetemp` on E: and put builds/scratch on E:. A full C: made R workers exit at startup with no error text.

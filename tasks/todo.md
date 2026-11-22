@@ -241,7 +241,8 @@ The supplied `hrs_least_missing_1000 (1).sav` is byte-identical to the v1.0 fixt
 - [x] P7 R Console
 - [x] P8 R Package Manager
 - [x] P9 Research extras (Likert sensitivity, teaching finder), migrations, docs, packaging, release audit
-- [ ] User: install on a clean Windows 10/11 machine (networking off); decide whether to publish GitHub release v1.1.0
+- [x] Published: pushed main + GitHub release v1.1.0 (2026-11-22)
+- [ ] User: install on a clean Windows 10/11 machine (networking off)
 
 ### Baseline (2026-11-21): 152/152 v1.0 tests pass.
 
