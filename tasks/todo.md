@@ -308,5 +308,22 @@ Baseline: local main `1673df9` (= GitHub v1.1.0 release commit 99aeb93 + a docs 
 - [x] 4 Canonical spec + counts; strategies (combinations/focal/factorial/main); R multi-test evaluation; families by type; result views (hypothesis-type filter, model comparison tab, columns Predictors "3 / 6", Model terms, Estimated parameters); X Tests A–L; M Test D
 - [x] 5 Longitudinal setup UI (study structure, ID/time validation + preflight) and Gaussian structures (lme4 RI/RS, nlme AR1/CAR1, mmrm); Workflow B structure comparison
 - [x] 6 glmer / clmm / GEE discovery; R reference checks
-- [ ] 7 Discovery → Teaching Studio / Mixed handoff (exact terms, refit labelled); "Compare with main-effects model"; adjustable manual-model limits; exports carry new schema
-- [ ] 8 Regression suite, docs (README, DEVELOPER, release notes, spec-compliance-v1.2, feature matrix), version 1.2.0, build + frozen self-test
+- [x] 7 Discovery → Teaching Studio / Mixed handoff (exact terms, refit labelled); "Compare with main-effects model"; adjustable manual-model limits; exports carry new schema
+- [x] 8 Regression suite, docs (README, DEVELOPER, release notes, spec-compliance-v1.2, feature matrix), version 1.2.0, build + frozen self-test
+
+### Review (v1.2.0)
+- Tests: 247 baseline → **315** (new: test_v12_results_table 16, test_v12_discovery 28, test_v12_longitudinal 14,
+  test_v12_gui 5, test_v12_manual_limits 5). Four v1.1 assertions updated for deliberate changes (df2 → n_groups,
+  hypothesis-table column, default strategy, ordinal repeated outcomes now supported) + version-agnostic title.
+- Reference checks: X Tests I/J vs statsmodels (joint F, 1-df F = t², CI, whole-model F, per-type BH); every
+  longitudinal engine vs a direct R fit (lme4 RI/RS, nlme AR1/CAR1, mmrm US, glmer, clmm, geepack Wald);
+  workflow B REML logLik vs lme4.
+- Bugs found and fixed: v1.1 sort (numpy/NaN), v1.1 cache ignoring event/reference, v1.1 df2 = participants,
+  v1.1 panel dropping outcome; during v1.2: R reduced-fit cache reused across resampled rows, fit identity missing
+  the GLMM/GEE event, mmrm AIC convention, workflow B validated against strategy rules, interpretation crash on
+  unlabelled terms, empty-cell check pre-empting the R-side failure message.
+- Performance: 311k hypotheses — sort 0.09 s (was 100 s), search 1.3 s (was 239 s), frames ≈ 5 s (was 48 s).
+- Deferred (documented in docs/spec-compliance-v1.2.md): discovery Satterthwaite/KR option; stability / procedure
+  CV for longitudinal searches; M §13 extras beyond the study-structure selector and chance counts; four-way
+  interactions; separate v1.1.1 build (milestone-1 content = commit 3ef839a).
+- User steps: clean-machine install; publish decision (push + GitHub release).

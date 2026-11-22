@@ -12,6 +12,8 @@ as a degrees-of-freedom column).
 Windows may say "Windows protected your PC" (the program is not code-signed): **More info ▸ Run anyway**.
 Requirements: Windows 10 or 11 (64-bit), about 1.5 GB of free disk space.
 
+Checksums (SHA-256): Setup `d8e6b1b56e3cf88588b42f1f3f00524a1fee03ba3fd3e4cd17f6ed52f389670c` · portable zip `35523a62734df5c46321e8cdc9d4af98bc1fbf0a41764bde84b66cfa48908255`.
+
 ## Fixed
 - **Sorting** of p-values, adjusted p-values, confidence limits, estimates, AIC and every other number in
   the Discovery tables (and the other result tables) is now numeric. Missing values always sort last,
