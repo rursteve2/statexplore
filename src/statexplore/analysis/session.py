@@ -115,10 +115,11 @@ class RSession:
         return result, resp.result
 
 
-def export_data(ds: Dataset, path: Path) -> None:
+def export_data(ds: Dataset, path: Path, aliases: set[str] | None = None) -> None:
     """Source variables only, unfiltered: derived variables and filters are applied by
-    the R load script itself so the recorded code reproduces them."""
-    base = [n for n in ds.variables if not ds.is_derived(n)]
+    the R load script itself so the recorded code reproduces them. `aliases` limits the columns."""
+    base = [n for n in ds.variables if not ds.is_derived(n)
+            and (aliases is None or ds.var(n).alias in aliases)]
     frame = ds.analysis_frame(base, filtered=False)
     frame.columns = [ds.var(n).alias for n in frame.columns]
     for n in ds.variables.values():

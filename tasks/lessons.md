@@ -56,3 +56,12 @@
 
 ## pytest naming
 - Never import a helper whose name starts with `test` (e.g. `tests_frame`) into a test module: pytest collects it. Alias it.
+
+## Test runs vs live edits
+- The editable install imports the working tree: a long pytest run started before edits silently mixes old and new code. Run baselines from a clean worktree (PYTHONPATH to its src, r/library junction), and rerun the suite after the last edit.
+
+## R calls that re-evaluate themselves
+- Functions like `geepack::QIC`, `update()`, `anova()` re-evaluate the stored model call: any local variable named in it (`f`, `d`) must be reachable (`QIC(m, env = ...)`). A swallowed error here looked like "QIC not available" for two releases.
+
+## Heuristics on imported data
+- A measurement-level heuristic (e.g. "few integer codes = categorical") must be checked against time variables, negative values and decimal-written floats before shipping; run the whole suite, which is full of small synthetic CSVs.

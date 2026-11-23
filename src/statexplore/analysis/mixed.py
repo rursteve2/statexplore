@@ -20,7 +20,7 @@ TIME_TYPES = {"continuous": "Continuous (linear)", "quadratic": "Continuous (qua
               "categorical": "Categorical (one mean per occasion)"}
 RANDOM = {"intercept": "Random intercept", "slope": "Random intercept + time slope (correlated)",
           "slope_uncorrelated": "Random intercept + time slope (uncorrelated)", "none": "None (marginal model)"}
-RESIDUAL = {"independent": "Independent", "ar1": "AR(1) — equally spaced occasions",
+RESIDUAL = {"independent": "Independent", "ar1": "AR(1) — observed-occasion index (gaps compressed)",
             "car1": "Continuous-time AR(1) — actual time values", "unstructured": "Unstructured (marginal, mmrm)"}
 INTERACTIONS = {"none": "None", "time": "Time × each predictor", "all": "All two-way"}
 FAMILIES = {"gaussian": "Gaussian (continuous)", "binomial": "Binary logistic", "ordinal": "Ordinal logistic (cumulative logit)",
@@ -58,27 +58,44 @@ STRUCTURE_SPECS = {   # discovery structure -> Mixed workspace settings (None: n
 
 
 def spec_from_discovery(run: Any, row: dict[str, Any]) -> "MixedSpec":
-    """The exact model of a longitudinal discovery candidate for the Mixed workspace (refit, labelled)."""
-    from ..discovery.detail import candidate_from_row
-    from ..discovery.space import full_terms
+    """The exact model of a longitudinal discovery candidate for the Mixed workspace, built from its
+    ModelDescriptor (P0-01): same formula, structure, estimator (ML for workflow A, REML for workflow B
+    Gaussian structure comparisons), coding and shared sample. The refit is checked against the search's
+    n / log-likelihood / AIC when it runs; a structure the workspace cannot represent is refused with a reason."""
+    from ..discovery.space import STRUCTURES
+    from .descriptor import TransferError, from_discovery
 
     s = run.settings
-    c = candidate_from_row(run, row)
-    st = c.structure or s.structure or "ri"
+    try:
+        d = from_discovery(run, row)
+    except TransferError as e:
+        raise MixedInputError(str(e)) from None
+    st = d.structure
+    label = STRUCTURES.get(st, (st,))[0]
     extra = STRUCTURE_SPECS.get(st)
     if extra is None:
-        raise MixedInputError("This covariance structure (mmrm compound symmetry / AR(1)) is not offered in the "
-                              "Mixed workspace; View candidate code shows the exact fit.")
-    terms = [list(t) for t in full_terms(c)]
+        raise MixedInputError(f"The Mixed workspace cannot fit this candidate's structure ({label}; {d.engine}). "
+                              "It was not replaced by another model: the search result stays available, and View "
+                              "candidate code reproduces the exact fit.")
+    if st == "mmrm_us" and s.time_type != "categorical":
+        raise MixedInputError("This candidate uses an unstructured covariance over occasions with continuous time in "
+                              "the fixed part; the Mixed workspace's unstructured model needs categorical time, so it "
+                              "cannot refit the same model. View candidate code reproduces the exact fit.")
+    terms = [list(t) for t in d.terms]
     preds = list(dict.fromkeys(v for t in terms for v in t if v != s.time))
     fam = s.family or "gaussian"
-    return MixedSpec(outcome=s.outcome, id=s.participant, time=s.time, time_type=s.time_type, predictors=preds,
-                     interactions="none", method="ML", family=fam, event=s.event, reference=s.reference,
-                     inference="lrt" if fam == "gaussian" else "satterthwaite",
+    method = "REML" if d.estimation == "REML" else "ML"
+    spec = MixedSpec(outcome=s.outcome, id=s.participant, time=s.time, time_type=s.time_type, predictors=preds,
+                     interactions="none", method=method, family=fam, event=s.event, reference=s.reference,
                      treatments=[dict(t) for t in s.treatments], terms=terms,
                      max_fixed=max(6, len(preds) + (1 if s.time else 0)),
-                     source=f"discovery search {run.id}, candidate #{row['idx']} (refitted here with the same "
-                            "formula, structure, ML estimation and coding)", **extra)
+                     sample_vars=[v for v in d.sample_vars if v not in [s.outcome, s.participant, s.time] + preds],
+                     descriptor=d.to_dict(),
+                     source=f"{d.source} (refitted here with the same formula, structure {label}, {method} "
+                            "estimation, coding and rows)", **extra)
+    # inference the model's engine supports (P1-01): term LR tests on ML lme4 fits; nlme / mmrm report their own df
+    spec.inference = "lrt" if spec.engine == "lme4" and method == "ML" and fam == "gaussian" else "satterthwaite"
+    return spec
 
 
 @dataclass
@@ -110,6 +127,9 @@ class MixedSpec:
     terms: list[list[str]] | None = None
     source: str = ""                    # e.g. "discovery run abc #12 (refit)"
     max_fixed: int = 6                  # complexity limit: distinct fixed-effect predictors incl. time (M §10)
+    # ---- v1.3: identity of a transferred model ----
+    sample_vars: list[str] = field(default_factory=list)   # extra variables defining a shared complete-case sample
+    descriptor: dict[str, Any] | None = None               # origin ModelDescriptor (refit is verified against it)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -190,8 +210,12 @@ def _validate_family(ds: Dataset, s: MixedSpec) -> None:
                                   "Gaussian lme4 models only; GLMMs report Wald z tests and likelihood-ratio term tests.")
     elif s.inference != "satterthwaite":
         if s.engine != "lme4":
-            raise MixedInputError("Kenward-Roger and likelihood-ratio inference are offered for lme4 models (independent "
-                                  "residuals). nlme and mmrm models report their own df.")
+            raise MixedInputError("This inference setting is implementation-specific: Kenward-Roger df (pbkrtest) and the "
+                                  "automatic term-wise likelihood-ratio refits are implemented here for lme4 models with "
+                                  "independent residuals. nlme and mmrm models report their own df (nlme containment, "
+                                  "mmrm Satterthwaite): choose 'Satterthwaite df (default)' to fit this model. "
+                                  "Likelihood-ratio tests between nested nlme ML fits remain valid (Compare structures / "
+                                  "Discovery workflow A).")
         if s.inference == "kenward_roger" and s.method != "REML":
             raise MixedInputError("Kenward-Roger df are defined for REML fits: set estimation to REML.")
 
@@ -280,6 +304,7 @@ def _prep(ds: Dataset, s: MixedSpec) -> list[str]:
     a = lambda n: alias(ds.var(n).alias)  # noqa: E731
     y, idv = a(s.outcome), a(s.id)
     used = [y, idv] + ([a(s.time)] if s.time else []) + ([a(s.cluster)] if s.cluster else []) + [a(p) for p in s.predictors]
+    used += [a(v) for v in s.sample_vars if a(v) not in used]   # shared sample of the search this model came from
     L = [f"sx_used <- {r_vec(used)}"]
     if s.time:
         L += [
@@ -440,8 +465,9 @@ def _build_gaussian(ds: Dataset, s: MixedSpec, plot_paths: list[str], L: list[st
         "  y <- unlist(lapply(split(sx_rd$r, sx_rd$id), function(v) if (length(v) > k) tail(v, -k) else NULL))",
         "  if (length(x) > 3) stats::cor(x, y) else NA_real_ }, 0)",
         "sx_tabs[[length(sx_tabs) + 1]] <- sx_table(\"Residual autocorrelation by lag\", data.frame(lag = 1:3, correlation = sx_lagcor),",
-        "  notes = paste0(\"Correlation of within-participant residuals k occasions apart (normalized residuals for \",",
-        "  \"nlme/mmrm). Large values suggest an AR(1) residual structure.\"))",
+        "  notes = paste0(\"Lag = observed-occasion steps within a participant (k-th next observed row), not actual \",",
+        "  \"time units: across a gap or an occasion absent for everyone, lag 1 spans more than one time unit. \",",
+        "  \"Normalized residuals for nlme/mmrm. Large values suggest residual autocorrelation.\"))",
     ]
     if s.time:
         L.append("sx_tabs[[length(sx_tabs) + 1]] <- sx_table(\"Outcome availability by time point\", sx_av, notes = "
@@ -451,7 +477,8 @@ def _build_gaussian(ds: Dataset, s: MixedSpec, plot_paths: list[str], L: list[st
     L += _extra_plots(s, plot_paths[3:])
     L.append("sx_result <- list(tables = sx_tabs, checks = sx_checks, n_used = nrow(sx_d), n_excluded = nrow(dat) - nrow(sx_d),")
     L.append("  notes = c(\"Mixed and marginal models use every available observation: participants with missing \",")
-    L.append("    \"occasions still contribute. Estimates are unbiased if data are missing at random given the model (MAR).\"))")
+    L += ["    \"occasions still contribute (no imputation). This is valid when missingness is ignorable given the model \",",
+          "    \"(MAR given the modelled outcomes and covariates, correct model); MAR is an assumption, not a guarantee.\"))"]
     return "\n".join(L) + "\n"
 
 
@@ -832,10 +859,17 @@ def _trajectory(ds: Dataset, s: MixedSpec, paths: list[str]) -> list[str]:
         "sx_se <- sqrt(rowSums((sx_X %*% sx_V) * sx_X))",
         f"sx_z <- stats::qnorm(1 - (1 - {r_num(s.conf)}) / 2)",
         "sx_nd$ci_low <- sx_nd$predicted - sx_z * sx_se; sx_nd$ci_high <- sx_nd$predicted + sx_z * sx_se",
+        "# P1-03: predictions between or at time points without observed outcomes are model-based, not data",
+        "sx_obs_t <- unique(as.numeric(sx_d$sx_tnum))",
+        "sx_nd$basis <- if (is.factor(sx_d$sx_time)) \"at an observed time point\" else",
+        "  ifelse(vapply(sx_nd$sx_tnum, function(x) any(abs(x - sx_obs_t) < 1e-8), TRUE),",
+        "    \"at an observed time point\", \"model-based (no observed outcomes at this time)\")",
         "sx_held_txt <- if (length(sx_held)) paste(sprintf(\"%s = %s\", sx_names[names(sx_held)],",
         "  vapply(sx_held, function(v) if (is.factor(v)) as.character(v) else format(signif(v, 4)), \"\")), collapse = \"; \") else \"\"",
         "sx_tabs[[length(sx_tabs) + 1]] <- sx_table(\"Population-level trajectory\", sx_nd[, setdiff(names(sx_nd), \"sx_tnum\"), drop = FALSE],",
-        "  notes = paste0(\"Fixed-effects (marginal, population-average) predictions with normal-approximation CI\",",
+        "  notes = paste0(\"Fixed-effects (marginal, population-average) predictions with normal-approximation CI. \",",
+        "    \"Rows marked model-based lie between observed time points or at a time with no observed outcome \",",
+        "    \"(e.g. a wave missing for everyone): they are model predictions, not observed data\",",
         "    if (nzchar(sx_held_txt)) paste0(\"; other predictors held at: \", sx_held_txt) else \"\", \".\"))",
         f"set.seed({int(s.seed)})",
         f"sx_ids <- sample(levels(droplevels(sx_d$sx_id)), min({int(s.n_trajectories)}, nlevels(droplevels(sx_d$sx_id))))",
@@ -915,8 +949,7 @@ def run(session: RSession, ds: Dataset, s: MixedSpec) -> tuple[AnalysisResult, d
     result.missing_data = "All available observations (complete on the model variables within each row); MAR assumed."
     result.seed = s.seed
     if s.source:
-        result.messages.append(f"Refit: {s.source}. Rows can differ from the search if it used a shared "
-                               "complete-case sample over more variables.")
+        result.messages.append(f"Refit: {s.source}.")
     record(result, ds)
     artifacts: dict[str, bytes] = {}
     if raw is None:
@@ -930,6 +963,10 @@ def run(session: RSession, ds: Dataset, s: MixedSpec) -> tuple[AnalysisResult, d
     result.values["notes"] = ["".join(str(x) for x in _as_list(raw.get("notes")))]
     if pre.analysis_range is not None and s.time:
         result.values["analysis_range"] = pre._range_text(ds)
+        # P1-03: the min-max range alone can hide a wave absent for everyone
+        result.values["observed_time_points"] = (pre.observed_text(ds) + (
+            f" (absent for everyone inside the range: "
+            f"{', '.join(ds.level_label(s.time, c) for c in pre.interior_absent)})" if pre.interior_absent else ""))
     for w in pre.warnings:
         result.messages.append(f"Check: {w}")
         if result.status is Status.OK:
@@ -957,6 +994,10 @@ def run(session: RSession, ds: Dataset, s: MixedSpec) -> tuple[AnalysisResult, d
             key = f"plots/{p.name}"
             artifacts[key] = p.read_bytes()
             result.plots.append(key)
+    if s.descriptor:
+        from .descriptor import attach_check
+
+        attach_check(result, s.descriptor)
     return result, artifacts
 
 

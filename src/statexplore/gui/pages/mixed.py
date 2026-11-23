@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QComboBox, QDialog, QDialogButtonBox, QFormLayout, QGroupBox, QHBoxLayout, QLabel, QLineEdit, QListWidget,
+    QApplication, QComboBox, QDialog, QDialogButtonBox, QFormLayout, QGroupBox, QHBoxLayout, QLabel, QLineEdit, QListWidget,
     QListWidgetItem, QMessageBox, QPushButton, QScrollArea, QSpinBox, QSplitter, QTextBrowser, QVBoxLayout, QWidget,
 )
 
@@ -17,6 +17,7 @@ from ..state import AppState
 from ..widgets.treatment_panel import TreatmentPanel
 from ..widgets.variable_selector import VariableSelector
 from .eda import CodeDialog
+from ..widgets.searchable import make_searchable
 
 ENGINE_TEXT = {
     "lme4": "lme4 / lmerTest (random effects, independent residuals)",
@@ -135,7 +136,7 @@ class MixedPage(QWidget):
 
         mbox = QGroupBox("Model")
         mf = QFormLayout(mbox)
-        self.outcome, self.idv, self.time, self.cluster = QComboBox(), QComboBox(), QComboBox(), QComboBox()
+        self.outcome, self.idv, self.time, self.cluster = (make_searchable(QComboBox()) for _ in range(4))
         self.time_type = self._choice(mixed.TIME_TYPES)
         self.interactions = self._choice(mixed.INTERACTIONS, "time")
         self.random = self._choice(mixed.RANDOM)
@@ -195,13 +196,21 @@ class MixedPage(QWidget):
         ll.addWidget(self.treatment_panel)
         pre_box = QGroupBox("Longitudinal data preflight (before fitting)")
         pl = QVBoxLayout(pre_box)
+        pl.setContentsMargins(4, 4, 4, 4)
         self.preflight_view = QTextBrowser()
-        self.preflight_view.setMinimumHeight(180)
-        pl.addWidget(self.preflight_view)
+        self.preflight_view.setMinimumHeight(60)
+        pl.addWidget(self.preflight_view, 1)
+        pre_row = QHBoxLayout()
         pre_btn = QPushButton("Review missing observations by time point")
         pre_btn.clicked.connect(self._preflight)
-        pl.addWidget(pre_btn)
-        ll.addWidget(pre_box)
+        pre_row.addWidget(pre_btn)
+        pre_copy = QPushButton("Copy preflight")
+        pre_copy.setToolTip("Copy the preflight findings (observed time points, counts, warnings, availability table)")
+        pre_copy.clicked.connect(lambda: QApplication.clipboard().setText(self.preflight_view.toPlainText()))
+        pre_row.addWidget(pre_copy)
+        pre_row.addStretch()
+        pl.addLayout(pre_row)
+        self.pre_box = pre_box          # shown beside the results in a resizable splitter (P2-02 / UI-28)
         self.engine_label = QLabel()
         self.engine_label.setWordWrap(True)
         self.engine_label.setObjectName("hint")
@@ -238,10 +247,32 @@ class MixedPage(QWidget):
         scroll.setWidgetResizable(True)
         scroll.setMinimumWidth(440)
         self.output = QTextBrowser()
+        out_box = QWidget()
+        ol = QVBoxLayout(out_box)
+        ol.setContentsMargins(0, 0, 0, 0)
+        from ..widgets.find_bar import FindBar
+
+        ol.addWidget(FindBar(self.output, out_box))
+        ol.addWidget(self.output, 1)
+        self.right_split = QSplitter(Qt.Vertical)
+        self.right_split.addWidget(self.pre_box)
+        self.right_split.addWidget(out_box)
+        self.right_split.setChildrenCollapsible(True)
+        self.right_split.setSizes([260, 640])
         split = QSplitter()
         split.addWidget(scroll)
-        split.addWidget(self.output)
+        split.addWidget(self.right_split)
         split.setSizes([460, 900])
+        split.setChildrenCollapsible(True)
+        self.main_split = split
+        from PySide6.QtCore import QSettings
+
+        st = QSettings("StatExplore", "StatExplore")
+        for key, sp in (("mixed/main_split", split), ("mixed/right_split", self.right_split)):
+            if st.value(key) is not None:
+                sp.restoreState(st.value(key))
+            sp.splitterMoved.connect(lambda *_, key=key, sp=sp: QSettings("StatExplore", "StatExplore").setValue(
+                key, sp.saveState()))
         lay = QVBoxLayout(self)
         t = QLabel("Mixed & Longitudinal Models")
         t.setObjectName("pageTitle")
@@ -298,6 +329,10 @@ class MixedPage(QWidget):
             self.outcome.setCurrentIndex(max(0, self.outcome.findData(keep.get(self.outcome))))
         for w in (self.outcome, self.idv, self.time, self.cluster):
             w.blockSignals(False)
+        from ..widgets.searchable import excluded_outcomes_hint
+
+        text, tip = excluded_outcomes_hint(ds, {self.outcome.itemData(i) for i in range(self.outcome.count())})
+        self.outcome.setToolTip(("Not offered as outcomes:\n" + tip) if tip else "")
         self.pred_sel.set_variables(ds, preds, decorate=(lambda n: f"  ·  {ds.var(n).measure.value}") if ds else None)
         self._outcome_changed()
 
@@ -399,6 +434,15 @@ class MixedPage(QWidget):
                  f"{len(rep.time_points)} time points · {rep.n_multi_obs:,} participants with 2+ observations, "
                  f"{rep.n_one_obs:,} with one, {rep.n_no_obs:,} with none · duplicate participant-time rows: "
                  f"{rep.duplicates}</p>"]
+        if rep.time:
+            parts.append(f"<p><b>Observed time points:</b> {_html.escape(rep.observed_text(view))} "
+                         f"(range {_html.escape(rep._range_text(view))}"
+                         + (f"; absent for everyone inside the range: "
+                            f"{_html.escape(', '.join(view.level_label(rep.time, c) for c in rep.interior_absent))}"
+                            if rep.interior_absent else "") + ")</p>")
+        parts.append(f"<p>Usable for this model (complete on outcome, time and predictors): {rep.n_usable:,} "
+                     f"participants — {rep.n_usable_multi:,} with 2+ rows, {rep.n_usable_one:,} with one; "
+                     f"{rep.n_intermittent:,} with intermittent gaps.</p>")
         parts += [f"<p style='color:#8d6e00'>⚠ {_html.escape(w)}</p>" for w in rep.warnings]
         parts += [f"<p class='note'>{_html.escape(n)}</p>" for n in rep.notes]
         from ..result_view import table_html
@@ -442,6 +486,13 @@ class MixedPage(QWidget):
             if i >= 0:
                 combo.setCurrentIndex(i)
         self.method.setCurrentText(s.method)
+        for combo, val in ((self.inference, s.inference), (self.interactions, s.interactions)):
+            i = combo.findData(val)
+            if i >= 0:
+                combo.setCurrentIndex(i)
+        # the form shows the transferred model's fixed effects (v1.2 left every predictor unchecked)
+        self.pred_sel.set_selected(list(s.predictors))
+        self.max_fixed.setValue(max(self.max_fixed.value(), s.max_fixed))
         try:
             mixed.validate(mixed.view(ds, s), s)
         except mixed.MixedInputError as e:

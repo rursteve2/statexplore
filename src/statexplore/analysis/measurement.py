@@ -36,6 +36,7 @@ NOMINAL_NUMERIC_WARNING = (
     "This variable is classified as nominal (unordered categories). Its codes are identifiers, not "
     "quantities, unless you know otherwise. Confirm only if the numeric codes are meaningful numbers."
 )
+CODED_REASON = "Numeric codes without labels from a file that has no measurement levels: "
 EQUAL_INTERVALS = "The intervals between ordered response categories are not guaranteed to be equal."
 
 TREATMENTS = {
@@ -160,6 +161,11 @@ def suggest(ds: Dataset, name: str) -> Suggestion:
         return Suggestion(Measure.NOMINAL.value if v.measure is not Measure.ORDINAL else Measure.ORDINAL.value,
                           ["Labelled categories without a recognised order; keep the declared level unless the "
                            "categories are ordered."])
+    if (not labelled and v.measure is Measure.NOMINAL and v.source_measure in ("", "unknown") and k <= 9
+            and all(float(c).is_integer() and c >= 0 for c in observed)):
+        return Suggestion("", [CODED_REASON + ", ".join(_code(c) for c in observed) + ". They were read as "
+                               "unordered categories. If they are quantities (counts, scores), set the level to "
+                               "continuous; if they are ordered categories, set ordinal."])
     if k >= 10 or (v.source_measure == "scale" and not labelled):
         reasons = [f"Numeric quantitative data: {k} distinct values"
                    + ("" if labelled else ", no category labels") + "."]
@@ -182,7 +188,10 @@ def annotate(ds: Dataset) -> None:
 
 
 def needs_review(v: VariableMeta) -> bool:
-    """A suggestion that differs from the project level in a way that changes analyses."""
+    """A suggestion that differs from the project level in a way that changes analyses, or a few unlabelled
+    integer codes from an untyped file whose level nobody has reviewed yet."""
+    if v.measure_status == STATUS_SOURCE and v.suggestion_reasons and v.suggestion_reasons[0].startswith(CODED_REASON):
+        return True
     if not v.suggested_measure or v.suggested_measure == v.measure.value:
         return False
     return not {v.suggested_measure, v.measure.value} <= {Measure.NOMINAL.value, Measure.BINARY.value}
@@ -191,7 +200,7 @@ def needs_review(v: VariableMeta) -> bool:
 def review_rows(ds: Dataset, only_mismatches: bool = True) -> list[dict[str, Any]]:
     rows = []
     for v in ds.variables.values():
-        if not v.suggested_measure or (only_mismatches and not needs_review(v) and v.measure_status == STATUS_SOURCE):
+        if not (v.suggested_measure or needs_review(v)) or (only_mismatches and not needs_review(v) and v.measure_status == STATUS_SOURCE):
             continue
         rows.append({"name": v.name, "label": v.label, "source": v.source_measure or "—",
                      "project": v.measure.value, "suggested": v.suggested_measure,

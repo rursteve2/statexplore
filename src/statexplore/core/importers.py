@@ -11,10 +11,12 @@ import datetime as _dt
 import hashlib
 import io
 import os
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import pandas as pd
 
 from .dataset import Dataset, SourceInfo
@@ -22,6 +24,9 @@ from .variables import Measure, Storage, VariableMeta, make_alias
 
 SUPPORTED_EXTENSIONS = {".csv": "csv", ".sav": "sav", ".xlsx": "xlsx"}
 CSV_ENCODINGS = ["utf-8-sig", "cp1252", "latin-1", "utf-16"]
+SMALL_CODE_SET = 9          # non-negative integer columns with at most this many distinct values look like codes
+# time variables (wave 1-4, visit 0-3) are numbers even with few integer values
+TIME_NAME = re.compile(r"(^|[_\W])(wave|waves|time|visit|occasion|period|year|month|day|t)($|[_\W\d])", re.I)
 CSV_DELIMITERS = {"Auto-detect": None, "Comma (,)": ",", "Semicolon (;)": ";", "Tab": "\t", "Pipe (|)": "|"}
 
 
@@ -100,12 +105,16 @@ def import_csv(path: str | os.PathLike, options: CsvOptions) -> Dataset:
     data = Path(path).read_bytes()
     text, encoding = _decode(data, options.encoding)
     delimiter = options.delimiter or sniff_delimiter(text[:64_000])
-    df = pd.read_csv(io.StringIO(text), sep=delimiter, low_memory=False)
+    # every cell is read as text and typed by _type_text_cells (blanks, padded numbers, zero-padded codes)
+    df = pd.read_csv(io.StringIO(text), sep=delimiter, dtype=str, low_memory=False)
     if df.shape[1] == 0:
         raise ImportError_("No columns found.")
     df = _normalise_frame(df)
-    variables = [_infer_meta(i, name, df[name]) for i, name in enumerate(df.columns)]
-    return _annotated(Dataset(df, variables, _source(path, "csv", {"delimiter": delimiter, "encoding": encoding})))
+    df, typing = _type_text_cells(df)
+    decimal = set(typing.pop("_decimal", []))
+    variables = [_infer_meta(i, name, df[name], codes_possible=name not in decimal) for i, name in enumerate(df.columns)]
+    return _annotated(Dataset(df, variables, _source(path, "csv", {"delimiter": delimiter, "encoding": encoding,
+                                                                   **typing})))
 
 
 # ---- Excel ---------------------------------------------------------------
@@ -127,9 +136,11 @@ def import_xlsx(path: str | os.PathLike, sheet: str | int | None = None) -> Data
     df = _normalise_frame(df)
     if df.shape[1] == 0:
         raise ImportError_(f"Sheet {sheet!r} is empty.")
+    df, typing = _type_text_cells(df)
+    typing.pop("_decimal", None)
     variables = [_infer_meta(i, name, df[name]) for i, name in enumerate(df.columns)]
     sheet_name = sheet if isinstance(sheet, str) else sheets[sheet]
-    return _annotated(Dataset(df, variables, _source(path, "xlsx", {"sheet": sheet_name})))
+    return _annotated(Dataset(df, variables, _source(path, "xlsx", {"sheet": sheet_name, **typing})))
 
 
 # ---- SPSS ----------------------------------------------------------------
@@ -211,6 +222,87 @@ def _normalise_frame(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def _type_text_cells(df: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, Any]]:
+    """Typed working representation of untyped (CSV/Excel) text cells (v1.3 P0-05). The source file is
+    never changed. Empty and whitespace-only cells are missing (NA, never 0); a text column whose every
+    non-missing cell is a number once surrounding whitespace is trimmed becomes numeric (signs, decimals
+    and scientific notation kept). Returns the frame and a report for the source options:
+      whitespace_cells  {column: number of blank/whitespace-only cells turned into NA}
+      empty_columns     columns with no non-missing value
+      text_in_numeric   {column: [count, examples]} mostly numeric columns kept as text because some
+                        cells are not numbers (never coerced silently)."""
+    whitespace: dict[str, int] = {}
+    empty: list[str] = []
+    decimal: list[str] = []
+    mixed: dict[str, list[Any]] = {}
+    df = df.copy()
+    for c in df.columns:
+        col = df[c]
+        if pd.api.types.is_numeric_dtype(col) or pd.api.types.is_datetime64_any_dtype(col):
+            if col.notna().sum() == 0:
+                empty.append(c)
+            continue
+        stripped = col.astype("string").str.strip()
+        blank = stripped.notna() & (stripped == "")
+        if blank.any():
+            whitespace[c] = int(blank.sum())
+            stripped = stripped.mask(blank)
+        present = stripped.dropna()
+        if present.empty:
+            df[c] = pd.Series(np.nan, index=df.index, dtype="float64")
+            empty.append(c)
+            continue
+        num = pd.to_numeric(present, errors="coerce")
+        # "inf"/"nan" spelled out are text, not measurements
+        bad = num.isna() | ~np.isfinite(num.astype("float64"))
+        if not bad.any():
+            if present.str.match(r"^[+-]?0\d+$").any():
+                df[c] = stripped        # zero-padded codes ("007", household IDs) are labels, as in SPSS
+            else:
+                df[c] = pd.to_numeric(stripped, errors="coerce").astype("float64")
+                if present.str.contains(".", regex=False).any():
+                    decimal.append(c)   # written with decimals ("3.0"): stored as quantities, not codes
+            continue
+        low = present.str.lower()
+        if low.isin(["true", "false"]).all():
+            df[c] = stripped.str.lower().map({"true": 1.0, "false": 0.0}).astype("float64")
+            continue
+        if blank.any():
+            df[c] = col.mask(blank)
+        if (~bad).sum() >= 0.8 * len(present):
+            mixed[c] = [int(bad.sum()), sorted(set(present[bad].astype(str)))[:3]]
+    report: dict[str, Any] = {}
+    if whitespace:
+        report["whitespace_cells"] = whitespace
+    if empty:
+        report["empty_columns"] = empty
+    if mixed:
+        report["text_in_numeric"] = mixed
+    if decimal:
+        report["_decimal"] = decimal       # internal: consumed by the CSV importer, not stored
+    return df, report
+
+
+def import_report(ds: Dataset) -> list[str]:
+    """User-facing notes on how untyped cells were normalised during import (empty when nothing changed)."""
+    o = ds.source.options or {}
+    out: list[str] = []
+    ws = o.get("whitespace_cells") or {}
+    if ws:
+        out.append(f"{sum(ws.values()):,} empty or whitespace-only cells in {len(ws):,} column(s) were read as "
+                   "missing values (NA, not zero); numbers with surrounding spaces were read as numbers. "
+                   "The source file was not changed.")
+    if o.get("empty_columns"):
+        cols = o["empty_columns"]
+        out.append(f"{len(cols):,} column(s) have no values at all: " + ", ".join(cols[:8])
+                   + (" …" if len(cols) > 8 else "") + ".")
+    for c, (n, ex) in (o.get("text_in_numeric") or {}).items():
+        out.append(f"{c} is mostly numeric but was kept as text because {n:,} cell(s) are not numbers "
+                   f"(e.g. {', '.join(repr(x) for x in ex)}). Recode or declare those values missing to analyse it "
+                   "as a number.")
+    return out
+
+
 def _storage(col: pd.Series) -> Storage:
     if pd.api.types.is_datetime64_any_dtype(col):
         return Storage.DATETIME
@@ -219,11 +311,16 @@ def _storage(col: pd.Series) -> Storage:
     return Storage.STRING
 
 
-def _infer_meta(index: int, name: str, col: pd.Series) -> VariableMeta:
+def _infer_meta(index: int, name: str, col: pd.Series, codes_possible: bool = True) -> VariableMeta:
     storage = _storage(col)
     if storage is Storage.NUMERIC:
-        n_unique = col.dropna().nunique()
-        measure = Measure.NOMINAL if n_unique <= 2 else Measure.CONTINUOUS
+        values = col.dropna()
+        n_unique = values.nunique()
+        # numeric storage alone is not a measurement level (P0-05 rule 6): a few integer codes are treated as
+        # categories until the user reviews them (Measurement Review offers continuous / ordinal)
+        coded = (codes_possible and n_unique <= SMALL_CODE_SET and bool((values == values.round()).all())
+                 and bool((values >= 0).all()) and not TIME_NAME.search(name))
+        measure = Measure.NOMINAL if n_unique <= 2 or coded else Measure.CONTINUOUS
     elif storage is Storage.DATETIME:
         measure = Measure.CONTINUOUS
     else:

@@ -14,6 +14,7 @@ from ..result_view import render
 from ..state import AppState
 from ..widgets.variable_selector import VariableSelector
 from .eda import CodeDialog
+from ..widgets.searchable import make_searchable
 
 
 class SurveyPage(QWidget):
@@ -62,7 +63,7 @@ class SurveyPage(QWidget):
         self.kind = QComboBox()
         for k, v in S.KINDS.items():
             self.kind.addItem(v, k)
-        self.outcome = QComboBox()
+        self.outcome = make_searchable(QComboBox())
         af.addRow("Analysis", self.kind)
         af.addRow("Outcome (regression)", self.outcome)
         ll.addWidget(abox)

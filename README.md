@@ -74,9 +74,9 @@ yourself (see 2B).
 ### Download it (for most people)
 1. Go to the **[Releases page](https://github.com/rursteve2/statexplore/releases/latest)**.
 2. Under **Assets**, download **one** of:
-   - **`StatExplore-1.2.0-Setup.exe`**: the installer (recommended). Double-click it and click
+   - **`StatExplore-1.3.0-Setup.exe`**: the installer (recommended). Double-click it and click
      through; then start **StatExplore** from the Start menu or the desktop shortcut.
-   - **`StatExplore-1.2.0-portable.zip`**: no installation. Right-click ▸ *Extract All…* into, for
+   - **`StatExplore-1.3.0-portable.zip`**: no installation. Right-click ▸ *Extract All…* into, for
      example, your Documents folder, open the extracted `StatExplore` folder and double-click
      **`StatExplore.exe`**.
 3. **If Windows says "Windows protected your PC":** click **More info**, then **Run anyway**. This
@@ -303,6 +303,44 @@ StatExplore keeps three things apart:
 - **Interpretation box (Teaching Studio):** three to six sentences generated from fixed templates
   using the actual numbers. It always ends with a limitation.
 
+### 5A. Reading results correctly (new in 1.3)
+
+- **Hypothesis families.** A search can test several kinds of hypotheses: individual interaction
+  terms, joint tests of interaction terms, main-effect terms, whole-model tests and (longitudinal
+  workflow B) covariance-structure comparisons. Each kind is its own multiple-testing family: BH and
+  Holm adjustment is applied **within** a family, and the summary counts each family separately. A
+  significant whole-model or main-effect test is **not** a significant interaction; "0 significant
+  interactions" means none of the interaction tests passed, whatever the other families show.
+- **Strict highlighting** needs a confidence interval for the *same* coefficient the p-value tests.
+  Joint tests and covariance-structure comparisons have none, so they are never strictly highlighted:
+  zero strict highlights does not mean zero significant tests.
+- **ML vs REML.** Workflow A (fixed-effect discovery) compares fixed effects with **ML** fits.
+  Workflow B (covariance-structure comparison) keeps the fixed part locked and uses **REML**. The
+  *Estimation* column says which; never compare REML likelihoods of models with different fixed
+  effects. R's own BIC for REML `nlme` fits uses log(n − p); StatExplore's tables use log(n) for every
+  engine, so exported scripts can show a BIC that differs in the second decimal.
+- **Parameter counts.** *Fixed coefficients* (with ordinal thresholds) are what the search's
+  parameter limit counts; *Covariance parameters* are random-effect and residual variance/correlation
+  parameters; *Likelihood parameters* is their total, the k in AIC = −2 logLik + 2k.
+- **Time index.** *AR(1)* uses the **observed-occasion index**: the rank of the observed time values.
+  If a wave is missing for everyone (for example Wave 15), the waves on either side are treated as
+  adjacent. *Continuous-time AR(1) (CAR1)* uses the **actual time differences**. They estimate
+  different things; a better AIC for one does not make its time definition the scientifically right
+  one. The preflight lists the observed time points and any wave absent inside the range.
+- **Model identity.** Opening a discovery model elsewhere (Full analysis, Mixed, Model Comparison)
+  refits exactly that model on the same rows and then checks n, log-likelihood and AIC against the
+  search. The result says "Model identity verified", or the check fails visibly. A destination that
+  cannot represent a model says so; it never substitutes a different model.
+- **CSV typing.** Empty and whitespace-only cells are read as missing values (never 0), and numbers
+  with surrounding spaces as numbers. A numeric column with only a few integer codes (≤ 9 distinct
+  values, no labels) is read as categories and flagged in Measurement Review. Choose continuous or
+  ordinal there if the codes are quantities or ordered. Zero-padded codes such as `001` stay text.
+  `.sav` files keep their SPSS measurement levels, labels and user-missing codes.
+- **Exported scripts.** *View candidate code ▸ Save script + data…* writes `analysis.R` and
+  `analysis_data.csv` (only the columns the analysis uses). The script finds the data next to itself,
+  so `source("analysis.R")` works from any folder. Workflow B exports also recompute the reported
+  covariance-structure comparisons.
+
 ---
 
 ## 6. Five things to always keep in mind
@@ -428,8 +466,10 @@ undoable setting.
 
 How each requirement of the original specification is met: **[docs/spec-compliance.md](docs/spec-compliance.md)**;
 for the 1.1 upgrade: **[docs/spec-compliance-v1.1.md](docs/spec-compliance-v1.1.md)**; for 1.2:
-**[docs/spec-compliance-v1.2.md](docs/spec-compliance-v1.2.md)** (with a feature matrix). Release notes:
-[docs/RELEASE_NOTES_v1.2.0.md](docs/RELEASE_NOTES_v1.2.0.md), [1.1.0](docs/RELEASE_NOTES_v1.1.0.md).
+**[docs/spec-compliance-v1.2.md](docs/spec-compliance-v1.2.md)** (with a feature matrix); for 1.3 (defect
+traceability, test evidence, limitations): **[docs/spec-compliance-v1.3.md](docs/spec-compliance-v1.3.md)**.
+Release notes: [docs/RELEASE_NOTES_v1.3.0.md](docs/RELEASE_NOTES_v1.3.0.md), [1.2.0](docs/RELEASE_NOTES_v1.2.0.md),
+[1.1.0](docs/RELEASE_NOTES_v1.1.0.md).
 The discovery grammar is in [docs/formula-grammar.md](docs/formula-grammar.md).
 
 Building, testing, packaging and the architecture are described in

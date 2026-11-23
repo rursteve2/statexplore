@@ -20,8 +20,11 @@ def candidate_from_row(run: DiscoveryRun, row: dict[str, Any]) -> Candidate:
         import json
 
         inter = json.loads(inter)
+    kind = str(row.get("kind") or "focal")
+    # workflow-B candidates differ only in their structure: dropping it silently substituted another model (P0-01 B/C)
+    structure = str(row.get("structure") or "") if kind == "structure" else ""
     return Candidate(int(row["idx"]), tuple(row["focal"]), tuple(row["covariates"]), tuple(run.settings.required),
-                     str(row.get("kind") or "focal"), tuple(tuple(t) for t in inter))
+                     kind, tuple(tuple(t) for t in inter), structure)
 
 
 def full_analysis(session: RSession, ds: Dataset, run: DiscoveryRun,
@@ -58,4 +61,9 @@ def full_analysis(session: RSession, ds: Dataset, run: DiscoveryRun,
     result, artifacts = run_analysis(session, ds, spec, vars_, opts, internal, title,
                                      treatments=getattr(s, "treatments", None))
     result.values["discovery"] = {"run": run.id, "candidate": c.index}
+    row = next((r for r in run.rows if int(r["idx"]) == c.index), None)
+    if row is not None:
+        from ..analysis.descriptor import attach_check, from_discovery
+
+        attach_check(result, from_discovery(run, row))
     return result, artifacts

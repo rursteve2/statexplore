@@ -36,7 +36,7 @@ def drop_term(terms: list[Term], t: Term) -> list[Term]:
 class ModelSpec:
     outcome: str
     terms: list[Term]
-    family: str                         # "gaussian" | "binomial"
+    family: str                         # "gaussian" | "binomial" | "ordinal" | "multinomial"
     label: str = ""
     source: str = "manual"
     sample_vars: list[str] = field(default_factory=list)   # extra variables for a shared complete-case sample
@@ -44,6 +44,10 @@ class ModelSpec:
     selected_from: int | None = None     # number of candidates searched if it came from discovery
     treatments: list[dict[str, Any]] = field(default_factory=list)   # analysis-specific encodings (v1.1)
     id: str = field(default_factory=lambda: uuid.uuid4().hex[:10])
+    # ---- v1.3: outcome coding and origin identity (P0-01) ----
+    event: Any = None                    # binomial: modelled event category (None = second category)
+    reference: Any = None                # multinomial: baseline category (None = first category)
+    descriptor: dict[str, Any] | None = None   # origin ModelDescriptor of an unedited discovery candidate
 
     def __post_init__(self) -> None:
         self.terms = close_hierarchy([tuple(t) for t in self.terms])
@@ -74,13 +78,14 @@ class ModelSpec:
     def nested_in(self, other: "ModelSpec") -> bool:
         """True if this model's terms are a strict subset of `other`'s (same outcome and family)."""
         return (self.outcome == other.outcome and self.family == other.family
-                and set(self.terms) < set(other.terms))
+                and repr(self.event) == repr(other.event) and repr(self.reference) == repr(other.reference)
+                and {frozenset(t) for t in self.terms} < {frozenset(t) for t in other.terms})
 
     def copy_edited(self, terms: list[Term], label: str = "") -> "ModelSpec":
         return ModelSpec(outcome=self.outcome, terms=terms, family=self.family,
                          label=label or f"{self.label or 'model'} (edited)", source=f"edited from {self.id}",
                          sample_vars=list(self.sample_vars), focal=None, selected_from=self.selected_from,
-                         treatments=[dict(t) for t in self.treatments])
+                         treatments=[dict(t) for t in self.treatments], event=self.event, reference=self.reference)
 
     def to_dict(self) -> dict[str, Any]:
         d = asdict(self)
@@ -110,9 +115,17 @@ def from_candidate(run: Any, row: dict[str, Any]) -> ModelSpec:
     else:
         terms = [focal] + [(v,) for v in list(row["covariates"]) + list(s.required)]
     sample = [s.outcome] + s.candidates + s.required if s.sample == "shared" else []
+    if run.family not in ("gaussian", "binomial", "ordinal", "multinomial"):
+        from .descriptor import TransferError
+
+        raise TransferError("Longitudinal candidates are mixed / marginal models; they are not single-level models.")
+    from .descriptor import from_discovery
+
+    d = from_discovery(run, row)
     return ModelSpec(outcome=s.outcome, terms=terms, family=run.family, label=f"Candidate #{row['idx']}",
                      source=f"discovery {run.id} #{row['idx']}", sample_vars=sample, focal=focal,
-                     selected_from=run.total, treatments=[dict(t) for t in getattr(s, "treatments", [])])
+                     selected_from=run.total, treatments=[dict(t) for t in getattr(s, "treatments", [])],
+                     event=d.event, reference=d.reference, descriptor=d.to_dict())
 
 
 def model_view(ds: Dataset, m: "ModelSpec | None") -> Dataset:

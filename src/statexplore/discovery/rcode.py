@@ -226,7 +226,8 @@ sx_discover_one <- function(full, tests, vars, focal_vars, struct = NULL) {
     ctab <- if (sx_disc_family == "ordinal") stats::coef(summary(m1)) else NULL
     crit <- stats::qnorm(1 - (1 - sx_disc_conf) / 2)
   }
-  if (sx_disc_family != "gee") { res$aic <- stats::AIC(m1); res$bic <- stats::BIC(m1); res$loglik <- s1$ll }
+  if (sx_disc_family != "gee") { res$aic <- stats::AIC(m1); res$bic <- stats::BIC(m1); res$loglik <- s1$ll
+    res$n_lik_params <- s1$k }   # every parameter of the likelihood (fixed + thresholds + covariance)
   for (t in tests) {
     if (sx_disc_family == "gee") {
       tr <- sx_wald(m1, X, f1, t$drop)
@@ -250,7 +251,11 @@ sx_discover_one <- function(full, tests, vars, focal_vars, struct = NULL) {
     res$tests[[length(res$tests) + 1]] <- tr
   }
   if (sx_disc_family == "gee") {
-    res$qic <- tryCatch(as.numeric(geepack::QIC(m1)[["QIC"]]), error = function(e) NA_real_)
+    # QIC refits the independence model from the stored call (formula `f`, data `d`): give it both (P1-07)
+    qic_env <- list2env(list(f = f1, d = d), parent = environment())
+    res$qic <- tryCatch(as.numeric(geepack::QIC(m1, env = qic_env)[["QIC"]]),
+                        error = function(e) { res$flags <<- c(res$flags, paste("QIC unavailable:", conditionMessage(e)))
+                                              NA_real_ })
     res$aic <- NA_real_; res$bic <- NA_real_; res$loglik <- NA_real_
   }
   # the declared focal test, also at the top level (v1.1 row layout)
@@ -382,8 +387,51 @@ def batch_script(ds: Dataset, batch: list[Candidate], s: SearchSettings | None =
     return f"sx_result <- sx_discover_batch(list(\n  {items}))\n"
 
 
-def candidate_script(load_script: str, ds: Dataset, s: SearchSettings, family: str, c: Candidate) -> str:
+CANDIDATE_SUMMARY = (
+    'cat(sprintf("status = %s; n = %s; groups = %s; AIC = %.3f; BIC = %.3f; logLik = %.3f; likelihood parameters = %s; '
+    'flags = %s\\n", sx_result$status, sx_result$n, sx_result$n_groups, sx_result$aic, sx_result$bic, '
+    'sx_result$loglik, if (is.null(sx_result$n_lik_params)) NA else sx_result$n_lik_params, '
+    'if (nzchar(sx_result$flags)) sx_result$flags else "none"))\n')
+
+
+def _mixture_r(weights: dict[int, float] | None, df: float) -> str:
+    """R expression for the p-value of statistic sx_lr: chi-square(df), or a boundary chi-square mixture."""
+    if not weights:
+        return f"stats::pchisq(max(sx_lr, 0), {int(df)}, lower.tail = FALSE)"
+    parts = [(f"{w:g} * (sx_lr <= 0)" if int(k) == 0 else f"{w:g} * stats::pchisq(max(sx_lr, 0), {int(k)}, lower.tail = FALSE)")
+             for k, w in sorted(weights.items(), key=lambda kv: int(kv[0]))]
+    return " + ".join(parts)
+
+
+def comparison_script(ds: Dataset, s: SearchSettings, c: Candidate, comparisons: list[dict]) -> str:
+    """Workflow B: refit each reference structure on the same rows and fixed part and recompute the reported
+    covariance-structure likelihood-ratio tests (P0-02: exports reproduce the claimed inference too)."""
+    import dataclasses
+
+    from ..rbridge.codegen import r_num
+
+    if not comparisons:
+        return ""
+    L = ["# ---- covariance-structure comparisons shown in the discovery results (same rows, same fixed part, "
+         + ("REML" if s.workflow == "structure" else "ML") + ") ----", "sx_cmp <- list()"]
+    for k, t in enumerate(comparisons, start=1):
+        ref = dataclasses.replace(c, structure=t["reference_structure"])
+        how = ("boundary-corrected chi-square mixture (variance / correlation tested on the edge of its range)"
+               if t.get("boundary") else f"chi-square({int(t['df1'])})")
+        L += [f"sx_ref <- sx_discover_one({candidate_args(ds, ref, s)})",
+              "stopifnot(identical(sx_ref$n, sx_result$n))  # nested comparison only on identical rows",
+              "sx_lr <- 2 * (sx_result$loglik - sx_ref$loglik)",
+              f"sx_cmp[[{k}]] <- data.frame(comparison = {r_str(t['label'])}, reference = {r_str(t['reference_structure'])},",
+              f"  LR = sx_lr, df = {r_num(float(t['df1']))}, p = {_mixture_r(t.get('mixture'), t['df1'])},",
+              f"  method = {r_str(how)}, app_LR = {r_num(float(t['statistic']))}, app_p = {r_num(float(t['p']))})"]
+    L += ["sx_comparisons <- do.call(rbind, sx_cmp)", "print(sx_comparisons, digits = 6)"]
+    return "\n".join(L) + "\n"
+
+
+def candidate_script(load_script: str, ds: Dataset, s: SearchSettings, family: str, c: Candidate,
+                     comparisons: list[dict] | None = None) -> str:
     setup = setup_script(ds, s, family).replace("sx_result <- list(n = nrow(sx_dd), n_complete = "
                                                "sum(stats::complete.cases(sx_dd)))\n", "")
     return (load_script + "\n" + setup + "\n# ---- candidate " + str(c.index) + " ----\n"
-            + f"sx_result <- sx_discover_one({candidate_args(ds, c, s)})\nstr(sx_result)\n")
+            + f"sx_result <- sx_discover_one({candidate_args(ds, c, s)})\n" + CANDIDATE_SUMMARY
+            + comparison_script(ds, s, c, comparisons or []))

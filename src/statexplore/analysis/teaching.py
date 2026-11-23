@@ -97,6 +97,9 @@ def build(ds: Dataset, m: ModelSpec, p: PlotSpec, plot_path: str) -> str:
     pn = a(p.panel) if p.panel else None
     others = [a(v) for v in m.variables if v not in (p.x, p.group, p.panel)]
     gauss = m.family == "gaussian"
+    if m.family not in ("gaussian", "binomial"):
+        raise ModelCheckError(f"The Teaching Studio draws linear and binary logistic models; this is a {m.family} "
+                              "model, which it cannot refit faithfully. Open it with Full analysis instead.")
     conf = r_num(p.conf)
     focal = ":".join(a(v) for v in m.focal) if m.focal else None
     L = [
@@ -111,8 +114,11 @@ def build(ds: Dataset, m: ModelSpec, p: PlotSpec, plot_path: str) -> str:
         resp = y
     else:
         L += [
-            f"sx_lv <- if (is.factor(sx_d${y})) levels(sx_d${y}) else sort(unique(sx_d${y}))",
-            f"sx_d$sx_event <- as.integer(sx_d${y} == sx_lv[2])",
+            *([f"sx_lv <- if (is.factor(sx_d${y})) levels(sx_d${y}) else sort(unique(sx_d${y}))",
+               f"sx_d$sx_event <- as.integer(sx_d${y} == sx_lv[2])"] if m.event is None else
+              [f"sx_d$sx_event <- as.integer(as.character(sx_d${y}) == {r_str(ds.level_label(m.outcome, m.event))})"
+               "  # event category of the source model"] if ds.var(m.outcome).is_categorical else
+              [f"sx_d$sx_event <- as.integer(sx_d${y} == {r_num(m.event)})  # event category of the source model"]),
             f"sx_fit <- stats::glm(sx_event ~ {m.rhs(ds)}, data = sx_d, family = stats::binomial())",
         ]
         resp = "sx_event"

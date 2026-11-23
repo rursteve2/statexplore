@@ -327,3 +327,47 @@ Baseline: local main `1673df9` (= GitHub v1.1.0 release commit 99aeb93 + a docs 
   CV for longitudinal searches; M §13 extras beyond the study-structure selector and chance counts; four-way
   interactions; separate v1.1.1 build (milestone-1 content = commit 3ef839a).
 - User steps: clean-machine install; publish decision (push + GitHub release).
+
+---
+
+# v1.3.0 (spec: `E:\Downloads\StatExplore_v1.3.0_Development_Prompt.md`, started 2026-11-23)
+
+Baseline: main `a72ddeb` (= GitHub v1.2.0). Fixtures: `hrs_least_missing_1000 (2).sav` (byte-identical to the v1.0–1.2
+fixture) and `hrs_least_missing_1000.csv` (same 16,000 × 168 data; blanks are single spaces).
+
+## Root causes found before editing (P0)
+| Defect | Root cause |
+|---|---|
+| P0-01 A ordinal → binary | `analysis/comparison.build` only knows lm/glm: any non-Gaussian ModelSpec is refitted as `glm(y == level[2])`. Ordinal/multinomial candidates reach it via Add to Comparison / Compare with main-effects. |
+| P0-01 B CAR(1) → lme4 RI ML | `discovery/detail.candidate_from_row` drops the row's `structure`; `spec_from_discovery` then falls back to `s.structure` ("ri") and forces `method="ML"`. |
+| P0-01 C GEE → lme4 | same as B (workflow-B GEE rows lose their working correlation). |
+| P0-02 `struct = ""` | same dropped field; `candidate_tests()` has no structure tests (they are computed in Python after the run), so the export has `tests = list()`. |
+| P0-03 "N interactions" | headline counts `sig_raw/sig_adj` over each model's *primary* test, whatever its type, and always calls them interactions. |
+| P0-05 CSV blanks | `pd.read_csv` keeps `" "` as a string → whole column object → STRING/NOMINAL. 144 HRS columns differ from the .sav. |
+| P1-01 nlme blocked | `spec_from_discovery` sets `inference="lrt"` for every Gaussian model; validation rejects lrt for nlme/mmrm. |
+
+## Design decisions (v1.3)
+| # | Decision | Why |
+|---|----------|-----|
+| G1 | **`ModelDescriptor`** (`analysis/descriptor.py`): one serializable record built from a discovery row + run (family, engine, link, outcome levels/order/event/reference, terms, required, ID, time, time type, structure + time-index semantics, estimator ML/REML, sample vars, n, n_groups, logLik/AIC/BIC, parameter counts, warnings, tests). Every handoff (Full Analysis, Add to Comparison, Compare with main-effects, Mixed, View code, reports) is built from it, and the refit is checked against it (n, logLik, AIC within tolerance) with a visible "identity verified / differs" note. | P0-01 one authoritative descriptor; refits disclosed and verified. |
+| G2 | Model Comparison fits each family with its own engine (lm / glm with the descriptor's event / ordinal::clm / nnet::multinom); refuses mixed families, different event/reference/order; LR tests only for nested models on identical rows. Longitudinal candidates are not sent to the single-level comparison: a specific message points to Discovery's model-comparison tab (same rows) or Mixed. | P0-01 A, P0-04. |
+| G3 | Workflow-B candidate export = setup + fits of every structure the reported comparisons need + explicit LR/mixture test code; struct always the candidate's own id. Exported data reference = relative `data/<name>.csv` written next to the script with only the analysis columns (+ instructions); no AppData paths, no level vectors of ID columns. | P0-02. |
+| G4 | Headline counts are per hypothesis family; "interactions" = individual + joint + focal interaction families only; covariance-structure wording; Holm count shown too. | P0-03. |
+| G5 | CSV/XLSX: whitespace-only cells → NA, numbers trimmed; count of normalised cells recorded per column in the source options and shown. Measurement inference: numeric with ≤ 2 values → nominal (as before); integer-valued with 3–9 distinct values and no labels → nominal + flagged for review (rule 6: numeric coding alone is not continuous); else continuous. Stored project levels are never re-inferred. | P0-05. |
+| G6 | Mixed handoff: inference default per engine (lme4 Gaussian → LRT on ML; nlme/mmrm → model's own df with ML/REML kept from the origin); validation messages explain KR is implementation-specific. | P1-01. |
+| G7 | UI-28: discovery results area becomes a vertical splitter (tables / collapsible selected-model details pane); configuration and preflight in a horizontal splitter; sizes, collapsed states and column widths saved with QSettings; Ctrl+F find bar in code and report views; double-click opens details; copy table as CSV. | P2-02, UI-28. |
+
+## Phases (v1.3)
+- [x] 1 Baseline (315/315 on clean worktree E:\sx_v120_base) + pre-fix reproductions on HRS (Fixtures A, D, E; P0-01 A/B, P0-02, P0-03, P0-05) — E:\StatExplore_v1.3.0_Testing\reproduction_steps
+- [x] 2 P0: descriptor + identity checks (G1), per-family Model Comparison (G2), structure-preserving exports with comparisons + portable script/data (G3), family headline (G4), CSV typing (G5)
+- [x] 3 P1: nlme inference default (G6), time-index labels + observed waves + gap compression, usable/intermittent counts, MAR wording, model-based predictions, parameter columns + Estimation, interpretation wording, timeouts, nominal_test reason, GEE QIC, multinomial categories
+- [x] 4 P2/UI-28: searchable dropdowns, pins, excluded-outcome reasons, find bar, Copy CSV, column menu/persistence, details pane + splitters, Mixed preflight pane, filter scope, strict note, budget history (G7)
+- [x] 5 Tests (tests/test_v13.py), docs (README 5A, RELEASE_NOTES_v1.3.0, spec-compliance-v1.3), version 1.3.0
+- [x] 6 Build installer + frozen self-test (pass); published v1.3.0 (push + GitHub release) on the user's go-ahead
+
+### Review (v1.3.0)
+- Tests: 315 baseline → **345/345** (tests/test_v13.py: 30; HRS fixtures A, D, E included). Two v1.2 GUI assertions updated for deliberate wording/column changes.
+- Pre-fix reproductions confirmed every P0 root cause on HRS (repro_p0*.txt); the engines' numbers were already right (Fixture D AR(1) 20512.788 / CAR(1) 20540.106 / indep 20640.342; Fixture E p .7863; Fixture A 16/0, 5/0, 9/3, 18/14) — the defects were in transfer, export, reporting and import.
+- Post-fix: every transfer verified against its origin (n, logLik, AIC); CAR(1) export sourced independently reproduces n 3901 / AIC 20540.106 / logLik −10264.053 / k 6 + the covariance LR test from .sav and .csv; HRS CSV now = SAV for all 168 columns.
+- Found along the way: GEE QIC always NA in discovery (scope bug), holdout column broke the one-per-line load script (caught by tests), import heuristic needed time-name / negative / decimal exceptions.
+- Limitations and open items: docs/spec-compliance-v1.3.md §4.

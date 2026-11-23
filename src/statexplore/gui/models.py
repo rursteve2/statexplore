@@ -247,7 +247,11 @@ class FrameModel(QAbstractTableModel):
             return int(Qt.AlignRight | Qt.AlignVCenter)
         return None
 
+    header_tips: dict[str, str] = {}     # column name -> definition shown as the header tooltip (P2-06)
+
     def headerData(self, section: int, orientation: Qt.Orientation, role: int = Qt.DisplayRole) -> Any:
+        if role == Qt.ToolTipRole and orientation == Qt.Horizontal:
+            return self.header_tips.get(str(self.frame.columns[section]))
         if role != Qt.DisplayRole:
             return None
         if orientation == Qt.Horizontal:

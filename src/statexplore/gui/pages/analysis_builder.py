@@ -22,6 +22,7 @@ from ..state import AppState
 from ..widgets.treatment_panel import TreatmentPanel
 from ..widgets.variable_selector import VariableSelector
 from .eda import CodeDialog
+from ..widgets.searchable import make_searchable
 
 
 def fmt_code(code) -> str:
@@ -47,7 +48,7 @@ class SlotWidget(QWidget):
             self.selector.changed.connect(self.changed.emit)
             lay.addWidget(self.selector)
         else:
-            self.combo = QComboBox()
+            self.combo = make_searchable(QComboBox())
             self.combo.addItem("(none)" if slot.min == 0 else "— choose —", None)
             for name, display in names:
                 self.combo.addItem(display, name)

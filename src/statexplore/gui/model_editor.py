@@ -13,6 +13,7 @@ from ..analysis.models import ModelSpec
 from ..core.dataset import Dataset
 from ..core.variables import Measure, Storage
 from ..discovery.space import SearchSpaceError, outcome_family
+from .widgets.searchable import make_searchable
 
 MAX_TERMS_VARS = 6
 
@@ -28,7 +29,7 @@ class ModelEditor(QWidget):
         form = QFormLayout()
         self.label = QLineEdit()
         self.label.setPlaceholderText("(optional model name)")
-        self.outcome = QComboBox()
+        self.outcome = make_searchable(QComboBox())
         self.outcome.currentIndexChanged.connect(self._outcome_changed)
         form.addRow("Model name", self.label)
         form.addRow("Outcome", self.outcome)

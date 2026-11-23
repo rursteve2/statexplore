@@ -96,6 +96,13 @@ def build_html(doc: QTextDocument, result: AnalysisResult, artifacts: dict[str, 
                      f"<tr><td><b>Interpretation.</b> {html.escape(result.values['interpretation'])}</td></tr></table>")
     if result.missing_data:
         parts.append(f"<p class='note'>Missing data: {html.escape(result.missing_data)}</p>")
+    if result.values.get("analysis_range"):
+        parts.append(f"<p class='note'>Analysis range: {html.escape(str(result.values['analysis_range']))}"
+                     + (f"; observed time points: {html.escape(str(result.values['observed_time_points']))}"
+                        if result.values.get("observed_time_points") else "") + "</p>")
+    if result.values.get("identity_check"):
+        parts.append(f"<p class='note'>Origin model: {html.escape(str(result.values.get('origin_model', '')))} — "
+                     f"identity check: <b>{html.escape(str(result.values['identity_check']))}</b></p>")
     treatments = result.inputs.get("treatments") or []
     if treatments:
         items = "".join(f"<li>{html.escape(t.get('description', ''))}</li>" for t in treatments)

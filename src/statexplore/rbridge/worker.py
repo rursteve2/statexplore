@@ -28,6 +28,10 @@ class REngineError(Exception):
     """R is unavailable, crashed, or timed out."""
 
 
+class RTimeoutError(REngineError):
+    """R did not answer within the time limit (the worker was stopped)."""
+
+
 class RScriptError(Exception):
     """The R script raised an error (worker stays alive)."""
 
@@ -160,8 +164,8 @@ class RWorker:
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 self.kill()
-                raise REngineError(f"R did not respond within {timeout:.0f}s; the R worker was stopped "
-                                   "and will restart on next use.")
+                raise RTimeoutError(f"R did not respond within {timeout:.0f}s; the R worker was stopped "
+                                    "and will restart on next use.")
             try:
                 msg = self._responses.get(timeout=remaining)
             except queue.Empty:

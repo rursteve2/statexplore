@@ -68,13 +68,13 @@ def test_combination_search_tables_and_highlighting(window, qtbot, tmp_path, r_w
     assert set(tf["test_type"]) == {"overall", "main_term", "interaction_term", "joint_interaction"}
     table = page.discovery_table
     frame = table.model.frame
-    assert {"Test ID", "Tested effect", "Test type", "Predictors", "Model terms", "Estimated parameters",
+    assert {"Test ID", "Tested effect", "Test type", "Predictors", "Model terms", "Fixed coefficients", "Likelihood parameters",
             "CI applicability", "Highlight"} <= set(frame.columns)
     assert set(frame["Predictors"]) == {"3 / 6"}
     page.tabs.setCurrentWidget(table)
     hl, shown, total = table.counts()
     assert hl >= 1 and shown == total == len(tf)
-    assert "highlighted of" in page.hl_count.text()
+    assert "highlighted tests of" in page.hl_count.text()   # v1.3: counters name their unit
     top = frame[frame["Tested effect"] == "a × b"]
     assert len(top) >= 1
     # the hypothesis-type filter shows one family at a time

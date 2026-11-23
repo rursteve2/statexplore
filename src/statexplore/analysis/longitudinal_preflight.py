@@ -34,6 +34,19 @@ class PreflightReport:
     analysis_range: tuple[Any, Any] | None
     warnings: list[str] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
+    # ---- v1.3 (P1-02 / P1-03) ----
+    observed_times: list[Any] = field(default_factory=list)   # time points with at least one observed outcome
+    interior_absent: list[Any] = field(default_factory=list)  # absent for everyone but inside the observed range
+    n_usable: int = 0                 # participants with >= 1 row complete on the model variables
+    n_usable_multi: int = 0           # ... with >= 2 such rows
+    n_usable_one: int = 0
+    n_intermittent: int = 0           # participants with a gap inside their own observed span (not global gaps)
+
+    def observed_text(self, ds: Dataset) -> str:
+        if not self.time:
+            return "—"
+        lab = lambda c: ds.level_label(self.time, c)  # noqa: E731
+        return ", ".join(lab(c) for c in self.observed_times) or "none"
 
     def tables(self, ds: Dataset) -> list[Table]:
         t = self.by_time
@@ -42,11 +55,18 @@ class PreflightReport:
             name="Longitudinal data preflight",
             columns=["outcome", "participant ID", "time", "records", "participants", "time points",
                      "participants with 1 observation", "participants with 2+ observations",
-                     "participants with no observation", "duplicate participant-time rows", "analysis range"],
+                     "participants with no observation", "participants with usable rows",
+                     "usable: 2+ rows", "usable: 1 row", "intermittent gaps", "duplicate participant-time rows",
+                     "analysis range (min to max)", "observed time points", "absent inside range"],
             rows=[[ds.var(self.outcome).display_name, ds.var(self.id).display_name,
                    ds.var(self.time).display_name if self.time else "—", self.n_records, self.n_participants,
-                   len(self.time_points), self.n_one_obs, self.n_multi_obs, self.n_no_obs, self.duplicates,
-                   self._range_text(ds)]])
+                   len(self.time_points), self.n_one_obs, self.n_multi_obs, self.n_no_obs, self.n_usable,
+                   self.n_usable_multi, self.n_usable_one, self.n_intermittent, self.duplicates,
+                   self._range_text(ds), self.observed_text(ds),
+                   ", ".join(ds.level_label(self.time, c) for c in self.interior_absent) if self.time else "—"]],
+            notes="Usable = complete on the outcome, time and predictors (the rows a model can use). Intermittent = "
+                  "a participant missing an occasion inside their own observed span that others did observe; "
+                  "occasions absent for everyone are listed separately.")
         return [summary, Table(name="Outcome availability by time point", columns=["time"] + list(t.columns),
                                rows=rows, notes="Observed = non-missing outcome. A time point with 0 observed "
                                                 "values is structurally unobserved for this outcome.")]
@@ -109,6 +129,24 @@ def preflight(ds: Dataset, outcome: str, id_var: str, time: str | None = None,
                         + ", ".join(f"{a} at {_label(ds, time, b)}" for a, b in examples[:3])
                         + "). Repeated-measures structures need one row per participant per occasion.")
     n_one, n_multi, n_none = int((per_id == 1).sum()), int((per_id >= 2).sum()), int((per_id == 0).sum())
+    per_usable = complete.groupby(f[id_var]).sum()
+    n_usable, n_usable_multi = int((per_usable >= 1).sum()), int((per_usable >= 2).sum())
+    seen_times = [c for c in times if c not in unobserved] if time else []
+    interior = [c for c in unobserved if rng and rng[0] < c < rng[1]] if time else []
+    n_inter = 0
+    if time and seen_times:
+        pos = {c: i for i, c in enumerate(seen_times)}
+        idx = f.loc[complete, time].map(pos)
+        span = idx.groupby(f.loc[complete, id_var]).agg(["min", "max", "nunique"])
+        n_inter = int(((span["max"] - span["min"] + 1) > span["nunique"]).sum())
+    if interior and time:
+        lab = lambda c: _label(ds, time, c)  # noqa: E731
+        warnings.append(
+            f"Observed time points: {', '.join(lab(c) for c in seen_times)}. {', '.join(lab(c) for c in interior)} "
+            f"lies inside the analysis range but has no observed {dn} for anyone. An observed-occasion index (AR(1) "
+            "over occasions, GEE AR(1), occasion lags) treats the occasions on either side as adjacent (gap "
+            "compression); continuous-time AR(1) uses the actual time differences. Predictions at absent time "
+            "points are model-based, not observed data.")
     if n_one:
         notes.append(f"{n_one} participants contribute a single observation: they inform the averages but not "
                      "within-person change.")
@@ -116,8 +154,16 @@ def preflight(ds: Dataset, outcome: str, id_var: str, time: str | None = None,
         w, n = _model_checks(ds, f, complete, outcome, id_var, time, spec)
         warnings += w
         notes += n
+    if n_inter:
+        notes.append(f"{n_inter} participants have intermittent gaps (an occasion missing inside their own observed "
+                     "span); they are retained with their available rows.")
+    notes.append("Incomplete histories are retained (no complete-panel requirement, no imputation). Estimates are "
+                 "unbiased only if the missingness is ignorable given the model — missing at random given the "
+                 "observed outcomes and covariates in the model, with a correctly specified model; MAR itself cannot "
+                 "be verified from the data.")
     return PreflightReport(outcome, id_var, time, len(f), int(f[id_var].nunique()), times, by, n_one, n_multi,
-                           n_none, dups, examples, unobserved, rng, warnings, notes)
+                           n_none, dups, examples, unobserved, rng, warnings, notes, seen_times, interior,
+                           n_usable, n_usable_multi, n_usable - n_usable_multi, n_inter)
 
 
 def _runs(codes: list[Any], lab) -> str:

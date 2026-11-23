@@ -29,7 +29,7 @@ class CodeDialog(QDialog):
     """Shows the exact script the R worker executed for a result (§18)."""
 
     def __init__(self, result: AnalysisResult | None, parent: QWidget | None = None, *,
-                 title: str = "", script: str = "", header: str = ""):
+                 title: str = "", script: str = "", header: str = "", dataset=None):
         super().__init__(parent)
         if result is not None:
             title, script = result.title, result.script
@@ -43,12 +43,44 @@ class CodeDialog(QDialog):
         text.setReadOnly(True)
         text.setLineWrapMode(QPlainTextEdit.NoWrap)
         text.setStyleSheet("font-family: Consolas, monospace;")
+        from ..widgets.find_bar import FindBar
+
+        self.find_bar = FindBar(text, self)
+        lay.addWidget(self.find_bar)
         lay.addWidget(text)
+        self.text = text
         btns = QDialogButtonBox(QDialogButtonBox.Close)
         copy = btns.addButton("Copy", QDialogButtonBox.ActionRole)
         copy.clicked.connect(lambda: (text.selectAll(), text.copy()))
+        find = btns.addButton("Find (Ctrl+F)", QDialogButtonBox.ActionRole)
+        find.clicked.connect(self.find_bar.open)
+        self.dataset = dataset
+        if dataset is not None:
+            save = btns.addButton("Save script + data…", QDialogButtonBox.ActionRole)
+            save.setToolTip("Writes analysis.R and analysis_data.csv (only the columns this script uses) into a "
+                            "folder; the script finds the data next to itself, so source(\"analysis.R\") works.")
+            save.clicked.connect(self._save)
         btns.rejected.connect(self.reject)
         lay.addWidget(btns)
+
+    def _save(self) -> None:
+        from pathlib import Path
+
+        from PySide6.QtWidgets import QFileDialog, QMessageBox
+
+        from ...export.exporters import write_portable
+
+        folder = QFileDialog.getExistingDirectory(self, "Folder for analysis.R and its data file")
+        if not folder:
+            return
+        try:
+            written = write_portable(self.text.toPlainText(), Path(folder), self.dataset)
+        except Exception as e:  # file system errors are user-facing
+            QMessageBox.warning(self, "Save", f"Could not save: {e}")
+            return
+        QMessageBox.information(self, "Save", "Saved:\n" + "\n".join(str(p) for p in written)
+                                + "\n\nThe data file holds only the analysis columns (internal names v001…). Treat it "
+                                "with the same care as the original data.")
 
 
 class ImageView(QLabel):

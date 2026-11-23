@@ -70,12 +70,22 @@ def brief(result: AnalysisResult, alpha: float = 0.05) -> str:
         orv = _num(best[cols.index("odds_ratio")])
         effect = f"odds ratio {orv:.2f}" + (" (conditional on the participant)" if "subject-specific" in t.notes else "")
     elif "RRR" in cols:
-        effect = f"relative risk ratio {_num(best[cols.index('RRR')]):.2f} for one outcome category vs the reference"
+        cmp = best[cols.index("comparison_category")] if "comparison_category" in cols else None
+        ref = best[cols.index("reference_category")] if "reference_category" in cols else None
+        effect = (f"relative risk ratio {_num(best[cols.index('RRR')]):.2f} for outcome category "
+                  + (f"'{cmp}' vs the reference category '{ref}'" if cmp is not None and ref is not None
+                     else "one category vs the reference"))
     else:
         effect = f"estimate {est:.3g}"
     n_terms = len(rows)
-    lead = "Strongest term" if n_terms > 1 else "Tested term"
-    return f"{lead}: {term} — {sig} ({_p(p)}; {effect}). {_limitation(result)}"
+    # P1-05: the smallest p-value is not "the strongest predictor"; with interactions, lower-order terms are
+    # conditional effects at the reference level (or zero) of the interacting variables
+    lead = "Term with the smallest p-value" if n_terms > 1 else "Tested term"
+    cond = ""
+    if any(":" in str(r[ti]) for r in rows):
+        cond = (" The model contains interactions, so main-effect coefficients are conditional effects at the "
+                "reference level (or zero) of the interacting variables, not overall effects.")
+    return f"{lead}: {term} — {sig} ({_p(p)}; {effect}).{cond} {_limitation(result)}"
 
 
 def tables_tsv(result: AnalysisResult) -> str:

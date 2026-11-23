@@ -34,26 +34,144 @@ def table_frame(t: Table) -> pd.DataFrame:
 
 # ---- data + R scripts ------------------------------------------------------------------
 
-def export_data_csv(ds: Dataset, path: Path) -> None:
-    """The same data file the R worker reads (base variables by alias, user-missing as NA)."""
+def export_data_csv(ds: Dataset, path: Path, aliases: Iterable[str] | None = None) -> None:
+    """The same data file the R worker reads (base variables by alias, user-missing as NA); with `aliases`,
+    only those columns (portable exports carry the analysis columns only)."""
     from ..analysis.session import export_data
 
-    export_data(ds, path)
+    export_data(ds, path, set(aliases) if aliases is not None else None)
+
+
+_ALIAS = re.compile(r"\bv\d{3,}\b")
+_PREP_END = "sx_result <- list(n_rows = nrow(dat), n_cols = ncol(dat))"
+_ELEMENT = re.compile(r"^\s+(v\d{3,}) = ")
+_PER_VAR = re.compile(r"^dat\$(v\d{3,}) <- ")
+
+
+def used_aliases(script: str) -> set[str] | None:
+    """Columns an analysis script needs: those its analysis part uses, plus the inputs of derived variables
+    it uses and of every row filter. None if the script has no StatExplore data-preparation block."""
+    head, sep, body = script.partition(_PREP_END)
+    if not sep:
+        return None
+    used = set(_ALIAS.findall(body))
+    lines = head.split("\n")
+    for line in lines:
+        if line.startswith("dat <- dat[which("):
+            used |= set(_ALIAS.findall(line))
+    derived, section = [], ""
+    for line in lines:
+        if line.startswith("# "):
+            section = line
+        elif section.startswith("# Derived variables") and _PER_VAR.match(line):
+            derived.append(line)
+    changed = True
+    while changed:
+        changed = False
+        for line in derived:
+            if _PER_VAR.match(line).group(1) in used:
+                new = set(_ALIAS.findall(line)) - used
+                if new:
+                    used |= new
+                    changed = True
+    return used
+
+
+def prune_script(script: str, used: set[str]) -> str:
+    """Drop the data-preparation lines of columns the analysis does not use (column classes, display names,
+    factor codings, unused derived variables); fixes the trailing comma of each shortened vector."""
+    head, sep, body = script.partition(_PREP_END)
+    out: list[str] = []
+    for line in head.split("\n"):
+        m = _ELEMENT.match(line) or _PER_VAR.match(line)
+        if m and m.group(1) not in used:
+            continue
+        if line.strip() == ")" and out and _ELEMENT.match(out[-1]) and out[-1].endswith(","):
+            out[-1] = out[-1][:-1]
+        out.append(line)
+    return "\n".join(out) + sep + body
+
+
+def wrap_r_line(line: str, width: int = 100) -> list[str]:
+    """Break a long R line after top-level-inside-parentheses commas (never inside strings or comments)."""
+    if len(line) <= width or line.lstrip().startswith("#"):
+        return [line]
+    indent = " " * (len(line) - len(line.lstrip()) + 4)
+    pieces, cur, depth, quote, i = [], "", 0, "", 0
+    while i < len(line):
+        ch = line[i]
+        cur += ch
+        if quote:
+            if ch == "\\" and i + 1 < len(line):
+                cur += line[i + 1]
+                i += 1
+            elif ch == quote:
+                quote = ""
+        elif ch in "\"'`":
+            quote = ch
+        elif ch == "#":
+            cur += line[i + 1:]
+            break
+        elif ch in "([{":
+            depth += 1
+        elif ch in ")]}":
+            depth -= 1
+        elif ch == "," and depth >= 1 and len(cur) >= width - len(indent) - 20:
+            pieces.append(cur.rstrip())
+            cur = ""
+            if i + 1 < len(line) and line[i + 1] == " ":
+                i += 1
+        i += 1
+    pieces.append(cur)
+    return [pieces[0]] + [indent + p.lstrip() for p in pieces[1:] if p.strip()]
+
+
+def wrap_script(script: str, width: int = 100) -> str:
+    return "\n".join(part for line in script.split("\n") for part in wrap_r_line(line, width))
+
+
+DATA_LOCATOR = """sx_data_file <- "{name}"  # exported with this script (analysis columns only); edit if you move it
+if (!file.exists(sx_data_file)) {{  # source("analysis.R") from another folder: look next to the script
+  sx_here <- tryCatch(dirname(normalizePath(sys.frame(1)$ofile)), error = function(e) NA_character_)
+  if (!is.na(sx_here) && file.exists(file.path(sx_here, sx_data_file))) sx_data_file <- file.path(sx_here, sx_data_file)
+}}
+if (!file.exists(sx_data_file)) stop("Data file not found: put ", sx_data_file, " next to this script or set sx_data_file.")"""
+
+
+def portable_text(script: str, data_name: str = "data.csv") -> tuple[str, set[str] | None]:
+    """A shareable copy of a recorded script: relative data reference (no temporary or personal paths), only
+    the analysis columns, manageable line lengths. Returns (script, columns the data file must contain)."""
+    used = used_aliases(script)
+    if used is not None:
+        script = prune_script(script, used)
+    script = _DATA_FILE.sub(lambda _m: DATA_LOCATOR.format(name=data_name), script)
+    script = _PLOT_PATH.sub(lambda m: f'"plots/{m.group(1)}"', script)
+    return wrap_script(script), used
 
 
 def portable_script(result: AnalysisResult, data_name: str = "data.csv") -> str:
     """Rewrite temp paths to relative ones and append a JSON dump of the result."""
-    script = _DATA_FILE.sub(f'sx_data_file <- "{data_name}"', result.script)
-    script = _PLOT_PATH.sub(lambda m: f'"plots/{m.group(1)}"', script)
+    script, _used = portable_text(result.script, data_name)
     header = (f"# StatExplore analysis: {result.title}\n# Result id: {result.id}  ·  run {result.created_at}\n"
               f"# Engine: {result.engine.version}\n"
               + "".join(f"#   {k} {v}\n" for k, v in result.engine.packages.items())
-              + "# Run from this folder:  Rscript " + f"{slug(result.title)}_{result.id}.R\n"
+              + "# Run from this folder:  Rscript " + f"{slug(result.title)}_{result.id}.R"
+              + "   (or source() it from anywhere)\n"
               "dir.create(\"plots\", showWarnings = FALSE)\n")
     footer = (f'\n# ---- write the result so it can be compared with StatExplore ----\n'
               f'jsonlite::write_json(sx_result, "result_{result.id}.json", auto_unbox = TRUE, digits = I(17), '
               f'null = "null", na = "null", force = TRUE)\n')
     return header + script + footer
+
+
+def write_portable(script: str, folder: Path, ds: Dataset, name: str = "analysis") -> list[Path]:
+    """Save a script and the data file it reads (analysis columns only) as a self-contained pair."""
+    folder.mkdir(parents=True, exist_ok=True)
+    data_name = f"{name}_data.csv"
+    text, used = portable_text(script, data_name)
+    export_data_csv(ds, folder / data_name, used)
+    (folder / f"{name}.R").write_text(text, encoding="utf-8")
+    return [folder / f"{name}.R", folder / data_name]
 
 
 def python_launcher(result: AnalysisResult, r_name: str) -> str:
@@ -255,7 +373,11 @@ def export(project: Project, result_ids: Iterable[str], folder: Path, formats: s
         write_pdf(results, project.artifacts, p)
         written.append(p)
     if formats & {"R", "py"} and results:
-        export_data_csv(project.dataset, folder / "data.csv")
+        cols: set[str] | None = set()
+        for r in results:
+            u = used_aliases(r.script)
+            cols = None if u is None or cols is None else cols | u
+        export_data_csv(project.dataset, folder / "data.csv", cols)
         written.append(folder / "data.csv")
         for r in results:
             name = f"{slug(r.title)}_{r.id}.R"

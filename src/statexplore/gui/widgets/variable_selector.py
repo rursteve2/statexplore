@@ -20,6 +20,21 @@ from PySide6.QtWidgets import (
 from ...core.dataset import Dataset
 
 ALL_LEVELS = "All measurement levels"
+PIN = "★ "
+
+
+def _pinned() -> set[str]:
+    """Variables pinned by the user (remembered across sessions; shared by every selector)."""
+    from PySide6.QtCore import QSettings
+
+    v = QSettings("StatExplore", "StatExplore").value("pinned_variables") or []
+    return set([v] if isinstance(v, str) else v)
+
+
+def _set_pinned(names: set[str]) -> None:
+    from PySide6.QtCore import QSettings
+
+    QSettings("StatExplore", "StatExplore").setValue("pinned_variables", sorted(names))
 
 
 class VariableSelector(QWidget):
@@ -53,6 +68,9 @@ class VariableSelector(QWidget):
         if max_height:
             self.list.setMaximumHeight(max_height)
         self.list.itemChanged.connect(self._item_changed)
+        self.list.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.list.customContextMenuRequested.connect(self._pin_menu)
+        self.list.setToolTip("Right-click a variable to pin it to the top of every variable list.")
         lay.addWidget(self.list, 1)
         bar = QHBoxLayout()
         self.buttons: dict[str, QPushButton] = {}
@@ -82,9 +100,12 @@ class VariableSelector(QWidget):
         self.list.blockSignals(True)
         self.list.clear()
         self._levels = {}
+        self._ds, self._names = ds, list(names)
+        pins = _pinned()
+        names = [n for n in names if n in pins] + [n for n in names if n not in pins]
         for n in names:
             v = ds.var(n) if ds is not None else None
-            text = (v.display_name if v else n) + (decorate(n) if decorate else "")
+            text = (PIN if n in pins else "") + (v.display_name if v else n) + (decorate(n) if decorate else "")
             it = QListWidgetItem(text)
             it.setData(Qt.UserRole, n)
             if v is not None:
@@ -104,6 +125,23 @@ class VariableSelector(QWidget):
         self._order = previous + ([n for n in names if default_checked and not keep and n not in previous])
         self._apply_filter()
         self.changed.emit()
+
+    def _pin_menu(self, pos) -> None:
+        from PySide6.QtWidgets import QMenu
+
+        it = self.list.itemAt(pos)
+        if it is None:
+            return
+        name = it.data(Qt.UserRole)
+        pins = _pinned()
+        menu = QMenu(self)
+        act = menu.addAction("Unpin" if name in pins else "Pin to top")
+        if menu.exec(self.list.mapToGlobal(pos)) is act:
+            pins.symmetric_difference_update({name})
+            _set_pinned(pins)
+            checked = self.selected()
+            self.set_variables(self._ds, self._names, keep=False, decorate=self._decorate)
+            self.set_selected(checked)
 
     def names(self) -> list[str]:
         return [self.list.item(i).data(Qt.UserRole) for i in range(self.list.count())]

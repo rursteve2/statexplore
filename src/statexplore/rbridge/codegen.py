@@ -6,6 +6,8 @@ ASCII. Identifiers in code are always internal aliases (v001, ...).
 """
 from __future__ import annotations
 
+from pathlib import Path
+
 import math
 import re
 from typing import Any, Iterable
@@ -62,6 +64,13 @@ def r_vec(items: Iterable[Any], names: Iterable[str] | None = None) -> str:
     if names is not None:
         vals = [f"{alias(n)} = {v}" for n, v in zip(names, vals)]
     return "c(" + ", ".join(vals) + ")"
+
+
+def r_vec_lines(items: Iterable[Any], names: Iterable[str], indent: str = "    ") -> list[str]:
+    """A named vector written one element per line (no trailing comma), so a column can be removed by
+    deleting its line (portable exports keep only the analysis columns)."""
+    vals = [f"{indent}{n if n == 'sx_split' else alias(n)} = {r_value(x)}" for n, x in zip(names, items)]
+    return [v + ("," if i < len(vals) - 1 else "") for i, v in enumerate(vals)]
 
 
 def alias(a: str) -> str:
@@ -178,19 +187,20 @@ def data_load_parts(ds: Dataset, csv_path: str) -> tuple[str, str]:
     read = [
         R_HELPERS,
         "# ---- StatExplore: data preparation ----",
-        f"# Source file: {r_str(ds.source.path)}",
+        f"# Source file: {r_str(Path(ds.source.path).name)}",
         "# Values declared as user-missing in the source were exported as NA.",
         f"sx_data_file <- {r_str(csv_path)}",
         "sx_raw <- utils::read.csv(",
         "  sx_data_file, na.strings = \"\", fileEncoding = \"UTF-8\", check.names = FALSE,",
-        "  colClasses = " + r_vec([_COLCLASS[v.storage] for v in base], [v.alias for v in base])
-        + (" |> c(sx_split = \"character\")" if ds.holdout else ""),
-        ")",
+        "  colClasses = c(", *r_vec_lines([_COLCLASS[v.storage] for v in base]
+                                          + (["character"] if ds.holdout else []),
+                                          [v.alias for v in base] + (["sx_split"] if ds.holdout else [])),
+        "  )", ")",
         "sx_result <- list(n_raw = nrow(sx_raw))",
     ]
     lines = [
         "# Internal names (v001, ...) -> variable names",
-        "sx_names <- " + r_vec([v.display_name for v in variables], [v.alias for v in variables]),
+        "sx_names <- c(", *r_vec_lines([v.display_name for v in variables], [v.alias for v in variables]), ")",
         "dat <- sx_raw",
     ]
     treatments = getattr(ds, "treatments", [])

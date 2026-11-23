@@ -22,7 +22,7 @@ import pandas as pd
 
 from ..analysis.session import RSession
 from ..core.dataset import Dataset
-from ..rbridge.worker import REngineError, RScriptError, RWorker
+from ..rbridge.worker import REngineError, RScriptError, RTimeoutError, RWorker
 from .rcode import batch_script, setup_script
 from .space import (
     FAMILIES, Candidate, SearchSettings, candidate_key, candidate_tests, coding, count_candidates,
@@ -35,6 +35,7 @@ log = logging.getLogger(__name__)
 STATUS_LABELS = {
     "complete": "Complete — every candidate in the defined search space was evaluated or classified invalid",
     "partial": "Partial — stopped by the model or time budget",
+    "incomplete": "Incomplete — every candidate was attempted, but some timed out (not evaluated)",
     "stopped_early": "Stopped early — the significance target was reached (search incomplete)",
     "cancelled": "Cancelled by the user (search incomplete)",
     "failed": "Failed",
@@ -78,6 +79,7 @@ class DiscoveryRun:
     coding: dict[str, Any] = field(default_factory=dict)       # v1.1: family, outcome treatment, event/reference
     fit_id: str = ""                                           # v1.2: fit identity hash (F6)
     n_times: int | None = None                                 # v1.2 longitudinal: distinct time points
+    executions: list[dict[str, Any]] = field(default_factory=list)  # v1.3: budget + range of each execution
 
     @property
     def is_complete(self) -> bool:
@@ -87,10 +89,24 @@ class DiscoveryRun:
     def resumable(self) -> bool:
         return self.status in ("partial", "cancelled") and self.n_done < self.total
 
+    def budget_text(self) -> str:
+        """Budgets of every execution (each continuation has its own model / time budget)."""
+        s = self.settings
+        if not self.executions:
+            return f"{s.max_models or 'no'} models, {s.max_minutes or 'no'} minutes (per execution)"
+        parts = []
+        for i, e in enumerate(self.executions, start=1):
+            rng = f"candidates {e.get('start', 0):,}–{max(e.get('end', e.get('start', 0)) - 1, e.get('start', 0)):,}" \
+                if "end" in e else "running"
+            parts.append(f"run {i}: {e.get('max_models') or 'no'} models / {e.get('max_minutes') or 'no'} min "
+                         f"({rng})")
+        return "; ".join(parts) + " — each continuation evaluates up to its own budget of further models"
+
     def meta_dict(self) -> dict[str, Any]:
         return {k: getattr(self, k) for k in ("id", "family", "total", "signature", "created_at", "status",
                                                "stop_reason", "n_done", "stop_index", "elapsed_s",
-                                               "n_sample", "engine", "warnings", "coding", "fit_id", "n_times")} | {
+                                               "n_sample", "engine", "warnings", "coding", "fit_id", "n_times",
+                                               "executions")} | {
             "settings": self.settings.to_dict(), "validation": {str(k): v for k, v in self.validation.items()}}
 
     @classmethod
@@ -105,6 +121,7 @@ class DiscoveryRun:
         run.coding = dict(meta.get("coding") or {})
         run.fit_id = str(meta.get("fit_id") or "")
         run.n_times = meta.get("n_times")
+        run.executions = list(meta.get("executions") or [])
         run.validation = {int(k): v for k, v in (meta.get("validation") or {}).items()}
         run.rows = rows
         return run
@@ -234,6 +251,7 @@ def execute(run: DiscoveryRun, ds: Dataset, *, rscript: str | None = None,
     n_workers = default_workers(s)
     pooled: list[_PooledSession] = []
     run.status, run.stop_reason = "running", ""
+    run.executions.append({"start": run.n_done, "max_models": s.max_models, "max_minutes": s.max_minutes})
     t_start = time.perf_counter()
     elapsed_before = run.elapsed_s
     try:
@@ -323,6 +341,10 @@ def _dispatch(run: DiscoveryRun, ds: Dataset, pooled: list[_PooledSession], ex: 
                 results, versions = fut.result()
                 if versions and not run.engine:
                     run.engine = versions
+            except RTimeoutError as e:     # P1-06: a timeout is not a completed evaluation
+                log.error("Batch timed out: %s", e)
+                results = [{"i": c.index, "status": "failed", "reason": f"timed out (worker execution limit): {e}",
+                            "flags": "", "timed_out": True} for c in batch]
             except (RScriptError, REngineError) as e:
                 log.error("Batch failed: %s", e)
                 results = [{"i": c.index, "status": "failed", "reason": f"R error: {e}", "flags": ""} for c in batch]
@@ -343,6 +365,8 @@ def _dispatch(run: DiscoveryRun, ds: Dataset, pooled: list[_PooledSession], ex: 
             run.elapsed_s = elapsed_before + (time.perf_counter() - t_start)
             progress(run)
     run.n_done = dispatched_to
+    if run.executions:
+        run.executions[-1]["end"] = dispatched_to
     run.rows.sort(key=lambda r: r["idx"])
     if target is not None:
         qualifying = [r["idx"] for r in run.rows if _qualifies(r, s.alpha)]
@@ -355,7 +379,12 @@ def _dispatch(run: DiscoveryRun, ds: Dataset, pooled: list[_PooledSession], ex: 
             if run.status == "complete":
                 run.stop_reason = ""
             return
-    if exhausted and run.n_done >= run.total:
+    n_timeout = sum(1 for r in run.rows if r.get("timed_out"))
+    if exhausted and run.n_done >= run.total and n_timeout:
+        run.status = "incomplete"
+        run.stop_reason = (f"{n_timeout:,} candidate(s) timed out and were not evaluated; adjusted p-values are "
+                           "provisional")
+    elif exhausted and run.n_done >= run.total:
         run.status, run.stop_reason = "complete", ""
     elif reason == "cancelled":
         run.status, run.stop_reason = "cancelled", reason
@@ -460,6 +489,7 @@ def _row(ds: Dataset, run: DiscoveryRun, c: Candidate, r: dict[str, Any]) -> dic
         **cnt,
         "n_re_params": _re_params(run, c),
         "cached": False,
+        "timed_out": bool(r.get("timed_out")),
         "status": status,
         "reason": str(r.get("reason") or ""),
         "flags": str(flags),
@@ -621,7 +651,8 @@ def structure_tests(run: DiscoveryRun) -> dict[int, list[dict[str, Any]]]:
             "test_id": len(out.get(int(b["idx"]), [])), "type": "structure",
             "label": f"{STRUCTURES[large][0].split(' — ')[0]} vs {STRUCTURES[small][0].split(' — ')[0]}: {what}",
             "statistic": lr, "df1": float(dfv), "p": p, "ci_applicable": "unavailable", "ci_method": "",
-            "structure_method": method})
+            "structure_method": method, "reference_structure": small, "mixture": weights,
+            "boundary": bool(weights and len(weights) > 1)})
     return out
 
 
@@ -803,6 +834,21 @@ def add_display_columns(df: pd.DataFrame, run: DiscoveryRun) -> pd.DataFrame:
                                                   sub["n_predictors"])
         df.loc[legacy, "n_terms"] = np.where(pd.to_numeric(sub["n_terms"], errors="coerce").isna(), nterm,
                                              sub["n_terms"])
+    # P1-04: separate parameter concepts and the estimation basis of every likelihood row
+    npar = pd.to_numeric(df.get("n_params", np.nan), errors="coerce")
+    nre = pd.to_numeric(df.get("n_re_params", np.nan), errors="coerce") if "n_re_params" in df else 0
+    fam = run.family
+    if fam == "gee":
+        df["n_lik"] = np.nan
+    elif fam == "gaussian":
+        df["n_lik"] = npar + 1                       # + residual variance
+    else:
+        df["n_lik"] = npar + (nre.fillna(0) if isinstance(nre, pd.Series) else 0)
+    df["estimation"] = estimation_label(run)
+    if s.participant and "structure" in df:
+        from .space import STRUCTURES
+
+        df["structure_label"] = df["structure"].map(lambda x: STRUCTURES.get(x, (x or "",))[0]).fillna("")
     k = pd.to_numeric(df["n_predictors"], errors="coerce")
     df["predictors_txt"] = np.where(k.notna(), k.fillna(0).astype(int).astype(str) + f" / {s.max_predictors}", "")
     df["status_text"] = ""          # filled per row by the table from the current highlight mode
@@ -810,6 +856,13 @@ def add_display_columns(df: pd.DataFrame, run: DiscoveryRun) -> pd.DataFrame:
     df["diag_text"] = np.where(df["status"].isin(["invalid", "failed"]), "not fitted",
                                np.where(flags != "", "⚠ " + flags, "clean"))
     return df
+
+
+def estimation_label(run: DiscoveryRun) -> str:
+    s = run.settings
+    return {"lmm": "REML" if s.participant and s.workflow == "structure" else "ML",
+            "glmm": "ML (Laplace)", "clmm": "ML (Laplace)", "gee": "GEE (robust SE)", "gaussian": "OLS",
+            }.get(run.family, "ML")
 
 
 def model_comparison(df: pd.DataFrame, run: DiscoveryRun) -> tuple[pd.DataFrame, str]:
@@ -994,6 +1047,7 @@ def summary(run: DiscoveryRun, df: pd.DataFrame) -> dict[str, Any]:
         "ok": counts.get("ok", 0), "warning": counts.get("warning", 0),
         "invalid": counts.get("invalid", 0), "failed": counts.get("failed", 0),
         "speculative": int(df["speculative"].sum()) if n_attempted else 0,
+        "timed_out": int(df["timed_out"].fillna(False).astype(bool).sum()) if n_attempted and "timed_out" in df else 0,
         "sig_raw": int(df["sig_raw"].sum()) if n_attempted else 0,
         "sig_adj": int(df["sig_adj"].sum()) if n_attempted else 0,
         "expected_false_raw": fam * run.settings.alpha,
@@ -1002,15 +1056,77 @@ def summary(run: DiscoveryRun, df: pd.DataFrame) -> dict[str, Any]:
     }
 
 
+INTERACTION_TYPES = ("focal_interaction", "interaction_term", "joint_interaction")
+FAMILY_ORDER = ("interaction_term", "focal_interaction", "joint_interaction", "main_term", "overall", "structure")
+FAMILY_NOUNS = {   # (singular, plural)
+    "interaction_term": ("individual interaction-term test", "individual interaction-term tests"),
+    "focal_interaction": ("focal interaction test", "focal interaction tests"),
+    "joint_interaction": ("joint test of interaction terms", "joint tests of interaction terms"),
+    "main_term": ("main-effect term test", "main-effect term tests"),
+    "overall": ("whole-model test", "whole-model tests"),
+    "structure": ("covariance-structure comparison", "covariance-structure comparisons"),
+}
+
+
+def _n(k: int, noun: tuple[str, str]) -> str:
+    return f"{k:,} {noun[0] if k == 1 else noun[1]}"
+
+
+def headline(run: DiscoveryRun, families: list[dict[str, Any]] | None = None) -> list[str]:
+    """Type-specific summary sentences (P0-03). Interaction findings are counted only from interaction
+    hypotheses; whole-model, main-effect and covariance-structure results are reported as what they are."""
+    s = run.settings
+    fams = {f["type"]: f for f in (families if families is not None else _family_counts(run))}
+    corr = "Benjamini-Hochberg" if s.correction == "BH" else "Holm"
+    adj = lambda f: f["sig_bh"] if s.correction == "BH" else f["sig_holm"]  # noqa: E731
+    out: list[str] = []
+    if "structure" in fams or (s.participant and s.workflow == "structure"):
+        f = fams.get("structure")
+        if f is None:
+            out.append("No nested covariance-structure comparison could be computed in this search; compare the "
+                       "structures by AIC/BIC in the Model comparison tab.")
+        else:
+            out.append(f"{adj(f):,} of {_n(f['tests'], FAMILY_NOUNS['structure'])} significant after {corr} "
+                       f"adjustment (α = {s.alpha:g}). These compare random-effect / residual-correlation structures "
+                       "with the fixed part locked; they are not findings about predictors or interactions.")
+    inter = [fams[t] for t in INTERACTION_TYPES if t in fams]
+    if not (s.participant and s.workflow == "structure"):
+        if not inter:
+            out.append("This search tested no interaction hypotheses, so it reports no interaction findings "
+                       "(0 significant interactions).")
+        else:
+            n_sig = sum(adj(f) for f in inter)
+            what = " and ".join(_n(f["tests"], FAMILY_NOUNS[f["type"]]) for f in inter)
+            if n_sig == 0:
+                out.append(f"0 significant interactions: none of the {what} reached {corr}-adjusted p < "
+                           f"{s.alpha:g}.")
+            else:
+                out.append("Interaction findings: " + ", ".join(
+                    f"{adj(f):,} of {_n(f['tests'], FAMILY_NOUNS[f['type']])}" for f in inter)
+                    + f" significant after {corr} adjustment (α = {s.alpha:g}). Still exploratory.")
+    other = [fams[t] for t in ("main_term", "overall") if t in fams]
+    for f in other:
+        noun = FAMILY_NOUNS[f["type"]]
+        out.append(f"{adj(f):,} of {_n(f['tests'], noun)} significant after {corr} adjustment"
+                   + (" — a significant whole-model test says the predictors together explain the outcome; it is "
+                      "not evidence of an interaction." if f["type"] == "overall" else
+                      " — main effects of variables that are not in an interaction; not evidence of an interaction."))
+    return out
+
+
 def _family_counts(run: DiscoveryRun) -> list[dict[str, Any]]:
     """Per test type: tests in the family, raw / adjusted significant, joint tests without a CI."""
     tf = tests_frame(run)
     if tf.empty:
         return []
     out = []
-    for ttype, g in tf[tf["in_family"]].groupby("test_type", sort=False):
+    groups = dict(list(tf[tf["in_family"]].groupby("test_type", sort=False)))
+    for ttype in sorted(groups, key=lambda t: FAMILY_ORDER.index(t) if t in FAMILY_ORDER else len(FAMILY_ORDER)):
+        g = groups[ttype]
         out.append({"type": ttype, "label": TEST_TYPES.get(ttype, ttype), "tests": len(g),
                     "sig_raw": int(g["sig_raw"].sum()), "sig_adj": int(g["sig_adj"].sum()),
+                    "sig_bh": int((g["p_bh"] < run.settings.alpha).sum()),
+                    "sig_holm": int((g["p_holm"] < run.settings.alpha).sum()),
                     "no_ci": int((g["ci_applicable"] != "same_estimand").sum()),
                     "expected_false_raw": len(g) * run.settings.alpha})
     return out

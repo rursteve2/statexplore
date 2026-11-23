@@ -31,6 +31,7 @@ from ..models import ResultFrameModel
 from ..result_view import render
 from ..state import AppState
 from .eda import CodeDialog
+from ..widgets.searchable import make_searchable
 
 P_COLS = ("p", "p (adjusted)", "p (BH)", "p (Holm)")
 STATUS_COL = "Highlight"
@@ -41,7 +42,8 @@ _TEST_COLS = {"status_text": STATUS_COL, "test_id": "Test ID", "idx": "#", "mode
               "adj_method": "Adjusted p method", "effect": "Effect", "estimate": "Estimate", "ci_low": "CI low",
               "ci_high": "CI high", "ci_scale": "Effect scale", "odds_ratio": "Odds ratio", "or_low": "OR CI low",
               "or_high": "OR CI high", "ci_status": "CI applicability",
-              "predictors_txt": "Predictors", "n_terms": "Model terms", "n_params": "Estimated parameters",
+              "predictors_txt": "Predictors", "n_terms": "Model terms", "n_params": "Fixed coefficients",
+              "n_lik": "Likelihood parameters", "estimation": "Estimation",
               "n": "n", "n_groups": "Groups (participants)", "diag_text": "Diagnostics status", "flags": "Flags",
               "search_scope": "Search complete/partial", "validation": "Validation status",
               "interpretation": "Teaching interpretation"}
@@ -50,17 +52,37 @@ SUPPORT_COLS = {"status_text": STATUS_COL, "tier": "Tier", **{k: v for k, v in _
                 "aic": "AIC", "r2": "R² (full model)"}
 ALL_COLS = {"idx": "#", "model_type": "Model type", "interaction": "Interaction", "formula": "Model",
             "status": "Status", "reason": "Reason", "flags": "Flags", "predictors_txt": "Predictors",
-            "n_terms": "Model terms", "n_params": "Estimated parameters", "n_tests": "Hypotheses tested",
+            "n_terms": "Model terms", "n_params": "Fixed coefficients", "n_re_params": "Covariance parameters",
+            "n_lik": "Likelihood parameters", "estimation": "Estimation", "n_tests": "Hypotheses tested",
             "n": "n", "n_groups": "Groups (participants)", "label": "Focal hypothesis", "p": "p", "p_bh": "p (BH)",
             "p_holm": "p (Holm)", "aic": "AIC", "bic": "BIC", "r2": "R²", "adj_r2": "Adjusted R²",
             "cached": "Reused fit", "speculative": "After stop point", "interpretation": "Teaching interpretation"}
 COMPARE_COLS = {"idx": "#", "model_type": "Model type", "formula": "Model", "predictors_txt": "Predictors",
                 "n_main": "Main-effect terms", "n_two_way": "Two-way terms", "n_three_way": "Three-way terms",
-                "n_terms": "Model terms", "n_params": "Estimated parameters", "n_re_params": "Random-effect parameters",
+                "n_terms": "Model terms", "n_params": "Fixed coefficients", "n_re_params": "Covariance parameters",
+                "n_lik": "Likelihood parameters", "estimation": "Estimation", "structure_label": "Structure",
                 "n": "n", "n_groups": "Groups (participants)", "aic": "AIC", "d_aic": "ΔAIC", "bic": "BIC",
                 "d_bic": "ΔBIC", "r2": "R²", "adj_r2": "Adjusted R²", "loglik": "log-likelihood",
                 "diag_text": "Diagnostics status"}
 ALPHA_PRESETS = ("0.05", "0.01", "0.001")
+COLUMN_TIPS = {
+    "Fixed coefficients": "Fixed-effect coefficients including the intercept; ordinal models add the K-1 thresholds, "
+                          "multinomial models count (K-1) x coefficients. Used for the configured parameter limit.",
+    "Covariance parameters": "Random-effect variances/covariances plus residual variance and correlation parameters "
+                             "(longitudinal models); GEE: working-correlation parameters.",
+    "Likelihood parameters": "Every parameter of the fitted likelihood (fixed + thresholds + covariance; linear "
+                             "models include the residual variance). This is the k in AIC = -2 logLik + 2k.",
+    "Estimation": "ML, REML (covariance-structure comparisons with a locked fixed part), OLS or GEE. Never compare "
+                  "REML likelihoods of models with different fixed effects.",
+    "Groups (participants)": "Participants contributing rows to the fit (not a denominator df).",
+    "Test type": "Hypothesis family; multiple-testing adjustment is applied within each family.",
+    "p (adjusted)": "Adjusted within this test type's family only (BH or Holm as selected).",
+    "Highlight": "Strict highlights also need a same-estimand single-coefficient CI that excludes the null; joint and "
+                 "covariance tests never qualify, so zero strict highlights does not mean zero significant tests.",
+    "Structure": "Random-effect / residual-correlation structure. AR(1) uses the observed-occasion index; CAR(1) uses "
+                 "actual time differences.",
+    "log-likelihood": "From the estimation method in the Estimation column (ML or REML).",
+}
 
 
 class _Bridge(QObject):
@@ -72,17 +94,28 @@ class ResultTable(QWidget):
     (fast for hundreds of thousands of rows). Keeps the sort column and direction, the search text and
     the selected row (by its stable ID) when the data refresh."""
 
-    def __init__(self, columns: dict[str, str], id_col: str = "#"):
+    selected = Signal()          # selection changed
+    activated = Signal()         # double-click: expand the selected model's details
+
+    def __init__(self, columns: dict[str, str], id_col: str = "#", name: str = ""):
         super().__init__()
         self.columns = columns
         self.id_col = id_col
+        self.name = name
         self.highlight_only = False
         lay = QVBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
+        top = QHBoxLayout()
         self.search = QLineEdit()
         self.search.setPlaceholderText("Search (variable names, status, flags…)")
-        lay.addWidget(self.search)
+        top.addWidget(self.search, 1)
+        copy = QPushButton("Copy CSV")
+        copy.setToolTip("Copy the rows shown (current filter, search and sort; visible columns) as CSV")
+        copy.clicked.connect(self.copy_csv)
+        top.addWidget(copy)
+        lay.addLayout(top)
         self.model = ResultFrameModel(p_columns=P_COLS)
+        self.model.header_tips = COLUMN_TIPS
         self.model.status_col = STATUS_COL
         self.proxy = self.model            # the model sorts and filters itself (kept name for callers)
         self.search.textChanged.connect(self._query)
@@ -92,8 +125,72 @@ class ResultTable(QWidget):
         self.view.horizontalHeader().setSortIndicator(-1, Qt.AscendingOrder)
         self.view.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.view.setSelectionMode(QAbstractItemView.SingleSelection)
+        # UI-28: compact rows, reorderable / resizable / hideable columns, per-pixel horizontal scrolling
+        self.view.setWordWrap(False)
+        self.view.verticalHeader().setDefaultSectionSize(self.view.fontMetrics().height() + 6)
+        self.view.setHorizontalScrollMode(QAbstractItemView.ScrollPerPixel)
+        hdr = self.view.horizontalHeader()
+        hdr.setSectionsMovable(True)
+        hdr.setContextMenuPolicy(Qt.CustomContextMenu)
+        hdr.customContextMenuRequested.connect(self._column_menu)
+        hdr.sectionResized.connect(lambda *_: self._save_header())
+        hdr.sectionMoved.connect(lambda *_: self._save_header())
+        self.view.doubleClicked.connect(lambda *_: self.activated.emit())
         lay.addWidget(self.view)
         self._highlight = np.zeros(0, bool)
+        self._restored = False
+
+    def _settings(self):
+        from PySide6.QtCore import QSettings
+
+        return QSettings("StatExplore", "StatExplore")
+
+    def _layout_key(self) -> str:
+        """Column layouts are stored per set of columns (longitudinal searches show extra columns)."""
+        import hashlib
+
+        sig = hashlib.sha1("|".join(map(str, self.model.frame.columns)).encode()).hexdigest()[:10]
+        return f"discovery/columns/{self.name}/{sig}"
+
+    def _save_header(self) -> None:
+        if self.name and self._restored:
+            self._settings().setValue(self._layout_key(), self.view.horizontalHeader().saveState())
+
+    def _restore_header(self) -> None:
+        cols = tuple(self.model.frame.columns)
+        if cols != getattr(self, "_layout_cols", None):
+            self._layout_cols, self._restored = cols, False
+        if self._restored or not self.name or self.model.columnCount() == 0:
+            return
+        state = self._settings().value(self._layout_key())
+        self._restored = True
+        if state is not None:
+            self.view.horizontalHeader().restoreState(state)
+            self._sized = True
+
+    def _column_menu(self, pos) -> None:
+        from PySide6.QtWidgets import QMenu
+
+        hdr = self.view.horizontalHeader()
+        menu = QMenu(self)
+        for c in range(self.model.columnCount()):
+            act = menu.addAction(str(self.model.frame.columns[c]))
+            act.setCheckable(True)
+            act.setChecked(not hdr.isSectionHidden(c))
+            act.toggled.connect(lambda on, c=c: (hdr.setSectionHidden(c, not on), self._save_header()))
+        menu.addSeparator()
+        menu.addAction("Show all columns", lambda: ([hdr.setSectionHidden(c, False)
+                                                     for c in range(self.model.columnCount())], self._save_header()))
+        menu.exec(hdr.mapToGlobal(pos))
+
+    def copy_csv(self) -> None:
+        from PySide6.QtWidgets import QApplication
+
+        hdr = self.view.horizontalHeader()
+        cols = [self.model.frame.columns[hdr.logicalIndex(v)] for v in range(hdr.count())
+                if not hdr.isSectionHidden(hdr.logicalIndex(v))]
+        rows = self.model.frame.iloc[list(self.model._order)][cols] if len(self.model.frame) else self.model.frame
+        QApplication.clipboard().setText(rows.to_csv(index=False))
 
     def _query(self, text: str) -> None:
         keep = self.selected_id()
@@ -113,6 +210,11 @@ class ResultTable(QWidget):
         self.model.set_frame(frame, self._highlight, warning, tips=None if text is None else [t or None for t in text],
                              lazy=lazy)
         self._apply_only()
+        self._restore_header()
+        sm = self.view.selectionModel()
+        if sm is not None and not getattr(self, "_sel_connected", False):
+            sm.selectionChanged.connect(lambda *_: self.selected.emit())
+            self._sel_connected = True
         if 0 < n <= 5000 and not getattr(self, "_sized", False):
             # sizing scans every row: only once, and never for very large searches
             self.view.resizeColumnsToContents()
@@ -194,9 +296,13 @@ class DiscoveryPage(QWidget):
         cfg = QWidget()
         cl = QVBoxLayout(cfg)
         form = QFormLayout()
-        self.outcome = QComboBox()
+        self.outcome = make_searchable(QComboBox())
         self.outcome.currentIndexChanged.connect(self._outcome_changed)
         form.addRow("Dependent variable", self.outcome)
+        self.outcome_hint = QLabel()
+        self.outcome_hint.setObjectName("hint")
+        self.outcome_hint.setWordWrap(True)
+        form.addRow(self.outcome_hint)
         self.family = QComboBox()
         self.family.addItem("— confirm the outcome model family —", "")
         for key, label in FAMILIES.items():
@@ -357,6 +463,8 @@ class DiscoveryPage(QWidget):
         self.cancel_btn.setEnabled(False)
         self.cancel_btn.clicked.connect(self._cancel)
         self.resume_btn = QPushButton("Resume")
+        self.resume_btn.setToolTip("Continue a partial search from where it stopped, with the model / time budget "
+                                   "currently set above (it applies to the models added by this continuation).")
         self.resume_btn.setEnabled(False)
         self.resume_btn.clicked.connect(self._resume)
         for b in (self.estimate_btn, self.start_btn, self.cancel_btn, self.resume_btn):
@@ -389,6 +497,9 @@ class DiscoveryPage(QWidget):
         self.hl_mode.setToolTip("Presentation only: highlighting never refits a model or changes a p-value.\n"
                                 "Strict mode needs a confidence interval for the SAME coefficient the p-value "
                                 "tests;\njoint (multi-df) tests have none and are never highlighted in strict mode.")
+        for combo in (self.hl_mode,):          # long item texts must not force a wide window (UI-28)
+            combo.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
+            combo.setMinimumContentsLength(16)
         hl.addWidget(self.hl_mode, 1)
         hl.addWidget(QLabel("α"))
         self.hl_alpha = QComboBox()
@@ -419,12 +530,16 @@ class DiscoveryPage(QWidget):
         frow.addWidget(self.diag_filter)
         frow.addWidget(self.ci_filter)
         rl.addLayout(frow)
+        self.scope_label = QLabel()          # P2-03: which filters apply to the visible tab, and its unit
+        self.scope_label.setObjectName("hint")
+        self.scope_label.setWordWrap(True)
+        rl.addWidget(self.scope_label)
         self.tabs = QTabWidget()
         self.summary_view = QTextBrowser()
-        self.discovery_table = ResultTable(DISCOVERY_COLS, id_col="Test ID")
-        self.support_table = ResultTable(SUPPORT_COLS, id_col="Test ID")
-        self.all_table = ResultTable(ALL_COLS)
-        self.compare_table = ResultTable(COMPARE_COLS)
+        self.discovery_table = ResultTable(DISCOVERY_COLS, id_col="Test ID", name="ranking")
+        self.support_table = ResultTable(SUPPORT_COLS, id_col="Test ID", name="support")
+        self.all_table = ResultTable(ALL_COLS, name="attempts")
+        self.compare_table = ResultTable(COMPARE_COLS, name="compare")
         self.compare_note = QLabel()
         self.compare_note.setWordWrap(True)
         self.compare_note.setObjectName("hint")
@@ -446,8 +561,25 @@ class DiscoveryPage(QWidget):
         self.tabs.addTab(self.support_table, "Statistical support ranking")
         self.tabs.addTab(compare_box, "Model comparison")
         self.tabs.addTab(self.all_table, "All attempts")
-        rl.addWidget(self.tabs, 1)
+        # UI-28: results over a collapsible details pane for the selected model (uses the space under short tables)
+        self.details = QTextBrowser()
+        self.details.setOpenExternalLinks(False)
+        self.details.setHtml("<p class='note'>Select a model or test row to see its estimates, all of its "
+                             "hypothesis tests, fit statistics and diagnostics here (double-click also opens this "
+                             "pane).</p>")
+        self.results_split = QSplitter(Qt.Vertical)
+        self.results_split.addWidget(self.tabs)
+        self.results_split.addWidget(self.details)
+        self.results_split.setStretchFactor(0, 3)
+        self.results_split.setStretchFactor(1, 1)
+        self.results_split.setChildrenCollapsible(True)
+        self.results_split.setSizes([600, 220])
+        rl.addWidget(self.results_split, 1)
         self.tabs.currentChanged.connect(self._update_counts)
+        self.tabs.currentChanged.connect(lambda *_: self._update_details())
+        for t in (self.discovery_table, self.support_table, self.all_table, self.compare_table):
+            t.selected.connect(self._update_details)
+            t.activated.connect(self._expand_details)
         for t in (self.discovery_table, self.support_table, self.all_table, self.compare_table):
             t.search.textChanged.connect(self._update_counts)
         sort_row = QHBoxLayout()
@@ -463,8 +595,8 @@ class DiscoveryPage(QWidget):
         self.code_btn = QPushButton("View candidate code")
         self.code_btn.clicked.connect(self._view_code)
         self.teach_btn = QPushButton("Plot in Teaching Studio")
-        self.teach_btn.setToolTip("Longitudinal candidates open in the Mixed & Longitudinal workspace (exact formula "
-                                  "and structure, refitted), which draws population and participant trajectories.")
+        self.teach_btn.setToolTip("Linear and binary logistic candidates only. Longitudinal candidates: use 'Open full "
+                                  "analysis' (Mixed workspace, exact formula and structure, refit verified).")
         self.teach_btn.clicked.connect(self._to_teaching)
         self.set_btn = QPushButton("Add to comparison")
         self.set_btn.clicked.connect(self._to_set)
@@ -472,14 +604,30 @@ class DiscoveryPage(QWidget):
         self.main_btn.setToolTip("Adds this model and the same model without any interaction (same rows, same "
                                  "variables) to the Model Comparison set.")
         self.main_btn.clicked.connect(self._compare_main)
-        for b in (self.open_btn, self.code_btn, self.teach_btn, self.set_btn, self.main_btn):
-            sort_row.addWidget(b)
+        self.details_btn = QPushButton("Details pane")
+        self.details_btn.setCheckable(True)
+        self.details_btn.setChecked(True)
+        self.details_btn.setToolTip("Show or hide the selected-model details under the tables (drag the divider to "
+                                    "resize; the layout is remembered).")
+        self.details_btn.toggled.connect(self._toggle_details)
+        sort_row.addWidget(self.details_btn)
         rl.addLayout(sort_row)
+        # UI-28: actions on their own row so the results panel stays usable on narrow / scaled screens
+        act_row = QHBoxLayout()
+        for b in (self.open_btn, self.code_btn, self.teach_btn, self.set_btn, self.main_btn):
+            act_row.addWidget(b)
+        act_row.addStretch()
+        rl.addLayout(act_row)
 
         split = QSplitter()
         split.addWidget(scroll)
         split.addWidget(right)
         split.setSizes([460, 900])
+        split.setChildrenCollapsible(True)    # the configuration can be collapsed to give results the full width
+        self.main_split = split
+        self._restore_layout()
+        split.splitterMoved.connect(lambda *_: self._save_layout())
+        self.results_split.splitterMoved.connect(lambda *_: self._save_layout())
         lay = QVBoxLayout(self)
         t = QLabel("Automated Model Discovery")
         t.setObjectName("pageTitle")
@@ -678,6 +826,11 @@ class DiscoveryPage(QWidget):
         idx = self.outcome.findData(keep_outcome)
         self.outcome.setCurrentIndex(max(0, idx))
         self.outcome.blockSignals(False)
+        from ..widgets.searchable import excluded_outcomes_hint
+
+        text, tip = excluded_outcomes_hint(ds, {self.outcome.itemData(i) for i in range(self.outcome.count())})
+        self.outcome_hint.setText(text)
+        self.outcome_hint.setToolTip(tip)
         self._outcome_changed()
 
     def _outcome_changed(self) -> None:
@@ -1053,13 +1206,35 @@ class DiscoveryPage(QWidget):
             w = w.findChild(ResultTable)
         return w if isinstance(w, ResultTable) else None
 
+    SCOPES = {
+        "tests": "Rows are hypothesis tests (a model can carry several). 'Show', diagnostics and CI filters apply here; "
+                 "highlights count tests.",
+        "attempts": "Rows are candidate models (one per fitted or attempted model), highlighted by each model's focal "
+                    "test. Only 'Show: Models …' and the diagnostics / CI filters apply; 'Show: Hypothesis …' filters "
+                    "act on the ranking tabs, not here.",
+        "compare": "Rows are fitted models with information criteria. Only 'Show: Models …' applies here.",
+    }
+
     def _update_counts(self) -> None:
         table = self._current_table()
-        if isinstance(table, ResultTable):
-            hl, shown, total = table.counts()
-            self.hl_count.setText(f"{hl:,} highlighted of {shown:,} shown / {total:,} total")
-        else:
+        if not isinstance(table, ResultTable):
             self.hl_count.setText("")
+            self.scope_label.setText("")
+            return
+        hl, shown, total = table.counts()
+        unit = "tests" if table in (self.discovery_table, self.support_table) else "models"
+        self.hl_count.setText(f"{hl:,} highlighted {unit} of {shown:,} shown / {total:,} total")
+        scope = self.SCOPES["tests" if unit == "tests" else "attempts" if table is self.all_table else "compare"]
+        note = ""
+        if self.hl_mode.currentData() == "strict" and unit == "tests" and len(self.tests):
+            df = self._table_frames.get(id(table), pd.DataFrame())
+            if len(df):
+                sig = int(engine.highlight_mask(df, "adjusted", self._alpha()).sum())
+                if sig > hl:
+                    note = (f" Strict mode: {sig:,} shown tests have adjusted p < α but {sig - hl:,} of them lack a "
+                            "same-estimand single-coefficient CI (joint or covariance-structure tests), so they are "
+                            "not strictly highlighted. Zero strict highlights does not mean zero significant tests.")
+        self.scope_label.setText(scope + note)
 
     def _summary_html(self, run: engine.DiscoveryRun, df: pd.DataFrame) -> str:
         sm = engine.summary(run, df) if len(df) else None
@@ -1075,25 +1250,29 @@ class DiscoveryPage(QWidget):
         if sm:
             corr = "Benjamini-Hochberg (FDR)" if s.correction == "BH" else "Holm"
             parts.append(
-                f"<p>{sm['attempted']:,} of {sm['total']:,} candidate models attempted · {sm['family_size']:,} tested "
-                f"(the multiple-testing family) · {sm['invalid']:,} invalid · {sm['failed']:,} failed · "
+                f"<p><b>Models:</b> {sm['attempted']:,} of {sm['total']:,} candidate models attempted · "
+                f"{sm['ok'] + sm['warning']:,} fitted · {sm['invalid']:,} invalid · {sm['failed']:,} failed · "
+                f"{sm.get('timed_out', 0):,} timed out · "
                 f"{sm['warning']:,} flagged by screening"
                 + (f" · {sm['speculative']:,} evaluated after the stop point (excluded)" if sm['speculative'] else "")
+                + (f" · {sm['total'] - sm['attempted']:,} not yet visited" if sm['total'] > sm['attempted'] else "")
                 + "</p>")
-            parts.append(
-                f"<p><b>{sm['sig_raw']:,}</b> interaction(s) with raw p &lt; {s.alpha:g}. "
-                f"With {sm['family_size']:,} tests, about <b>{sm['expected_false_raw']:.1f}</b> would be expected "
-                f"by chance alone if no interaction were real. <b>{sm['sig_adj']:,}</b> remain significant after "
-                f"{corr} adjustment.</p>")
             fams = sm.get("families") or []
-            if len(fams) > 1 or (fams and fams[0]["type"] != "focal_interaction"):
-                parts.append("<p><b>Hypotheses by type</b> (each type is its own multiple-testing family; "
-                             "different types are never ranked together):</p><ul>" + "".join(
-                                 f"<li>{e(f['label'])}: {f['tests']:,} tests · {f['sig_raw']:,} raw p &lt; "
-                                 f"{s.alpha:g} (≈{f['expected_false_raw']:.1f} expected by chance) · "
-                                 f"{f['sig_adj']:,} after adjustment"
-                                 + (f" · {f['no_ci']:,} joint/without a comparable single-coefficient CI"
-                                    if f["no_ci"] else "") + "</li>" for f in fams) + "</ul>")
+            parts.append(f"<p><b>Hypothesis tests:</b> {sum(f['tests'] for f in fams):,} in {len(fams)} "
+                         f"famil{'y' if len(fams) == 1 else 'ies'} (a model can carry several tests; highlights count "
+                         "tests, not models).</p>")
+            parts += [f"<p><b>{e(t)}</b></p>" for t in engine.headline(run, fams)]
+            if fams:
+                parts.append(
+                    f"<p><b>Hypotheses by family</b> — {corr} (and Holm) adjustment is applied separately within each "
+                    "prespecified hypothesis family; families are never ranked together. 'Expected by chance' "
+                    "(α × tests) refers to that family only:</p><table cellpadding='3' border='0'><tr><th align='left'>"
+                    "Family</th><th>Tests</th><th>Raw p &lt; α</th><th>BH</th><th>Holm</th><th>≈ chance</th>"
+                    "<th>No same-estimand CI</th></tr>" + "".join(
+                        f"<tr><td>{e(f['label'])}</td><td align='right'>{f['tests']:,}</td>"
+                        f"<td align='right'>{f['sig_raw']:,}</td><td align='right'>{f['sig_bh']:,}</td>"
+                        f"<td align='right'>{f['sig_holm']:,}</td><td align='right'>{f['expected_false_raw']:.1f}</td>"
+                        f"<td align='right'>{f['no_ci']:,}</td></tr>" for f in fams) + "</table>")
             if sm["provisional"]:
                 parts.append("<p style='color:#8d6e00'>Adjusted p-values are <b>provisional</b>: they are "
                              "conditional on the candidates evaluated, not the full search space.</p>")
@@ -1106,8 +1285,11 @@ class DiscoveryPage(QWidget):
                "ordinal": "Ordinal logistic models (ordinal::clm), focal likelihood-ratio test",
                "multinomial": "Multinomial logistic models (nnet::multinom), focal likelihood-ratio test "
                               "(joint over all outcome contrasts)",
-               "lmm": "Gaussian longitudinal models (structure below); likelihood-ratio tests on ML fits "
-                      "(Groups column = participants; never a denominator df)",
+               "lmm": ("Gaussian longitudinal models (structures below), REML fits with the fixed part locked; "
+                       "covariance-structure likelihood-ratio tests and REML AIC/BIC (Groups column = participants)"
+                       if s.participant and s.workflow == "structure" else
+                       "Gaussian longitudinal models (structure below); likelihood-ratio tests on ML fits "
+                       "(Groups column = participants; never a denominator df)"),
                "glmm": "Binary logistic mixed models (lme4::glmer, Laplace ML); likelihood-ratio tests; "
                        "subject-specific log-odds",
                "clmm": "Ordinal cumulative-logit mixed models (ordinal::clmm); likelihood-ratio tests; "
@@ -1154,7 +1336,7 @@ class DiscoveryPage(QWidget):
                  if getattr(s, "strategy", "focal") == "focal" else "—"),
                 ("Sample", f"shared complete cases (n = {run.n_sample:,})" if run.n_sample else "complete cases per model"),
                 ("α / adjustment", f"{s.alpha:g} / {s.correction}"), ("Mode", s.mode),
-                ("Budgets", f"{s.max_models or 'no'} models, {s.max_minutes or 'no'} minutes"),
+                ("Budgets", e(run.budget_text())),
                 ("Order", "deterministic: lexicographic by candidate position (see docs/formula-grammar.md)"),
                 ("Elapsed", f"{run.elapsed_s:.1f} s"),
                 ("Engine", e(str(run.engine.get('r_version', '')))),
@@ -1162,6 +1344,127 @@ class DiscoveryPage(QWidget):
         parts.append("<h3>Support tiers</h3><ul>" + "".join(f"<li><b>{k}</b>: {v}</li>" for k, v in engine.TIERS.items())
                      + "</ul><p class='note'>Within a tier, models are ordered by effect size, then by fewer "
                        "parameters. No single score is computed; the lowest p-value is not labelled 'best'.</p>")
+        return "".join(parts)
+
+    # ---------- layout (UI-28) ----------
+    def _qsettings(self):
+        from PySide6.QtCore import QSettings
+
+        return QSettings("StatExplore", "StatExplore")
+
+    def _save_layout(self) -> None:
+        st = self._qsettings()
+        st.setValue("discovery/main_split", self.main_split.saveState())
+        st.setValue("discovery/results_split", self.results_split.saveState())
+        st.setValue("discovery/details_visible", self.details_btn.isChecked())
+
+    def _restore_layout(self) -> None:
+        st = self._qsettings()
+        for key, sp in (("discovery/main_split", self.main_split), ("discovery/results_split", self.results_split)):
+            v = st.value(key)
+            if v is not None:
+                sp.restoreState(v)
+        vis = st.value("discovery/details_visible")
+        if vis is not None and str(vis).lower() in ("false", "0"):
+            self.details_btn.setChecked(False)
+
+    def _toggle_details(self, on: bool) -> None:
+        self.details.setVisible(on)
+        if on:
+            self._update_details()
+        self._save_layout()
+
+    def _expand_details(self) -> None:
+        if not self.details_btn.isChecked():
+            self.details_btn.setChecked(True)
+        sizes = self.results_split.sizes()
+        if len(sizes) == 2 and sizes[1] < 120:
+            total = sum(sizes) or max(self.results_split.height(), 600)
+            self.results_split.setSizes([int(total * 0.6), int(total * 0.4)])
+        self._update_details()
+
+    def _update_details(self) -> None:
+        if not self.details_btn.isChecked() or self.run is None:
+            return
+        table = self._current_table()
+        idx = table.selected_idx() if isinstance(table, ResultTable) else None
+        if idx is None:
+            return
+        self.details.setHtml(self._details_html(idx))
+        # UI-28: with only a few rows, give the otherwise empty space to the details
+        sizes = self.results_split.sizes()
+        if len(sizes) == 2 and sum(sizes) and table.model.rowCount() <= 5 and sizes[1] < 0.45 * sum(sizes):
+            rows_h = 60 + table.model.rowCount() * table.view.verticalHeader().defaultSectionSize()
+            top = max(rows_h + 80, int(sum(sizes) * 0.35))
+            self.results_split.setSizes([top, sum(sizes) - top])
+
+    def _details_html(self, idx: int) -> str:
+        """Everything already computed for one candidate (no refit): model, fit, parameters, every test."""
+        from ...analysis.descriptor import TransferError, from_discovery
+
+        e = html.escape
+        run = self.run
+        row = next((r for r in run.rows if int(r["idx"]) == int(idx)), None)
+        if row is None:
+            return ""
+        def fmt(v, d=3):
+            if isinstance(v, (np.floating, np.integer)):
+                v = v.item()
+            if v is None or (isinstance(v, float) and not np.isfinite(v)):
+                return "—"
+            if isinstance(v, float) and v.is_integer() and abs(v) < 1e7 and d != 4:
+                return f"{int(v):,}"            # counts (n, groups, parameters) and integral statistics
+            return f"{v:,.{d}f}" if isinstance(v, float) else f"{v:,}" if isinstance(v, int) else e(str(v))
+        parts = [f"<h3>Candidate #{idx}: {e(str(row.get('formula', '')))}</h3>"]
+        try:
+            parts.append(f"<p><b>Model identity:</b> {e(from_discovery(run, row).summary())}</p>")
+        except TransferError as err:
+            parts.append(f"<p><b>Not fitted:</b> {e(str(err))}</p>")
+            return "".join(parts)
+        fr = self.frame[self.frame["idx"] == idx] if len(self.frame) else pd.DataFrame()
+        f0 = fr.iloc[0].to_dict() if len(fr) else {}
+        cells = [("Status", row.get("status")), ("Estimation", f0.get("estimation")), ("n", row.get("n")),
+                 ("Groups", row.get("n_groups")), ("Fixed coefficients", row.get("n_params")),
+                 ("Covariance parameters", row.get("n_re_params")), ("Likelihood parameters", f0.get("n_lik")),
+                 ("logLik", row.get("loglik")), ("AIC", row.get("aic")), ("BIC", row.get("bic")),
+                 ("QIC", row.get("qic")), ("R² / pseudo-R²", row.get("r2"))]
+        parts.append("<table cellpadding='3'>" + "".join(
+            f"<tr><td><b>{k}</b></td><td>{fmt(v)}</td></tr>" for k, v in cells if v is not None
+            and not (isinstance(v, float) and not np.isfinite(v))) + "</table>")
+        if row.get("flags"):
+            parts.append(f"<p style='color:#8d6e00'>⚠ Screening / diagnostics: {e(str(row['flags']))}</p>")
+        tf = self.tests[self.tests["idx"] == idx] if len(self.tests) else pd.DataFrame()
+        if len(tf):
+            parts.append("<p><b>Hypothesis tests of this model</b> (each adjusted within its own family):</p>"
+                         "<table cellpadding='3' border='0'><tr><th align='left'>Test</th><th align='left'>Type</th>"
+                         "<th>Statistic</th><th>df</th><th>p</th><th>adjusted p</th><th>Estimate [CI]</th></tr>")
+            for t in tf.to_dict("records"):
+                est = t.get("estimate")
+                ci = (f"{est:.3f} [{t['ci_low']:.3f}, {t['ci_high']:.3f}]"
+                      if isinstance(est, float) and np.isfinite(est) and np.isfinite(t.get("ci_low", np.nan)) else "—")
+                parts.append(f"<tr><td>{e(str(t.get('label', '')))}</td><td>{e(str(t.get('test_label', '')))}</td>"
+                             f"<td align='right'>{fmt(t.get('statistic'))}</td><td align='right'>{fmt(t.get('df1'), 0)}"
+                             f"</td><td align='right'>{fmt(t.get('p'), 4)}</td><td align='right'>"
+                             f"{fmt(t.get('p_adj'), 4)}</td><td>{ci}</td></tr>")
+            parts.append("</table>")
+            prim = tf[tf["primary"]].head(1)
+            if len(prim):
+                parts.append(f"<p class='note'>{e(engine.interpretations(prim.reset_index(drop=True), run)[0])}</p>")
+        if any(len(t) > 1 for t in (row.get("inter") or [])):
+            parts.append("<p class='note'>Interaction model: the main-effect coefficients are conditional effects at "
+                         "the reference level (or zero) of the interacting variables, not overall effects; no "
+                         "coefficient alone identifies the 'strongest predictor'.</p>")
+        if run.family in ("ordinal", "clmm"):
+            parts.append("<p class='note'>Proportional odds is assumed by the search and is not tested per candidate "
+                         "(no diagnostic is shown rather than a blank result). 'Open full analysis' runs "
+                         "ordinal::nominal_test for single-level models and says why when it cannot.</p>")
+        if run.family == "multinomial":
+            ref = (run.coding or {}).get("reference")
+            parts.append(f"<p class='note'>Multinomial: every coefficient compares one outcome category with the "
+                         f"reference category{(' ' + e(str(ref))) if ref is not None else ''}; full analysis lists the "
+                         "comparison category on every row.</p>")
+        parts.append("<p class='note'>Use 'Open full analysis' for coefficients, CIs, diagnostic plots and conditional "
+                     "effects (refit on the same rows, checked against these statistics).</p>")
         return "".join(parts)
 
     # ---------- drill-down ----------
@@ -1206,17 +1509,36 @@ class DiscoveryPage(QWidget):
         dlg.show()
         render(view, result, artifacts)
 
-    def _candidate_model(self):
+    def _candidate_model(self, action: str):
+        """The selected candidate as a single-level ModelSpec carrying its descriptor. Longitudinal candidates are
+        never rerouted or replaced: the user is told which destinations can represent them (P0-01)."""
+        from ...analysis.descriptor import TransferError, from_discovery
+
         row = self._selected_row()
         if row is None:
-            return None
-        if self.run.settings.participant:
-            self._to_mixed(row)
             return None
         if row["status"] in ("invalid", "failed"):
             QMessageBox.information(self, "Discovery", f"This candidate was not fitted: {row['reason']}")
             return None
-        return from_candidate(self.run, row)
+        if self.run.settings.participant:
+            try:
+                d = from_discovery(self.run, row)
+                what = d.summary()
+            except TransferError as e:
+                what = str(e)
+            QMessageBox.information(
+                self, "Discovery",
+                f"{action} works with single-level models (lm / glm / clm / multinom). Candidate #{row['idx']} is a "
+                f"longitudinal model — {what} — so it was not sent there, and no other model was substituted.\n\n"
+                "Compare longitudinal candidates in this search's 'Model comparison' tab (identical rows; the "
+                "estimation method is labelled), or use 'Open full analysis' to refit this exact model in the Mixed "
+                "workspace, where the refit is checked against the search.")
+            return None
+        try:
+            return from_candidate(self.run, row)
+        except TransferError as e:
+            QMessageBox.information(self, "Discovery", str(e))
+            return None
 
     def _to_mixed(self, row: dict[str, Any]) -> None:
         """Longitudinal candidates: refit the exact formula and structure in the Mixed workspace, which draws
@@ -1234,12 +1556,18 @@ class DiscoveryPage(QWidget):
         self.state.show_in_mixed.emit(spec)
 
     def _to_teaching(self) -> None:
-        m = self._candidate_model()
-        if m is not None:
-            self.state.show_in_teaching.emit(m)
+        m = self._candidate_model("The Teaching Studio")
+        if m is None:
+            return
+        if m.family not in ("gaussian", "binomial"):
+            QMessageBox.information(self, "Discovery", f"The Teaching Studio draws linear and binary logistic models; "
+                                    f"this is a {m.family} model, so it was not sent there (no binary or linear "
+                                    "substitute is made). Use 'Open full analysis' or 'Add to comparison'.")
+            return
+        self.state.show_in_teaching.emit(m)
 
     def _to_set(self) -> None:
-        m = self._candidate_model()
+        m = self._candidate_model("Model Comparison")
         if m is not None:
             self.state.add_model(m)
             QMessageBox.information(self, "Discovery", f"{m.label} added to the Model Comparison set.")
@@ -1256,7 +1584,7 @@ class DiscoveryPage(QWidget):
                 "single interaction test) in this search already compares the model with its main-effects version "
                 "under the same random-effect / covariance structure, ML fits and rows.")
             return
-        m = self._candidate_model()
+        m = self._candidate_model("Compare with main-effects model")
         if m is None:
             return
         if not any(len(t) > 1 for t in m.terms):
@@ -1277,13 +1605,18 @@ class DiscoveryPage(QWidget):
         ds, run = self.state.dataset, self.run
         cand = candidate_from_row(run, row)
 
+        comparisons = (engine.structure_tests(run).get(int(row["idx"]), [])
+                       if run.settings.participant and run.settings.workflow == "structure" else [])
+
         def build(session):
             v = search_view(ds, run.settings)
             session.ensure_data(v)
-            return candidate_script(session.load_script, v, run.settings, run.family, cand)
+            return candidate_script(session.load_script, v, run.settings, run.family, cand, comparisons)
 
         self.state.run_r(build, lambda script: CodeDialog(
-            None, self, title=f"Candidate #{cand.index}", script=script,
+            None, self, title=f"Candidate #{cand.index}", script=script, dataset=ds,
             header="The search evaluated this candidate with exactly this function and arguments "
-                   "(inside sx_discover_batch, which also records warnings).").exec(),
+                   "(inside sx_discover_batch, which also records warnings)"
+                   + ("; the reported covariance-structure comparisons are recomputed at the end." if comparisons
+                      else ".")).exec(),
             lambda m: QMessageBox.warning(self, "Code", m))
