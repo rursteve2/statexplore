@@ -46,10 +46,12 @@ run.bat                                  :: GUI
 
 ## Build the offline distribution, installer and release
 ```bat
+set STATEXPLORE_BUILD_DIR=E:\statexplore_build   & :: optional: build on a drive with space (~3 GB)
 .venv\Scripts\python packaging\build.py
-:: dist\StatExplore\        StatExplore.exe, _internal\, R\ (bundled R), rlib\ (bundled packages)
-:: dist\release\           StatExplore-<version>-portable.zip, StatExplore-<version>-Setup.exe
-dist\StatExplore\StatExplore.exe --selftest --full
+:: <build dir>\dist\StatExplore\   StatExplore.exe, _internal\, R\ (bundled R), rlib\ (bundled packages)
+:: <build dir>\dist\release\       StatExplore-<version>-portable.zip, StatExplore-<version>-Setup.exe
+:: (<build dir> = STATEXPLORE_BUILD_DIR, default: the repository)
+<build dir>\dist\StatExplore\StatExplore.exe --selftest --full
 :: exit code 0 = OK; report in %TEMP%\statexplore_selftest.txt
 gh release create v1.0.0 dist\release\* --title "StatExplore 1.0.0" --notes-file docs\RELEASE_NOTES_v1.0.0.md
 ```

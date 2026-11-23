@@ -65,3 +65,6 @@
 
 ## Heuristics on imported data
 - A measurement-level heuristic (e.g. "few integer codes = categorical") must be checked against time variables, negative values and decimal-written floats before shipping; run the whole suite, which is full of small synthetic CSVs.
+
+## Drive C: vs E: (correction, 2026-11-23)
+- The repo is ON C:. A build or tool that writes inside the repo (PyInstaller dist/build, release zips) writes to C: even when TEMP points at E:. Before any build, set `STATEXPLORE_BUILD_DIR=E:\statexplore_build`; before any test run, `--basetemp` and TEMP/TMP on E:. Check every output path, not just temp.

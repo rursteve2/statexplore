@@ -9,13 +9,16 @@ Then compile packaging/statexplore.iss with Inno Setup to produce the installer.
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-DIST = ROOT / "dist" / "StatExplore"
+# Build output (~3 GB) can live on another drive: set STATEXPLORE_BUILD_DIR (contains dist/ and build/).
+OUT = Path(os.environ.get("STATEXPLORE_BUILD_DIR", str(ROOT)))
+DIST = OUT / "dist" / "StatExplore"
 
 
 def main() -> None:
@@ -24,8 +27,8 @@ def main() -> None:
         shutil.rmtree(DIST)
     from statexplore.rbridge.locate import DEFAULT_R_LIB, find_rscript
 
-    subprocess.run([sys.executable, "-m", "PyInstaller", "--noconfirm", "--distpath", str(ROOT / "dist"),
-                    "--workpath", str(ROOT / "build"), str(ROOT / "packaging" / "statexplore.spec")], check=True)
+    subprocess.run([sys.executable, "-m", "PyInstaller", "--noconfirm", "--distpath", str(OUT / "dist"),
+                    "--workpath", str(OUT / "build"), str(ROOT / "packaging" / "statexplore.spec")], check=True)
     rscript = find_rscript()
     if rscript is None:
         sys.exit("R not found: install R or set STATEXPLORE_RSCRIPT")
@@ -56,11 +59,11 @@ def release_artifacts() -> None:  # also: python packaging/build.py --release-on
     sys.path.insert(0, str(ROOT / "src"))
     from statexplore import __version__
 
-    out = ROOT / "dist" / "release"
+    out = OUT / "dist" / "release"
     out.mkdir(parents=True, exist_ok=True)
     zip_base = out / f"StatExplore-{__version__}-portable"
     print("Zipping", f"{zip_base}.zip")
-    shutil.make_archive(str(zip_base), "zip", root_dir=ROOT / "dist", base_dir="StatExplore")
+    shutil.make_archive(str(zip_base), "zip", root_dir=OUT / "dist", base_dir="StatExplore")
     candidates = [Path(os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)")) / "Inno Setup 6" / "ISCC.exe",
                   Path(os.environ.get("LOCALAPPDATA", "")) / "Programs" / "Inno Setup 6" / "ISCC.exe"]
     iscc = next((c for c in candidates if c.is_file()), None)
