@@ -4,7 +4,7 @@ from __future__ import annotations
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QApplication, QComboBox, QDialog, QDialogButtonBox, QFormLayout, QGroupBox, QHBoxLayout, QLabel, QLineEdit, QListWidget,
-    QListWidgetItem, QMessageBox, QPushButton, QScrollArea, QSpinBox, QSplitter, QTextBrowser, QVBoxLayout, QWidget,
+    QListWidgetItem, QMessageBox, QPushButton, QSpinBox, QSplitter, QTextBrowser, QVBoxLayout, QWidget,
 )
 
 from ...analysis import mixed
@@ -13,6 +13,7 @@ from ...core.structure import ReshapeSpec, suggest_structure, wide_to_long
 from ...core.variables import Measure, Role, Storage
 from ...analysis.measurement import TreatmentError, apply_treatments
 from ..result_view import render
+from ..widgets.layout import section_scroll
 from ..state import AppState
 from ..widgets.treatment_panel import TreatmentPanel
 from ..widgets.variable_selector import VariableSelector
@@ -187,7 +188,7 @@ class MixedPage(QWidget):
             else:
                 mf.addRow(w)
         ll.addWidget(mbox)
-        self.pred_sel = VariableSelector(max_height=230)
+        self.pred_sel = VariableSelector(max_height=230, selected_first=True)
         self.preds = self.pred_sel.list
         self.pred_sel.changed.connect(self._update_treatments)
         pbox = QGroupBox("Fixed-effect predictors (besides time)")
@@ -242,10 +243,7 @@ class MixedPage(QWidget):
             crow.addWidget(b)
         ll.addLayout(crow)
         ll.addStretch()
-        scroll = QScrollArea()
-        scroll.setWidget(left)
-        scroll.setWidgetResizable(True)
-        scroll.setMinimumWidth(440)
+        scroll = section_scroll(left, 440)
         self.output = QTextBrowser()
         out_box = QWidget()
         ol = QVBoxLayout(out_box)

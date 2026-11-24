@@ -7,7 +7,7 @@ from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import (
     QComboBox, QDialog, QDialogButtonBox, QFileDialog, QFormLayout, QHBoxLayout, QInputDialog, QLabel,
-    QListWidget,
+    QListWidget, QPushButton,
     QMainWindow, QMessageBox, QPlainTextEdit, QStackedWidget, QVBoxLayout, QWidget,
 )
 
@@ -137,6 +137,14 @@ class MainWindow(QMainWindow):
         # Start R in the background now, so the first analysis is fast and the status bar shows
         # whether R is available.
         QTimer.singleShot(300, self._warm_up_r)
+        self.stop_r_btn = QPushButton("Stop R")
+        self.stop_r_btn.setToolTip("Stop the running R computation (a long model fit, for example). Nothing is recorded "
+                                   "for the stopped analysis; R restarts on next use. Discovery searches have their own "
+                                   "Stop button.")
+        self.stop_r_btn.setEnabled(False)
+        self.stop_r_btn.clicked.connect(self.state.cancel_r)
+        self.statusBar().addPermanentWidget(self.stop_r_btn)
+        self.state.r_busy_changed.connect(self.stop_r_btn.setEnabled)
         self.state.busy_changed.connect(
             lambda b: self.statusBar().showMessage("Working…" if b else "Ready", 0 if b else 3000))
         self.state.show_in_teaching.connect(

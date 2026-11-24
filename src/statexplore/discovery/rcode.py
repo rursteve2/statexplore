@@ -3,6 +3,8 @@ worker; each batch calls `sx_discover_one()` per candidate. `candidate_script()`
 the exact code for a single candidate (View Code)."""
 from __future__ import annotations
 
+import math
+
 from ..core.dataset import Dataset
 from ..rbridge.codegen import alias, r_num, r_str, r_vec
 from .space import Candidate, SearchSettings
@@ -18,6 +20,14 @@ sx_cache_for <- function(d) {
     rm(list = ls(sx_disc_cache), envir = sx_disc_cache)
     sx_disc_cache_rows <<- rownames(d)
   }
+}
+# Analysis-row signature: MD5 of the row identities in fitting order plus the levels of every factor model column
+# (participant codes excluded: only their grouping matters). Equal signatures = same rows, order and coding.
+sx_rows_sig <- function(d) {
+  fac <- setdiff(names(d)[vapply(d, is.factor, logical(1))], "sx_gid")
+  txt <- c(rownames(d), vapply(fac, function(v) paste0(v, ":", paste(levels(d[[v]]), collapse = "|")), ""))
+  tf <- tempfile(); on.exit(unlink(tf)); writeLines(txt, tf, useBytes = TRUE)
+  unname(tools::md5sum(tf))
 }
 sx_add <- function(f, extra) stats::update(f, stats::as.formula(paste(". ~ . +", extra)))
 sx_fit_lmm <- function(f, d, st, reml) {
@@ -142,7 +152,10 @@ sx_discover_one <- function(full, tests, vars, focal_vars, struct = NULL) {
               bic = NA_real_, loglik = NA_real_, tests = list())
   invalid <- function(why) { res$status <- "invalid"; res$reason <- why; res$flags <- ""; res$tests <- NULL; res }
   d <- sx_complete(sx_dd, c("sx_y", vars, if (sx_long()) c("sx_gid", if (sx_disc_has_time) c("sx_time", "sx_timef", "sx_occ"))))
-  n <- nrow(d); res$n <- n
+  # occasion index over the model's own rows (sx_timef levels were dropped above): a time value no analysed row has
+  # is compressed exactly as in Full Analysis; a participant's skipped occasion still leaves an index gap
+  if (sx_long() && sx_disc_has_time) d$sx_occ <- as.integer(d$sx_timef)
+  n <- nrow(d); res$n <- n; res$rows_sig <- sx_rows_sig(d)
   if (n < sx_disc_min_obs) return(invalid(sprintf("%d complete rows; the minimum is %d", n, sx_disc_min_obs)))
   for (v in vars) if (is.factor(d[[v]]) && nlevels(d[[v]]) < 2)
     return(invalid(paste0(sx_names[[v]], " has fewer than 2 levels in the analysed rows")))
@@ -226,8 +239,9 @@ sx_discover_one <- function(full, tests, vars, focal_vars, struct = NULL) {
     ctab <- if (sx_disc_family == "ordinal") stats::coef(summary(m1)) else NULL
     crit <- stats::qnorm(1 - (1 - sx_disc_conf) / 2)
   }
-  if (sx_disc_family != "gee") { res$aic <- stats::AIC(m1); res$bic <- stats::BIC(m1); res$loglik <- s1$ll
-    res$n_lik_params <- s1$k }   # every parameter of the likelihood (fixed + thresholds + covariance)
+  if (sx_disc_family != "gee") { ic <- sx_ic(m1); res$aic <- ic$aic; res$bic <- ic$bic; res$loglik <- s1$ll
+    res$bic_n <- ic$n_bic; res$ic_basis <- ic$basis
+    res$n_lik_params <- ic$k }   # every parameter of the likelihood (fixed + thresholds + covariance)
   for (t in tests) {
     if (sx_disc_family == "gee") {
       tr <- sx_wald(m1, X, f1, t$drop)
@@ -327,7 +341,7 @@ def setup_script(ds: Dataset, s: SearchSettings, family: str) -> str:
             else:
                 lines.append(f"sx_dd$sx_time <- as.numeric(sx_dd${a(s.time)})  # numeric time")
             lines += ["sx_dd$sx_timef <- factor(sx_dd$sx_time)  # time as categories (categorical time, mmrm)",
-                      "sx_dd$sx_occ <- as.integer(sx_dd$sx_timef)  # occasion index (AR(1), GEE waves)",
+                      "sx_dd$sx_occ <- as.integer(sx_dd$sx_timef)  # global observed-occasion index (AR(1), GEE waves)",
                       "sx_dd <- sx_dd[order(sx_dd$sx_gid, sx_dd$sx_time), , drop = FALSE]  # within-participant order"]
     family = {"lmm": "gaussian", "glmm": "binomial", "clmm": "ordinal", "gee": s.family or "gaussian"}.get(family, family)
     v = ds.var(s.outcome)
@@ -419,19 +433,81 @@ def comparison_script(ds: Dataset, s: SearchSettings, c: Candidate, comparisons:
         how = ("boundary-corrected chi-square mixture (variance / correlation tested on the edge of its range)"
                if t.get("boundary") else f"chi-square({int(t['df1'])})")
         L += [f"sx_ref <- sx_discover_one({candidate_args(ds, ref, s)})",
-              "stopifnot(identical(sx_ref$n, sx_result$n))  # nested comparison only on identical rows",
+              "# nested comparison only on identical rows: same row identities, order and factor coding",
+              "stopifnot(\"the reference model was fitted to different rows\" = identical(sx_ref$rows_sig, sx_result$rows_sig))",
               "sx_lr <- 2 * (sx_result$loglik - sx_ref$loglik)",
               f"sx_cmp[[{k}]] <- data.frame(comparison = {r_str(t['label'])}, reference = {r_str(t['reference_structure'])},",
               f"  LR = sx_lr, df = {r_num(float(t['df1']))}, p = {_mixture_r(t.get('mixture'), t['df1'])},",
-              f"  method = {r_str(how)}, app_LR = {r_num(float(t['statistic']))}, app_p = {r_num(float(t['p']))})"]
-    L += ["sx_comparisons <- do.call(rbind, sx_cmp)", "print(sx_comparisons, digits = 6)"]
+              f"  method = {r_str(how)}, app_LR = {r_num(float(t['statistic']))}, app_p = {r_num(float(t['p']))})",
+              f"stopifnot({r_str('comparison ' + str(k) + ': LR differs from the app')} = sx_rel(sx_cmp[[{k}]]$LR, sx_cmp[[{k}]]$app_LR),",
+              f"          {r_str('comparison ' + str(k) + ': p differs from the app')} = sx_close_p(sx_cmp[[{k}]]$p, sx_cmp[[{k}]]$app_p))"]
+    L += ["sx_comparisons <- do.call(rbind, sx_cmp)", "print(sx_comparisons, digits = 6)",
+          'cat("Covariance-structure comparisons reproduced within tolerance.\\n")']
+    return "\n".join(L) + "\n"
+
+
+VERIFY_HELPERS = """# ---- verification against the values StatExplore recorded ----
+# Tolerances, fixed in advance: n and analysis-row signature exact; logLik / AIC / BIC 1e-3 absolute;
+# test statistics 1e-4 relative; p-values 1e-4 relative on the log10 scale (both below 1e-300 count as equal).
+sx_abs <- function(new, app, tol = 1e-3) isTRUE(abs(new - app) <= tol)
+sx_rel <- function(new, app, tol = 1e-4) isTRUE(abs(new - app) <= tol * max(1, abs(app)))
+sx_close_p <- function(new, app) isTRUE((new < 1e-300 && app < 1e-300) ||
+  abs(log10(max(new, 1e-300)) - log10(max(app, 1e-300))) <= 1e-4 * max(1, abs(log10(max(app, 1e-300)))))
+"""
+
+
+def _finite(x: object) -> bool:
+    try:
+        return x is not None and math.isfinite(float(x))
+    except (TypeError, ValueError):
+        return False
+
+
+def verification_script(row: dict, adjusted: list[dict] | None = None) -> str:
+    """stopifnot() checks that the re-run reproduces what the app recorded for this candidate (P1-EXPORT): n,
+    analysis-row signature, logLik, AIC, BIC and every test statistic and p. Adjusted p-values depend on the whole
+    hypothesis family, so they are listed (with their family) rather than recomputed."""
+    checks = []
+    if _finite(row.get("n")):
+        checks.append(f'"n differs from the app" = identical(as.numeric(sx_result$n), {r_num(float(row["n"]))})')
+    if row.get("rows_sig"):
+        checks.append(f'"analysis rows differ from the app (row signature)" = identical(sx_result$rows_sig, '
+                      f'{r_str(row["rows_sig"])})')
+    for key, label in (("loglik", "logLik"), ("aic", "AIC"), ("bic", "BIC")):
+        if _finite(row.get(key)):
+            checks.append(f'"{label} differs from the app" = sx_abs(sx_result${key}, {r_num(float(row[key]))})')
+    L = [VERIFY_HELPERS.rstrip("\n"),
+         "sx_test <- function(id) Filter(function(t) identical(as.integer(t$id), as.integer(id)), sx_result$tests)[[1]]"]
+    for t in row.get("tests") or []:
+        if not (_finite(t.get("statistic")) and _finite(t.get("p"))):
+            continue
+        tid = int(t.get("test_id", 0))
+        lab = str(t.get("label") or t.get("type") or tid)
+        checks.append(f'{r_str("test " + lab + ": statistic differs from the app")} = '
+                      f'sx_rel(sx_test({tid})$statistic, {r_num(float(t["statistic"]))})')
+        checks.append(f'{r_str("test " + lab + ": p differs from the app")} = '
+                      f'sx_close_p(sx_test({tid})$p, {r_num(float(t["p"]))})')
+    if checks:
+        L.append("stopifnot(\n  " + ",\n  ".join(checks) + ")")
+        L.append(f'cat("Reproduced within tolerance: {len(checks)} checks against the app\'s recorded values.\\n")')
+    if adjusted:
+        L.append("# Multiplicity adjustment as reported (it depends on every test in the family, so it is listed, not "
+                 "recomputed here):")
+        for a in adjusted:
+            L.append(f"#   {a.get('label', '')} [{a.get('test_label', '')}]: p = {a.get('p')}, adjusted p = "
+                     f"{a.get('p_adj')} ({a.get('adj_method', '')}, family of {a.get('family_size')} tests; "
+                     f"{a.get('search_scope', '')})")
     return "\n".join(L) + "\n"
 
 
 def candidate_script(load_script: str, ds: Dataset, s: SearchSettings, family: str, c: Candidate,
-                     comparisons: list[dict] | None = None) -> str:
+                     comparisons: list[dict] | None = None, expected: dict | None = None,
+                     adjusted: list[dict] | None = None, provenance: dict[str, str] | None = None) -> str:
     setup = setup_script(ds, s, family).replace("sx_result <- list(n = nrow(sx_dd), n_complete = "
                                                "sum(stats::complete.cases(sx_dd)))\n", "")
-    return (load_script + "\n" + setup + "\n# ---- candidate " + str(c.index) + " ----\n"
+    head = ("# ---- model provenance (as recorded by the search) ----\n"
+            + "".join(f"#   {k}: {v}\n" for k, v in provenance.items()) if provenance else "")
+    return (head + load_script + "\n" + setup + "\n# ---- candidate " + str(c.index) + " ----\n"
             + f"sx_result <- sx_discover_one({candidate_args(ds, c, s)})\n" + CANDIDATE_SUMMARY
+            + (verification_script(expected, adjusted) if expected else VERIFY_HELPERS)
             + comparison_script(ds, s, c, comparisons or []))

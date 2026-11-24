@@ -127,6 +127,89 @@ sx_shapiro <- function(x) {
   if (length(x) < 3 || length(x) > 5000 || stats::var(x) == 0) return(c(W = NA_real_, p = NA_real_))
   t <- stats::shapiro.test(x); c(W = unname(t$statistic), p = t$p.value)
 }
+# Proportional-odds check for an ordinal::clm fit: the tests of ordinal::nominal_test() (each term in turn made
+# category-specific, likelihood-ratio test against the fitted model) plus a global test (all terms at once).
+# nominal_test() refits through update(), which cannot see local data and turns every failure into a silent NA;
+# here each refit is explicit and a term that cannot be tested carries the specific reason.
+sx_po_check <- function(fit, form, data, link = "logit") {
+  y <- data[[all.vars(form)[1]]]
+  ll0 <- as.numeric(stats::logLik(fit))
+  one <- function(label, nom, cells_check = TRUE) {
+    w <- character()
+    m <- withCallingHandlers(
+      tryCatch(ordinal::clm(form, nominal = nom, data = data, link = link), error = function(e) e),
+      warning = function(x) { w <<- c(w, conditionMessage(x)); invokeRestart("muffleWarning") })
+    out <- data.frame(term = label, df = NA_real_, LRT = NA_real_, p = NA_real_, status = "not tested",
+                      reason = "", stringsAsFactors = FALSE)
+    vars <- intersect(all.vars(nom), names(data))
+    fac <- vars[vapply(data[vars], is.factor, logical(1))]
+    notes <- character()
+    if (cells_check && length(fac)) {
+      cells <- table(interaction(data[fac], drop = TRUE), y)
+      if (any(cells == 0)) notes <- c(notes, sprintf(
+        "sparse: %d of %d outcome-by-category cells are empty", sum(cells == 0), length(cells)))
+    }
+    if (inherits(m, "error")) {
+      out$reason <- paste(c(paste("the category-specific model could not be fitted:", conditionMessage(m)), notes),
+                          collapse = "; ")
+      return(out)
+    }
+    code <- as.integer(m$convergence$code)
+    msgs <- unique(gsub("\\s+", " ", trimws(c(m$convergence$messages, m$convergence$alg.message))))
+    # the location coefficients a nominal term replaces are aliased by design; only threshold-side aliasing counts
+    al <- sum(m$aliased$alpha)
+    if (al) notes <- c(notes, sprintf("%d category-specific coefficient(s) not identifiable (aliased) and dropped", al))
+    w <- unique(gsub("\\s+", " ", trimws(sub("^\\(\\d+\\)\\s*", "", w))))
+    w <- w[!vapply(w, function(x) any(startsWith(x, msgs) | startsWith(msgs, x)), logical(1))]
+    if (length(w)) notes <- c(notes, paste("warning:", w))
+    df <- m$edf - fit$edf
+    lr <- 2 * (as.numeric(stats::logLik(m)) - ll0)
+    if (is.na(code) || code < 0L) {
+      out$reason <- paste(c(paste("the category-specific model did not converge:", paste(msgs, collapse = "; ")), notes),
+                          collapse = "; ")
+    } else if (df <= 0) {
+      out$reason <- paste(c("no estimable category-specific parameters beyond the fitted model (rank deficient)",
+                            notes), collapse = "; ")
+    } else if (!is.finite(lr) || lr < -1e-6) {
+      out$reason <- paste(c(sprintf("the category-specific fit has a lower likelihood (LR = %.4g): optimizer failure", lr),
+                            notes), collapse = "; ")
+    } else {
+      out$df <- df; out$LRT <- max(lr, 0); out$p <- stats::pchisq(max(lr, 0), df, lower.tail = FALSE)
+      if (code == 0L) {
+        out$status <- "tested"
+      } else {
+        # code 1: the likelihood reached its maximum but some parameters are not uniquely determined, so the
+        # parameter count (df) is uncertain; ordinal::nominal_test reports these values without comment
+        out$status <- "approximate"
+        notes <- c(paste0("df uncertain: ", paste(msgs, collapse = "; ")), notes)
+      }
+      out$reason <- paste(notes, collapse = "; ")
+    }
+    out
+  }
+  terms <- attr(stats::terms(form), "term.labels")
+  if (!length(terms)) return(data.frame(term = "(none)", df = NA_real_, LRT = NA_real_, p = NA_real_,
+    status = "not tested", reason = "intercept-only model: there is no effect to make category-specific"))
+  rows <- lapply(terms, function(tm) one(tm, stats::as.formula(paste("~", tm))))
+  if (length(terms) > 1) rows[[length(rows) + 1]] <- one("All terms (global test)",
+    stats::as.formula(paste("~", paste(terms, collapse = " + "))), cells_check = FALSE)
+  do.call(rbind, rows)
+}
+# Information criteria. Native AIC()/BIC() for every engine except mmrm: its own criteria count only covariance
+# parameters under REML and use n = subjects, so it is put on nlme's convention (k = fixed + covariance parameters,
+# n = observations, n - p under REML) and structures fitted by different packages share one penalty.
+sx_ic <- function(m) {
+  ll <- stats::logLik(m)
+  if (inherits(m, "mmrm")) {
+    p <- length(m$beta_est); k <- p + length(m$theta_est); n <- length(stats::residuals(m))
+    nb <- if (isTRUE(m$reml)) n - p else n
+    return(list(aic = -2 * as.numeric(ll) + 2 * k, bic = -2 * as.numeric(ll) + log(nb) * k, k = k, n_bic = nb,
+                basis = "nlme convention (mmrm's own BIC differs)"))
+  }
+  nb <- attr(ll, "nobs")
+  if (is.null(nb)) nb <- tryCatch(stats::nobs(m), error = function(e) NA_real_)
+  list(aic = stats::AIC(m), bic = stats::BIC(m), k = attr(ll, "df"), n_bic = as.numeric(nb), basis = "native")
+}
 # Package a data frame as a result table.
 sx_table <- function(name, df, notes = "", row_names = NULL) {
   df <- as.data.frame(df, stringsAsFactors = FALSE, check.names = FALSE)

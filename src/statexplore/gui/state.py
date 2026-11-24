@@ -30,8 +30,12 @@ class _Task(QRunnable):
         self.signals = _TaskSignals()
 
     def run(self) -> None:
+        from ..rbridge.worker import RTimeoutError
+
         try:
             out = self.fn()
+        except RTimeoutError as e:  # a timeout is never a completed analysis (P1-MODEL)
+            self.signals.failed.emit(f"Timed out: the analysis did not complete and no result was recorded. {e}")
         except Exception as e:  # surfaced to the user via `failed`
             log.debug("Background task failed:\n%s", traceback.format_exc())
             self.signals.failed.emit(str(e) or e.__class__.__name__)
@@ -44,6 +48,7 @@ class AppState(QObject):
     metadata_changed = Signal()
     result_added = Signal(object)        # AnalysisResult
     busy_changed = Signal(bool)
+    r_busy_changed = Signal(bool)       # an R computation (not file I/O) is running: the Stop R button
     r_status_changed = Signal(str)
     models_changed = Signal()
     show_in_teaching = Signal(object)    # ModelSpec
@@ -64,6 +69,8 @@ class AppState(QObject):
         self._io_pool.setMaxThreadCount(2)
         self._tasks: set[_Task] = set()
         self._busy = 0
+        self._r_busy = 0
+        self._cancel_requested = False
 
     # ---- project ----------------------------------------------------
     @property
@@ -127,6 +134,14 @@ class AppState(QObject):
         self.shutdown_r()
         shutil.rmtree(self._workdir, ignore_errors=True)
 
+    def cancel_r(self) -> None:
+        """Stop the running R computation (Stop button). The worker is killed; the waiting task fails and reports a
+        cancellation, and the session reloads its data in the restarted worker (generation check)."""
+        if self._r_busy and self._worker is not None:
+            self._cancel_requested = True
+            self._worker.kill()
+            self.r_status_changed.emit("R stopped by the user (restarts automatically when needed)")
+
     def shutdown_r(self) -> None:
         if self._worker:
             self._worker.stop()
@@ -135,27 +150,47 @@ class AppState(QObject):
 
     # ---- background work --------------------------------------------
     def _submit(self, pool: QThreadPool, fn: Callable[[], Any],
-                on_done: Callable[[Any], None], on_error: Callable[[str], None]) -> None:
+                on_done: Callable[[Any], None], on_error: Callable[[str], None], r: bool = False) -> None:
         task = _Task(fn)
         self._tasks.add(task)
         self._set_busy(+1)
+        if r:
+            self._set_r_busy(+1)
 
         def finish() -> None:
             self._tasks.discard(task)
             self._set_busy(-1)
+            if r:
+                self._set_r_busy(-1)
+
+        def failed(msg: str) -> None:
+            cancelled = r and self._cancel_requested
+            finish()        # the last R task to finish clears the cancel request
+            if cancelled:
+                msg = ("Cancelled by the user: the R computation was stopped and no result was recorded. "
+                       "R restarts on next use.")
+            on_error(msg)
 
         task.signals.done.connect(lambda out: (finish(), on_done(out)))
-        task.signals.failed.connect(lambda msg: (finish(), on_error(msg)))
+        task.signals.failed.connect(failed)
         task.setAutoDelete(False)
         pool.start(task)
 
     def run_r(self, fn: Callable[[RSession], Any], on_done: Callable[[Any], None],
               on_error: Callable[[str], None]) -> None:
-        self._submit(self._r_pool, lambda: fn(self.r_session()), on_done, on_error)
+        self._submit(self._r_pool, lambda: fn(self.r_session()), on_done, on_error, r=True)
 
     def run_io(self, fn: Callable[[], Any], on_done: Callable[[Any], None],
                on_error: Callable[[str], None]) -> None:
         self._submit(self._io_pool, fn, on_done, on_error)
+
+    def _set_r_busy(self, delta: int) -> None:
+        was = self._r_busy > 0
+        self._r_busy += delta
+        if (self._r_busy > 0) != was:
+            self.r_busy_changed.emit(self._r_busy > 0)
+            if not self._r_busy:
+                self._cancel_requested = False
 
     def _set_busy(self, delta: int) -> None:
         was = self._busy > 0

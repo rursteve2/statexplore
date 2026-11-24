@@ -7,7 +7,7 @@ from typing import Any
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QCheckBox, QComboBox, QDoubleSpinBox, QFormLayout, QGroupBox, QHBoxLayout, QLabel, QLineEdit,
-    QListWidget, QListWidgetItem, QMessageBox, QPushButton, QScrollArea, QSpinBox, QSplitter,
+    QListWidget, QListWidgetItem, QMessageBox, QPushButton, QSpinBox, QSplitter,
     QTextBrowser, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget,
 )
 
@@ -18,6 +18,7 @@ from ...analysis.framework import (
 from ...analysis.measurement import TreatmentError, apply_treatments
 from ...core.schema import AnalysisResult
 from ..result_view import render
+from ..widgets.layout import make_responsive, section_scroll
 from ..state import AppState
 from ..widgets.treatment_panel import TreatmentPanel
 from ..widgets.variable_selector import VariableSelector
@@ -92,9 +93,7 @@ class AnalysisBuilderPage(QWidget):
 
         self.form_host = QWidget()
         self.form_layout = QVBoxLayout(self.form_host)
-        scroll = QScrollArea()
-        scroll.setWidget(self.form_host)
-        scroll.setWidgetResizable(True)
+        scroll = section_scroll(self.form_host)
         mid = QWidget()
         ml = QVBoxLayout(mid)
         self.filter = QLineEdit()
@@ -234,6 +233,7 @@ class AnalysisBuilderPage(QWidget):
                 self.option_widgets[o.key].currentIndexChanged.connect(lambda _i: self._update_preview())
         self._update_preview()
         self.form_layout.addStretch()
+        make_responsive(self.form_host)
         for w in self.slot_widgets.values():
             w.apply_filter(self.filter.text())
 

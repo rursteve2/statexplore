@@ -371,3 +371,34 @@ fixture) and `hrs_least_missing_1000.csv` (same 16,000 × 168 data; blanks are s
 - Post-fix: every transfer verified against its origin (n, logLik, AIC); CAR(1) export sourced independently reproduces n 3901 / AIC 20540.106 / logLik −10264.053 / k 6 + the covariance LR test from .sav and .csv; HRS CSV now = SAV for all 168 columns.
 - Found along the way: GEE QIC always NA in discovery (scope bug), holdout column broke the one-per-line load script (caught by tests), import heuristic needed time-name / negative / decimal exceptions.
 - Limitations and open items: docs/spec-compliance-v1.3.md §4.
+
+---
+
+# v1.3.1 maintenance (spec: `E:\Downloads\StatExplore_v1.3.1_Developer_Prompt_Complete.md` = **S**, inventory
+`StatExplore_v1.2.0_to_v1.3.0_Test_Inventory.md`; started 2026-11-23)
+
+Baseline: main `a7bae5e` (= v1.3.0 + build-dir commit). Clean worktree `E:\sx_v130_base`. Fixtures: HRS `.sav`/`.csv`
+byte-identical to v1.3.0's; `StatExplore_v1.3.0_Whitespace_Regression_Fixture.csv` (12×5, CRLF, tab cell).
+Work/evidence folder: `E:\sx_v131_work` (kept out of the repo: health data).
+
+## Root causes found before editing
+| Defect | Root cause |
+|---|---|
+| STAT-15 dashes | `ordinal::nominal_test()` refits each term by `try(update(object, nominal = ...), silent = TRUE)`; `update()` re-evaluates the stored call (`data = sx_d`) outside our scope → "object not found", swallowed → NA rows. Same bug class as GEE QIC (lessons.md). Main-effects models fail too. Plain top-level R works (HRS W16 n917: RAGENDER p .4235, R_DEPRES p .8084). |
+| STAT-16 BIC .004 | Discovery `_row()` recomputes BIC as −2ℓ + log(**n**)·k for every mixed engine; `BIC()` for REML `nlme` uses `attr(logLik, "nobs")` = n − p. 6·(log 3901 − log 3898) = 0.0046. |
+
+## Phases
+- [x] 1 Baseline suite on clean worktree (345 expected) + pre-fix reproductions (STAT-15/16)
+- [x] 2 STAT-15 explicit per-term PO tests with reasons + global test; STAT-16 native nobs; P1-MODEL/TIME/EXPORT/SEARCH audits + fixes
+- [x] 3 UI-28/29/30/31/32/33/34
+- [x] 4 Provenance panel, p-value display, other §6 items as time allows (staged separately)
+- [x] 5 Tests 26–35 (tests/test_v131.py), historical regression (HRS), traceability matrix, screenshots, docs, version, build on E:, frozen self-test
+
+### Review (v1.3.1)
+- Baseline 345/345 (clean worktree `E:\sx_v130_base`). New `tests/test_v131.py`: 28 tests (Tests 26-35), all pass incl. HRS.
+- Root causes confirmed before editing (logs in `E:\StatExplore_v1.3.1_Testing\logs\*_before_v1.3.0.txt`): STAT-15 7/7 PO rows NA; STAT-16 BIC 20550.401 / 20577.720 vs native .397 / .716.
+- Found during audits: per-model AR(1) index built before row filtering; Measurement-Review-independent selector bar forcing ~390 px (settings overflow at 1366 px, also in 1.3.0); auto layout overriding user divider drags; header min width lost on restoreState from older saved layouts.
+- HRS evidence: cross-module 7/7 identity verified; exports from .sav and .csv 5/5 each self-verify in clean R (RI, AR1, CAR1 + LR, ordinal, multinomial).
+- Not verified (configs not recorded): stage 6B, glmer n≈9874, clmm reduced panel AIC 8427.137, "cap 5 screens 16 of 20". Real-monitor DPI check: user.
+- Docs: RELEASE_NOTES_v1.3.1, spec-compliance-v1.3.1 (traceability, §5.1/5.2 tables, limitations, run/install/rollback), README §10.
+- Not committed / not published: awaiting the user.

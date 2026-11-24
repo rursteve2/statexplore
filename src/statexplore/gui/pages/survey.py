@@ -4,13 +4,14 @@ from __future__ import annotations
 import html
 
 from PySide6.QtWidgets import (
-    QCheckBox, QComboBox, QFormLayout, QGroupBox, QHBoxLayout, QLabel, QMessageBox, QPushButton, QScrollArea,
+    QCheckBox, QComboBox, QFormLayout, QGroupBox, QHBoxLayout, QLabel, QMessageBox, QPushButton, 
     QSplitter, QTextBrowser, QVBoxLayout, QWidget,
 )
 
 from ...analysis import survey as S
 from ...core.variables import Storage
 from ..result_view import render
+from ..widgets.layout import section_scroll
 from ..state import AppState
 from ..widgets.variable_selector import VariableSelector
 from .eda import CodeDialog
@@ -84,10 +85,7 @@ class SurveyPage(QWidget):
         brow.addWidget(self.copy_btn)
         ll.addLayout(brow)
         ll.addStretch()
-        scroll = QScrollArea()
-        scroll.setWidget(left)
-        scroll.setWidgetResizable(True)
-        scroll.setMinimumWidth(440)
+        scroll = section_scroll(left, 440)
         self.output = QTextBrowser()
         split = QSplitter()
         split.addWidget(scroll)

@@ -198,6 +198,7 @@ class RConsolePage(QWidget):
         t.setObjectName("pageTitle")
         lay.addWidget(t)
         warn = QLabel("⚠ " + html.escape(SECURITY_WARNING))
+        warn.setTextFormat(Qt.RichText)
         warn.setWordWrap(True)
         warn.setStyleSheet("background:#fff3e0;border:1px solid #e0a060;padding:6px;")
         lay.addWidget(warn)

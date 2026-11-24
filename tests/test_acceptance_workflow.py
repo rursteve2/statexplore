@@ -59,7 +59,10 @@ def test_final_acceptance_workflow(qtbot, tmp_path, hrs_path, monkeypatch, r_wor
         review = exp.review
         assert "R_LTACTX" in review._names
         row = review._names.index("R_LTACTX")
-        src, sugg = review.table.item(row, 2).text(), review.table.item(row, 4).text()
+        from statexplore.gui.pages.measurement_review import COLUMNS
+
+        src = review.table.item(row, COLUMNS.index("Source (SPSS) level")).text()
+        sugg = review.table.item(row, COLUMNS.index("Suggested level")).text()
         step(4, f"PASS: R_LTACTX listed in Measurement Review ({len(review._names)} variables flagged)")
         review.select("R_LTACTX")
         detail = review.detail.toPlainText()

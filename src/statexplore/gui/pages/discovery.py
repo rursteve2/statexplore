@@ -9,8 +9,9 @@ import numpy as np
 import pandas as pd
 from PySide6.QtCore import QObject, Qt, Signal
 from PySide6.QtWidgets import (
-    QAbstractItemView, QCheckBox, QComboBox, QDialog, QDoubleSpinBox, QFormLayout, QGroupBox, QHBoxLayout, QLabel,
-    QLineEdit, QListWidget, QListWidgetItem, QMessageBox, QProgressBar, QPushButton, QScrollArea, QSpinBox,
+    QAbstractItemView, QApplication, QCheckBox, QComboBox, QDialog, QDoubleSpinBox, QFormLayout, QGroupBox,
+    QHBoxLayout, QLabel,
+    QLineEdit, QListWidget, QListWidgetItem, QMessageBox, QProgressBar, QPushButton, QSpinBox,
     QSplitter, QTableView, QTabWidget, QTextBrowser, QVBoxLayout, QWidget,
 )
 
@@ -25,6 +26,7 @@ from ...discovery.space import (
     describe_space, structures_for, suggest_family,
 )
 from ...analysis.measurement import TreatmentError, apply_treatments
+from ..widgets.layout import section_scroll
 from ..widgets.treatment_panel import TreatmentPanel
 from ..widgets.variable_selector import VariableSelector
 from ..models import ResultFrameModel
@@ -136,9 +138,21 @@ class ResultTable(QWidget):
         hdr.sectionResized.connect(lambda *_: self._save_header())
         hdr.sectionMoved.connect(lambda *_: self._save_header())
         self.view.doubleClicked.connect(lambda *_: self.activated.emit())
+        hdr.setMinimumSectionSize(44)                      # UI-34: no column collapses to an unreadable sliver
         lay.addWidget(self.view)
+        # UI-34: hint when columns continue off-screen; frozen identification column; density / font preference
+        self.scroll_hint = QLabel("More columns to the right → scroll sideways, or right-click a column header to "
+                                  "choose columns, fit them to their contents or change the row density.")
+        self.scroll_hint.setObjectName("hint")
+        self.scroll_hint.setWordWrap(True)
+        self.scroll_hint.setVisible(False)
+        lay.addWidget(self.scroll_hint)
+        self.view.horizontalScrollBar().rangeChanged.connect(
+            lambda _lo, hi: self.scroll_hint.setVisible(hi > 0 and self.model.rowCount() > 0))
+        self._frozen: QTableView | None = None
         self._highlight = np.zeros(0, bool)
         self._restored = False
+        self._apply_density()
 
     def _settings(self):
         from PySide6.QtCore import QSettings
@@ -166,6 +180,7 @@ class ResultTable(QWidget):
         self._restored = True
         if state is not None:
             self.view.horizontalHeader().restoreState(state)
+            self.view.horizontalHeader().setMinimumSectionSize(44)    # layouts saved by older versions had 16
             self._sized = True
 
     def _column_menu(self, pos) -> None:
@@ -181,11 +196,129 @@ class ResultTable(QWidget):
         menu.addSeparator()
         menu.addAction("Show all columns", lambda: ([hdr.setSectionHidden(c, False)
                                                      for c in range(self.model.columnCount())], self._save_header()))
+        menu.addAction("Fit columns to contents", self.fit_columns)
+        menu.addAction("Reset column layout", self.reset_columns)
+        frz = menu.addAction(f"Freeze the {self.id_col} column")
+        frz.setCheckable(True)
+        frz.setChecked(self._pref("freeze", True))
+        frz.toggled.connect(lambda on: (self._set_pref("freeze", on), self._update_frozen()))
+        dens = menu.addMenu("Row density")
+        for key, text in (("compact", "Compact"), ("comfortable", "Comfortable")):
+            a = dens.addAction(text)
+            a.setCheckable(True)
+            a.setChecked(self._pref("density", "compact") == key)
+            a.triggered.connect(lambda _=False, k=key: (self._set_pref("density", k), self._apply_density()))
+        size = menu.addMenu("Table font size")
+        for delta, text in ((-1, "Smaller"), (0, "Normal"), (1, "Larger"), (2, "Largest")):
+            a = size.addAction(text)
+            a.setCheckable(True)
+            a.setChecked(int(self._pref("font", 0)) == delta)
+            a.triggered.connect(lambda _=False, d=delta: (self._set_pref("font", d), self._apply_density()))
         menu.exec(hdr.mapToGlobal(pos))
 
-    def copy_csv(self) -> None:
-        from PySide6.QtWidgets import QApplication
+    # ---- UI-34: readable defaults (preferences shared by every discovery table) ---------------
+    def _pref(self, key: str, default):
+        v = self._settings().value(f"discovery/table_{key}", default)
+        return v in (True, "true", "1", 1) if isinstance(default, bool) else v
 
+    def _set_pref(self, key: str, value) -> None:
+        self._settings().setValue(f"discovery/table_{key}", value)
+
+    def _apply_density(self) -> None:
+        f = self.view.font()
+        base = QApplication.font().pointSizeF() if QApplication.instance() else 9.0
+        f.setPointSizeF(max(6.0, base + int(self._pref("font", 0))))
+        self.view.setFont(f)
+        pad = 6 if self._pref("density", "compact") == "compact" else 14
+        self.view.verticalHeader().setDefaultSectionSize(self.view.fontMetrics().height() + pad)
+        if self._frozen is not None:
+            self._frozen.setFont(f)
+            self._frozen.verticalHeader().setDefaultSectionSize(self.view.verticalHeader().defaultSectionSize())
+
+    def fit_columns(self) -> None:
+        """Resize every visible column to its contents (sampled rows), capped so one long formula cannot push the
+        others off-screen; formulas keep their full text in the tooltip."""
+        hdr = self.view.horizontalHeader()
+        for c in range(self.model.columnCount()):
+            if not hdr.isSectionHidden(c):
+                self.view.resizeColumnToContents(c)
+                self.view.setColumnWidth(c, min(self.view.columnWidth(c), 420))
+        self._save_header()
+        self._update_frozen()
+
+    def reset_columns(self) -> None:
+        hdr = self.view.horizontalHeader()
+        for c in range(self.model.columnCount()):
+            hdr.setSectionHidden(c, False)
+            hdr.moveSection(hdr.visualIndex(c), c)
+        self.fit_columns()
+
+    def _update_frozen(self) -> None:
+        """Keep the identification column visible while scrolling sideways (Qt's frozen-column pattern: a second
+        view over the first column, sharing the model and the selection)."""
+        cols = list(self.model.frame.columns)
+        want = self._pref("freeze", True) and self.id_col in cols and self.model.columnCount() > 1
+        if not want:
+            if self._frozen is not None:
+                self._frozen.hide()
+            return
+        hdr = self.view.horizontalHeader()
+        idc = cols.index(self.id_col)
+        if hdr.visualIndex(idc) != 0:
+            hdr.moveSection(hdr.visualIndex(idc), 0)
+        if self._frozen is None:
+            f = QTableView(self.view)
+            f.setModel(self.model)
+            f.setFocusPolicy(Qt.NoFocus)
+            f.verticalHeader().hide()
+            f.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+            f.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+            f.setSelectionBehavior(QAbstractItemView.SelectRows)
+            f.setSelectionMode(QAbstractItemView.SingleSelection)
+            f.setVerticalScrollMode(self.view.verticalScrollMode())
+            f.setStyleSheet("QTableView { border: none; border-right: 2px solid #9aa9bb; }")
+            f.horizontalHeader().setSectionsClickable(True)
+            f.horizontalHeader().sectionClicked.connect(self._frozen_sort)
+            f.doubleClicked.connect(lambda *_: self.activated.emit())
+            self.view.viewport().stackUnder(f)
+            f.verticalScrollBar().valueChanged.connect(self.view.verticalScrollBar().setValue)
+            self.view.verticalScrollBar().valueChanged.connect(f.verticalScrollBar().setValue)
+            hdr.sectionResized.connect(lambda *_: self._frozen_geometry())
+            self.view.installEventFilter(self)
+            self._frozen = f
+        f = self._frozen
+        f.setSelectionModel(self.view.selectionModel())
+        f.setFont(self.view.font())
+        f.verticalHeader().setDefaultSectionSize(self.view.verticalHeader().defaultSectionSize())
+        for c in range(self.model.columnCount()):
+            f.setColumnHidden(c, c != idc)
+        f.show()
+        self._frozen_geometry()
+
+    def _frozen_sort(self, c: int) -> None:
+        hdr = self.view.horizontalHeader()
+        same = hdr.sortIndicatorSection() == c and hdr.sortIndicatorOrder() == Qt.AscendingOrder
+        self.view.sortByColumn(c, Qt.DescendingOrder if same else Qt.AscendingOrder)
+
+    def _frozen_geometry(self) -> None:
+        f = self._frozen
+        if f is None or not f.isVisible():
+            return
+        idc = list(self.model.frame.columns).index(self.id_col) if self.id_col in self.model.frame.columns else 0
+        w = self.view.columnWidth(idc)
+        f.setColumnWidth(idc, w)
+        fw = self.view.frameWidth()
+        f.setGeometry(self.view.verticalHeader().width() + fw, fw, w,
+                      self.view.viewport().height() + self.view.horizontalHeader().height())
+
+    def eventFilter(self, obj, ev) -> bool:  # noqa: N802 (Qt override)
+        from PySide6.QtCore import QEvent
+
+        if obj is self.view and ev.type() in (QEvent.Resize, QEvent.Show):
+            self._frozen_geometry()
+        return super().eventFilter(obj, ev)
+
+    def copy_csv(self) -> None:
         hdr = self.view.horizontalHeader()
         cols = [self.model.frame.columns[hdr.logicalIndex(v)] for v in range(hdr.count())
                 if not hdr.isSectionHidden(hdr.logicalIndex(v))]
@@ -221,6 +354,7 @@ class ResultTable(QWidget):
             for c in range(self.model.columnCount()):
                 self.view.setColumnWidth(c, min(self.view.columnWidth(c), 320))
             self._sized = True
+        self._update_frozen()
         if keep is not None:
             self.select_id(keep)
 
@@ -312,6 +446,7 @@ class DiscoveryPage(QWidget):
         self.family.currentIndexChanged.connect(self._family_changed)
         form.addRow("Outcome model family", self.family)
         self.family_hint = QLabel()
+        self.family_hint.setTextFormat(Qt.RichText)    # escaped text: Qt's auto format showed &#x27; literally (UI-30)
         self.family_hint.setWordWrap(True)
         self.family_hint.setObjectName("hint")
         self.use_suggestion = QPushButton("Use suggested family")
@@ -336,7 +471,7 @@ class DiscoveryPage(QWidget):
         self._build_study_box(cl)
         cand_box = QGroupBox("Candidate predictors (up to 39)")
         cb = QVBoxLayout(cand_box)
-        self.cand_sel = VariableSelector()
+        self.cand_sel = VariableSelector(selected_first=True)
         self.cand_sel.setMinimumHeight(220)
         self.cands = self.cand_sel.list
         self.cand_sel.changed.connect(self._selection_changed)
@@ -475,10 +610,7 @@ class DiscoveryPage(QWidget):
         self.progress_label = QLabel()
         cl.addWidget(self.progress)
         cl.addWidget(self.progress_label)
-        scroll = QScrollArea()
-        scroll.setWidget(cfg)
-        scroll.setWidgetResizable(True)
-        scroll.setMinimumWidth(430)
+        scroll = section_scroll(cfg, 430)
 
         # ---------- results ----------
         right = QWidget()
@@ -627,7 +759,7 @@ class DiscoveryPage(QWidget):
         self.main_split = split
         self._restore_layout()
         split.splitterMoved.connect(lambda *_: self._save_layout())
-        self.results_split.splitterMoved.connect(lambda *_: self._save_layout())
+        self.results_split.splitterMoved.connect(lambda *_: (setattr(self, "_user_split", True), self._save_layout()))
         lay = QVBoxLayout(self)
         t = QLabel("Automated Model Discovery")
         t.setObjectName("pageTitle")
@@ -1251,7 +1383,9 @@ class DiscoveryPage(QWidget):
             corr = "Benjamini-Hochberg (FDR)" if s.correction == "BH" else "Holm"
             parts.append(
                 f"<p><b>Models:</b> {sm['attempted']:,} of {sm['total']:,} candidate models attempted · "
-                f"{sm['ok'] + sm['warning']:,} fitted · {sm['invalid']:,} invalid · {sm['failed']:,} failed · "
+                f"{sm['ok'] + sm['warning']:,} fitted"
+                + (f" ({sm['reused']:,} reused from an identical earlier fit)" if sm.get('reused') else "")
+                + f" · {sm['invalid']:,} invalid · {sm['failed'] - sm.get('timed_out', 0):,} failed · "
                 f"{sm.get('timed_out', 0):,} timed out · "
                 f"{sm['warning']:,} flagged by screening"
                 + (f" · {sm['speculative']:,} evaluated after the stop point (excluded)" if sm['speculative'] else "")
@@ -1393,6 +1527,8 @@ class DiscoveryPage(QWidget):
         self.details.setHtml(self._details_html(idx))
         # UI-28: with only a few rows, give the otherwise empty space to the details
         sizes = self.results_split.sizes()
+        if getattr(self, "_user_split", False):
+            return          # the user dragged the divider: never override it
         if len(sizes) == 2 and sum(sizes) and table.model.rowCount() <= 5 and sizes[1] < 0.45 * sum(sizes):
             rows_h = 60 + table.model.rowCount() * table.view.verticalHeader().defaultSectionSize()
             top = max(rows_h + 80, int(sum(sizes) * 0.35))
@@ -1607,16 +1743,30 @@ class DiscoveryPage(QWidget):
 
         comparisons = (engine.structure_tests(run).get(int(row["idx"]), [])
                        if run.settings.participant and run.settings.workflow == "structure" else [])
+        adjusted = []
+        if not self.tests.empty and "idx" in self.tests:
+            cols = ["label", "test_label", "p", "p_adj", "adj_method", "family_size", "search_scope"]
+            mine = self.tests[self.tests["idx"] == row["idx"]]
+            adjusted = mine[[c for c in cols if c in mine]].to_dict("records")
+
+        from ...analysis.descriptor import TransferError, from_discovery, provenance
+
+        try:
+            prov = provenance(from_discovery(run, row))
+        except TransferError:
+            prov = None
 
         def build(session):
             v = search_view(ds, run.settings)
             session.ensure_data(v)
-            return candidate_script(session.load_script, v, run.settings, run.family, cand, comparisons)
+            return candidate_script(session.load_script, v, run.settings, run.family, cand, comparisons,
+                                    expected=row, adjusted=adjusted, provenance=prov)
 
         self.state.run_r(build, lambda script: CodeDialog(
             None, self, title=f"Candidate #{cand.index}", script=script, dataset=ds,
             header="The search evaluated this candidate with exactly this function and arguments "
                    "(inside sx_discover_batch, which also records warnings)"
                    + ("; the reported covariance-structure comparisons are recomputed at the end." if comparisons
-                      else ".")).exec(),
+                      else ".") + " The script stops with a message if n, the analysis rows, logLik/AIC/BIC or any "
+                   "test differ from the recorded values beyond the stated tolerances.").exec(),
             lambda m: QMessageBox.warning(self, "Code", m))

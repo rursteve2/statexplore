@@ -459,6 +459,15 @@ undoable setting.
   packages with compiled code need Rtools, which StatExplore does not include.
 - Multiple imputation of missing values isn't included. Missing data is handled by complete cases,
   or by all available occasions in mixed models.
+- Resuming a search does not retry candidates that timed out; start a new search with a longer limit.
+- Exports replace numeric participant IDs by codes 1, 2, …; text IDs are kept as they are.
+- No participant × wave coverage chart yet (per-wave availability tables are shown instead), and no
+  autosave of settings.
+
+**New in 1.3.1:** the proportional-odds check reports a p-value or a specific reason for every term; BIC is
+R's native `BIC()` everywhere; exported scripts check their own results, data file and packages; and
+Measurement Review, the variable lists, the scroll bars and the result tables were made easier to use (see
+`docs/RELEASE_NOTES_v1.3.1.md`).
 
 ---
 

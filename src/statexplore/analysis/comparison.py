@@ -70,6 +70,38 @@ def nested_pairs(models: list[ModelSpec]) -> list[tuple[int, int]]:
     return [(i, j) for i, a in enumerate(models) for j, b in enumerate(models) if i != j and a.nested_in(b)]
 
 
+ESTIMATION = {"gaussian": "OLS (lm)", "binomial": "ML (glm, logit)", "ordinal": "ML (ordinal::clm, cumulative logit)",
+              "multinomial": "ML (nnet::multinom, baseline-category logit)"}
+
+
+def spec_differences(ds: Dataset, models: list[ModelSpec], common_sample: bool) -> "Table":
+    """What differs between the models BEFORE any comparison statistic (v1.3.1 §6.2): fixed terms added / removed
+    relative to the first model, family and coding, estimator, sample, and whether a likelihood comparison is valid."""
+    from ..core.schema import Table
+
+    dn = lambda t: ":".join(ds.var(v).display_name for v in t)  # noqa: E731
+    base = models[0]
+    rows = []
+    for k, m in enumerate(models):
+        added = [dn(t) for t in m.terms if t not in base.terms]
+        removed = [dn(t) for t in base.terms if t not in m.terms]
+        if k == 0:
+            rel = "reference (first model)"
+        elif m.nested_in(base) or base.nested_in(m):
+            rel = "nested: likelihood-ratio / F test valid on the same rows"
+        else:
+            rel = "NOT nested: no likelihood-ratio test; compare by AIC / BIC on the same rows"
+        rows.append([m.label or f"Model {k + 1}", ", ".join(added) or "—", ", ".join(removed) or "—",
+                     m.family, ESTIMATION.get(m.family, m.family),
+                     "common complete-case rows" if common_sample else "own complete cases (n may differ)", rel])
+    return Table("Specification differences (read before the statistics)",
+                 ["model", "terms added vs model 1", "terms removed vs model 1", "family", "estimation", "sample",
+                  "comparison"], rows,
+                 notes="Every model uses the same outcome, coding, random part (none) and estimator; differences "
+                       "in the fixed part are listed. Models that differ in family, event / reference category or "
+                       "outcome order are refused before fitting.")
+
+
 def build(ds: Dataset, models: list[ModelSpec], common_sample: bool, plot_path: str | None = None) -> str:
     if len(models) < 2:
         raise ComparisonError("Select at least two models.")
@@ -234,6 +266,7 @@ def compare(session: RSession, ds: Dataset, models: list[ModelSpec],
     if raw is None:
         return result, {}
     names = _alias_map(ds)
+    result.tables.append(spec_differences(ds, models, common_sample))
     for t in _as_list(raw.get("tables")):
         result.tables.append(_parse_table(t, names))
     result.n_used = raw.get("n_used")

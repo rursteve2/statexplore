@@ -1,11 +1,15 @@
 ; Inno Setup script: compile after packaging\build.py has produced dist\StatExplore
+; build.py passes /DDistDir=<build dir>\dist (STATEXPLORE_BUILD_DIR); default: the repo's dist folder
+#ifndef DistDir
+  #define DistDir "..\dist"
+#endif
 [Setup]
 LicenseFile=..\LICENSE
 AppName=StatExplore
-AppVersion=1.3.0
+AppVersion=1.3.1
 AppPublisher=Stephen
 AppPublisherURL=https://github.com/rursteve2/statexplore
-OutputBaseFilename=StatExplore-1.3.0-Setup
+OutputBaseFilename=StatExplore-1.3.1-Setup
 DefaultDirName={autopf}\StatExplore
 DefaultGroupName=StatExplore
 OutputDir=..\dist\installer
@@ -15,7 +19,7 @@ ArchitecturesInstallIn64BitMode=x64compatible
 PrivilegesRequiredOverridesAllowed=dialog
 
 [Files]
-Source: "..\dist\StatExplore\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs
+Source: "{#DistDir}\StatExplore\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs
 
 [Icons]
 Name: "{group}\StatExplore"; Filename: "{app}\StatExplore.exe"

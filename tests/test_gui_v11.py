@@ -48,7 +48,11 @@ def test_measurement_review_accept_and_keep(hrs_window, monkeypatch):
     names = review._names
     assert "R_LTACTX" in names and "R_SHLT" in names and "RAGENDER" not in names
     row = names.index("R_LTACTX")
-    assert review.table.item(row, 2).text() == "nominal" and review.table.item(row, 4).text() == "ordinal"
+    from statexplore.gui.pages.measurement_review import COLUMNS
+
+    col = COLUMNS.index
+    assert review.table.item(row, col("Source (SPSS) level")).text() == "nominal"
+    assert review.table.item(row, col("Suggested level")).text() == "ordinal"
     review.select("R_LTACTX")
     assert "Every day" in review.detail.toPlainText() and "less frequent" in review.detail.toPlainText()
     monkeypatch.setattr(review, "_confirm", lambda text: False)        # declined -> nothing changes

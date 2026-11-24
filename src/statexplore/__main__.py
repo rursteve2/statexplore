@@ -87,7 +87,18 @@ def _full_selftest(say, rscript, tmp: Path) -> bool:
     ok = True
     with RWorker(rscript) as w:
         sess = RSession(w, tmp / "full")
+
+        def po_check():
+            # v1.3.1 STAT-15: the proportional-odds table holds real tests (v1.3.0 showed only dashes)
+            res, art = run_analysis(sess, ds, BY_KEY["ordinal_reg"], {"dependent": ["lik"], "predictors": ["x", "g"]}, {})
+            po = next(t for t in res.tables if t.name.startswith("Proportional-odds"))
+            st, p = po.columns.index("status"), po.columns.index("p")
+            if not any(r[st] == "tested" and r[p] is not None for r in po.rows):
+                raise AssertionError(f"no proportional-odds test was estimable: {po.rows}")
+            return res, art
+
         checks = [
+            ("proportional-odds check", po_check),
             ("linear regression", lambda: run_analysis(sess, ds, BY_KEY["lm"], {"dependent": ["y"], "predictors": ["x", "g"]},
                                                        {"interactions": "two_way"})),
             ("logistic regression", lambda: run_analysis(sess, ds, BY_KEY["logistic"], {"dependent": ["yb"], "predictors": ["x"]}, {})),

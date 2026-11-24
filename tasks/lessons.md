@@ -68,3 +68,24 @@
 
 ## Drive C: vs E: (correction, 2026-11-23)
 - The repo is ON C:. A build or tool that writes inside the repo (PyInstaller dist/build, release zips) writes to C: even when TEMP points at E:. Before any build, set `STATEXPLORE_BUILD_DIR=E:\statexplore_build`; before any test run, `--basetemp` and TEMP/TMP on E:. Check every output path, not just temp.
+
+## R functions that swallow their own errors (v1.3.1, STAT-15)
+- `ordinal::nominal_test()` wraps each refit in `try(update(...), silent = TRUE)`: inside a function scope every refit fails and the table is silently NA. Same class as `geepack::QIC`. Never call R helpers that refit via `update()` on a model fitted to local data; refit explicitly and report the reason per row.
+
+## Native statistics
+- Take AIC/BIC from the fitted object. Re-deriving them in Python with one "convention" (log n) silently disagreed with R's REML log(n − p) by 0.004. When a convention must differ (mmrm), label it on every row.
+
+## Index columns built before row filtering
+- Any derived index (occasion rank, factor levels) must be rebuilt after the rows of THIS model are chosen; otherwise per-model samples and Full Analysis disagree.
+
+## Screenshots
+- Offscreen Qt has no fonts on Windows: set `QT_QPA_FONTDIR=C:\Windows\Fonts`, or every glyph is a box.
+
+## QSettings in tests
+- `QSettings("Org", "App")` ignores `setDefaultFormat(IniFormat)` and uses the Windows registry: tests read the user's real saved layouts. Re-apply invariants (e.g. minimum section size) after `restoreState`, and don't trust test isolation for settings.
+
+## Inserting into generated code
+- Insert lines before wrapping/formatting, never after: the wrapper had split the anchor statement across two lines and the inserted check broke the script.
+
+## cmd.exe quoting (third time)
+- Paths with spaces as program + args: write a .bat and run `cmd.exe /c 'E:\path\x.bat'`. Never `cmd.exe /c '"C:\...\python.exe" ...'`.

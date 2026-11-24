@@ -197,15 +197,22 @@ def needs_review(v: VariableMeta) -> bool:
     return not {v.suggested_measure, v.measure.value} <= {Measure.NOMINAL.value, Measure.BINARY.value}
 
 
-def review_rows(ds: Dataset, only_mismatches: bool = True) -> list[dict[str, Any]]:
+def review_rows(ds: Dataset, only_mismatches: bool = True, include_all: bool = False) -> list[dict[str, Any]]:
+    """Rows of the Measurement Review table: variables needing review (default), every variable with a suggestion
+    (`only_mismatches=False`) or every variable (`include_all`, UI-29). `override` says whether a project level
+    different from the source file's is saved."""
     rows = []
     for v in ds.variables.values():
-        if not (v.suggested_measure or needs_review(v)) or (only_mismatches and not needs_review(v) and v.measure_status == STATUS_SOURCE):
+        if not include_all and (not (v.suggested_measure or needs_review(v))
+                                or (only_mismatches and not needs_review(v) and v.measure_status == STATUS_SOURCE)):
             continue
         rows.append({"name": v.name, "label": v.label, "source": v.source_measure or "—",
                      "project": v.measure.value, "suggested": v.suggested_measure,
                      "reason": " ".join(v.suggestion_reasons), "status": v.measure_status,
-                     "needs_review": needs_review(v), "direction": v.coding_direction})
+                     "needs_review": needs_review(v), "direction": v.coding_direction,
+                     "override": (f"saved: {_source_level(v) or '—'} → {v.measure.value}"
+                                  if v.measure.value != _source_level(v) and v.measure_status != STATUS_SOURCE else
+                                  "reviewed, kept" if v.measure_status == STATUS_KEPT else "")})
     return rows
 
 

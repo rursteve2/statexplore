@@ -70,7 +70,8 @@ def release_artifacts() -> None:  # also: python packaging/build.py --release-on
     if iscc is None:
         print("Inno Setup not found: installer not built (portable zip only).")
         return
-    subprocess.run([str(iscc), f"/O{out}", str(ROOT / "packaging" / "statexplore.iss")], check=True)
+    subprocess.run([str(iscc), f"/O{out}", f"/DDistDir={OUT / 'dist'}", str(ROOT / "packaging" / "statexplore.iss")],
+                   check=True)
     print("Release files:", *sorted(p.name for p in out.iterdir()))
 
 

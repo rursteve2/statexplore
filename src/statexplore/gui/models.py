@@ -14,6 +14,13 @@ from ..core.dataset import Dataset
 from ..core.schema import Table
 
 
+def fmt_p(v: float) -> str:
+    """p-value display (v1.3.1 §6.6): never a literal 0 from underflow or rounding; exports keep the full value."""
+    if v <= 0:
+        return "< 1e-300"
+    return f"{v:.2e}" if v < 1e-4 else f"{v:.4f}"
+
+
 def fmt(value: Any, digits: int = 3) -> str:
     if value is None:
         return ""
@@ -229,8 +236,8 @@ class FrameModel(QAbstractTableModel):
             if self.warning is not None and r < len(self.warning) and self.warning[r]:
                 return WARNING_BG
             return None
-        if role == Qt.ToolTipRole and self.row_tips is not None and r < len(self.row_tips):
-            return self.row_tips[r] or None
+        if role == Qt.ToolTipRole and self.row_tips is not None and r < len(self.row_tips) and self.row_tips[r]:
+            return self.row_tips[r]
         if self.status_text is not None and self.frame.columns[index.column()] == self.status_col:
             if role in (Qt.DisplayRole, Qt.UserRole):
                 return self.status_text[r] if r < len(self.status_text) else ""
@@ -238,9 +245,11 @@ class FrameModel(QAbstractTableModel):
         value = plain(self.frame.iat[r, index.column()])
         if role == Qt.DisplayRole:
             if self.frame.columns[index.column()] in self.p_columns and isinstance(value, (int, float)) \
-                    and not isinstance(value, bool):
-                return f"{value:.2e}" if value < 1e-4 else f"{value:.4f}"
+                    and not isinstance(value, bool) and value == value:
+                return fmt_p(value)
             return fmt(value, self.digits)
+        if role == Qt.ToolTipRole:   # full text of long cells (formulas, labels) that the column may truncate
+            return value if isinstance(value, str) and len(value) > 24 else None
         if role == Qt.UserRole:  # raw (unrounded) value for sorting
             return value
         if role == Qt.TextAlignmentRole and isinstance(value, (int, float)) and not isinstance(value, bool):

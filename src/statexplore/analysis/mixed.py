@@ -339,7 +339,7 @@ def _prep(ds: Dataset, s: MixedSpec) -> list[str]:
         else:
             L.append("sx_d$sx_time <- sx_d$sx_tnum")
         L += [
-            "sx_d$sx_tidx <- as.integer(factor(sx_d$sx_tnum))  # occasion order (AR(1) assumes equal spacing)",
+            "sx_d$sx_tidx <- as.integer(factor(sx_d$sx_tnum))  # global observed-occasion index (AR(1)): ranks of the time values present",
             "sx_d <- sx_d[order(sx_d$sx_id, sx_d$sx_tnum), ]",
         ]
         if s.residual != "independent" or (s.estimator == "gee" and s.gee_corstr in ("ar1", "unstructured")):
@@ -448,26 +448,46 @@ def _build_gaussian(ds: Dataset, s: MixedSpec, plot_paths: list[str], L: list[st
         "  error = function(e) NULL) else NULL",
         "sx_fit_tab <- data.frame(observations = nrow(sx_d), participants = nlevels(sx_d$sx_id),",
         "  obs_per_participant_min = min(sx_counts[sx_counts > 0]), obs_per_participant_max = max(sx_counts),",
-        f"  method = {r_str(s.method)}, logLik = as.numeric(stats::logLik(sx_fit)), AIC = stats::AIC(sx_fit), BIC = stats::BIC(sx_fit),",
+        f"  method = {r_str(s.method)}, logLik = as.numeric(stats::logLik(sx_fit)), parameters = sx_ic(sx_fit)$k,",
+        "  AIC = sx_ic(sx_fit)$aic, BIC = sx_ic(sx_fit)$bic, BIC_n = sx_ic(sx_fit)$n_bic,",
         "  R2_marginal = if (is.null(sx_r2)) NA_real_ else as.numeric(sx_r2$R2_marginal),",
         "  R2_conditional = if (is.null(sx_r2)) NA_real_ else as.numeric(sx_r2$R2_conditional),",
         "  singular = sx_singular)",
         "sx_tabs[[length(sx_tabs) + 1]] <- sx_table(\"Model fit\", sx_fit_tab, notes = paste0(\"Marginal R2: variance explained \",",
         "  \"by fixed effects; conditional R2: by fixed + random effects (Nakagawa). AIC/BIC from \", "
-        + r_str(s.method) + ", \" fits; compare fixed effects only with ML fits.\"))",
+        + r_str(s.method) + ", \" fits; compare fixed effects only with ML fits. parameters = every likelihood \",",
+        "  \"parameter (fixed + covariance); BIC = -2 logLik + log(BIC_n) x parameters, BIC_n = observations (n - p for \",",
+        "  \"REML nlme, as R's BIC()). AIC/BIC basis: \", sx_ic(sx_fit)$basis, \".\"))",
         "sx_checks <- character()",
         "if (isTRUE(sx_singular)) sx_checks <- c(sx_checks, paste0(\"Singular fit: a random-effect variance is (near) \",",
         "  \"zero or a correlation is +/-1. Simplify the random-effects structure.\"))",
         "if (length(sx_conv)) sx_checks <- c(sx_checks, paste(\"Convergence:\", sx_conv))",
         "# residual autocorrelation within participants (lags 1-3)",
         "sx_rd <- data.frame(id = sx_d$sx_id, r = as.numeric(sx_resid))",
-        "sx_lagcor <- vapply(1:3, function(k) { x <- unlist(lapply(split(sx_rd$r, sx_rd$id), function(v) if (length(v) > k) head(v, -k) else NULL))",
-        "  y <- unlist(lapply(split(sx_rd$r, sx_rd$id), function(v) if (length(v) > k) tail(v, -k) else NULL))",
-        "  if (length(x) > 3) stats::cor(x, y) else NA_real_ }, 0)",
-        "sx_tabs[[length(sx_tabs) + 1]] <- sx_table(\"Residual autocorrelation by lag\", data.frame(lag = 1:3, correlation = sx_lagcor),",
-        "  notes = paste0(\"Lag = observed-occasion steps within a participant (k-th next observed row), not actual \",",
-        "  \"time units: across a gap or an occasion absent for everyone, lag 1 spans more than one time unit. \",",
-        "  \"Normalized residuals for nlme/mmrm. Large values suggest residual autocorrelation.\"))",
+        "sx_oidx <- if (is.null(sx_d$sx_tidx)) NULL else sx_d$sx_tidx",
+        "sx_lag_pairs <- function(k, idx) {",
+        "  xs <- numeric(); ys <- numeric()",
+        "  for (g in split(seq_len(nrow(sx_rd)), sx_rd$id)) {",
+        "    if (is.null(idx)) { if (length(g) > k) { xs <- c(xs, sx_rd$r[utils::head(g, -k)]); ys <- c(ys, sx_rd$r[utils::tail(g, -k)]) } }",
+        "    else { o <- idx[g]; m <- match(o + k, o); ok <- !is.na(m); xs <- c(xs, sx_rd$r[g[ok]]); ys <- c(ys, sx_rd$r[g[m[ok]]]) }",
+        "  }",
+        "  c(r = if (length(xs) > 3) stats::cor(xs, ys) else NA_real_, pairs = length(xs))",
+        "}",
+        "sx_lr <- sapply(1:3, sx_lag_pairs, idx = NULL)",
+        "sx_lagcor <- sx_lr[\"r\", ]",
+        "sx_lagtab <- data.frame(lag = 1:3, successive_rows_r = sx_lagcor, successive_rows_pairs = sx_lr[\"pairs\", ])",
+        "if (!is.null(sx_oidx)) { sx_li <- sapply(1:3, sx_lag_pairs, idx = sx_oidx)",
+        "  sx_lagtab$occasion_index_gap_r <- sx_li[\"r\", ]; sx_lagtab$occasion_index_gap_pairs <- sx_li[\"pairs\", ] }",
+        "sx_tabs[[length(sx_tabs) + 1]] <- sx_table(\"Residual autocorrelation by lag\", sx_lagtab,",
+        "  notes = paste0(\"Two lag definitions. successive_rows: the k-th next observed row of the same participant, \",",
+        "  \"whatever the time between them. occasion_index_gap: pairs exactly k steps apart on the global observed-occasion \",",
+        "  \"index (rank of the time values in the analysed rows; the index discrete AR(1) uses). Neither is in actual time \",",
+        "  \"units. Residuals: \", if (inherits(sx_fit, c(\"lme\", \"mmrm\"))) \"normalized (the fitted correlation \" else \"\",",
+        "  if (inherits(sx_fit, c(\"lme\", \"mmrm\"))) \"structure is already removed), \" else \"\",",
+        "  \"within-participant. These empirical correlations are not the model's phi: they are computed after the fitted \",",
+        "  \"random effects and correlation are taken out, and centring each person's residuals pulls them towards \",",
+        "  \"-1/(m - 1) for m occasions, so values near zero or negative can coexist with a positive phi. A negative value \",",
+        "  \"is not by itself a model failure; a large positive value suggests remaining autocorrelation.\"))",
     ]
     if s.time:
         L.append("sx_tabs[[length(sx_tabs) + 1]] <- sx_table(\"Outcome availability by time point\", sx_av, notes = "
@@ -1049,8 +1069,8 @@ def compare_specs(session: RSession, ds: Dataset, base: MixedSpec, which: str) -
         L.append("sx_cmp[[" + str(k) + "]] <- tryCatch({")
         L.append(build(ds, v, []).replace("sx_result <- list(", "sx_unused <- list("))
         L.append(f"  list(label = {r_str(label)}, engine = {r_str(v.engine)}, method = {r_str(v.method)},")
-        L.append("    logLik = as.numeric(stats::logLik(sx_fit)), df = attr(stats::logLik(sx_fit), \"df\"),")
-        L.append("    AIC = stats::AIC(sx_fit), BIC = stats::BIC(sx_fit), n = nrow(sx_d), singular = isTRUE(sx_singular))")
+        L.append("    logLik = as.numeric(stats::logLik(sx_fit)), df = sx_ic(sx_fit)$k,")
+        L.append("    AIC = sx_ic(sx_fit)$aic, BIC = sx_ic(sx_fit)$bic, n = nrow(sx_d), singular = isTRUE(sx_singular))")
         L.append(f"}}, error = function(e) list(label = {r_str(label)}, error = conditionMessage(e)))")
     pairs = [(a, b, bd) for a, b, bd in NESTED[which] if a < len(variants) and b < len(variants)]
     L += [

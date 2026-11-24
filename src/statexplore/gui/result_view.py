@@ -14,6 +14,7 @@ from PySide6.QtGui import QImage, QTextDocument
 from PySide6.QtWidgets import QTextBrowser
 
 from ..core.schema import AnalysisResult, Status, Table
+from .models import fmt_p
 
 _STATUS_COLOR = {Status.OK: "#2e7d32", Status.WARNING: "#8d6e00", Status.FAILED: "#c62828",
                  Status.INVALID: "#c62828", Status.CANCELLED: "#616161"}
@@ -36,7 +37,7 @@ def fmt_cell(value: Any, p_col: bool = False) -> str:
         if math.isinf(v):
             return "∞" if v > 0 else "−∞"
         if p_col:
-            return f"{v:.2e}" if v < 1e-4 else f"{v:.4f}"
+            return fmt_p(v)
         if v.is_integer() and abs(v) < 1e12:
             return f"{int(v):,}" if abs(v) >= 10_000 else str(int(v))
         if abs(v) >= 1e6 or abs(v) < 1e-3:
@@ -103,6 +104,13 @@ def build_html(doc: QTextDocument, result: AnalysisResult, artifacts: dict[str, 
     if result.values.get("identity_check"):
         parts.append(f"<p class='note'>Origin model: {html.escape(str(result.values.get('origin_model', '')))} — "
                      f"identity check: <b>{html.escape(str(result.values['identity_check']))}</b></p>")
+        prov = result.values.get("provenance") or {}
+        if prov:
+            rows = "".join(f"<tr><td><b>{html.escape(str(k))}</b></td><td>{html.escape(str(v))}</td></tr>"
+                           for k, v in prov.items())
+            parts.append("<table class='prov' cellspacing='0' cellpadding='3' border='1'>"
+                         f"<tr><th colspan='2'>Model provenance (fixed at the origin; this refit was checked "
+                         f"against it)</th></tr>{rows}</table>")
     treatments = result.inputs.get("treatments") or []
     if treatments:
         items = "".join(f"<li>{html.escape(t.get('description', ''))}</li>" for t in treatments)

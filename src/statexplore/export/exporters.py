@@ -138,13 +138,15 @@ if (!file.exists(sx_data_file)) {{  # source("analysis.R") from another folder: 
 if (!file.exists(sx_data_file)) stop("Data file not found: put ", sx_data_file, " next to this script or set sx_data_file.")"""
 
 
-def portable_text(script: str, data_name: str = "data.csv") -> tuple[str, set[str] | None]:
+def portable_text(script: str, data_name: str = "data.csv", data_check: str = "") -> tuple[str, set[str] | None]:
     """A shareable copy of a recorded script: relative data reference (no temporary or personal paths), only
-    the analysis columns, manageable line lengths. Returns (script, columns the data file must contain)."""
+    the analysis columns, manageable line lengths. `data_check` is R code run right after the data file is located.
+    Returns (script, columns the data file must contain)."""
     used = used_aliases(script)
     if used is not None:
         script = prune_script(script, used)
-    script = _DATA_FILE.sub(lambda _m: DATA_LOCATOR.format(name=data_name), script)
+    script = _DATA_FILE.sub(lambda _m: DATA_LOCATOR.format(name=data_name) + ("\n" + data_check if data_check else ""),
+                            script)
     script = _PLOT_PATH.sub(lambda m: f'"plots/{m.group(1)}"', script)
     return wrap_script(script), used
 
@@ -155,6 +157,9 @@ def portable_script(result: AnalysisResult, data_name: str = "data.csv") -> str:
     header = (f"# StatExplore analysis: {result.title}\n# Result id: {result.id}  ·  run {result.created_at}\n"
               f"# Engine: {result.engine.version}\n"
               + "".join(f"#   {k} {v}\n" for k, v in result.engine.packages.items())
+              + ("# Model provenance:\n" + "".join(f"#   {k}: {v}\n" for k, v in
+                                                     (result.values.get("provenance") or {}).items())
+                 if result.values.get("provenance") else "")
               + "# Run from this folder:  Rscript " + f"{slug(result.title)}_{result.id}.R"
               + "   (or source() it from anywhere)\n"
               "dir.create(\"plots\", showWarnings = FALSE)\n")
@@ -164,14 +169,94 @@ def portable_script(result: AnalysisResult, data_name: str = "data.csv") -> str:
     return header + script + footer
 
 
-def write_portable(script: str, folder: Path, ds: Dataset, name: str = "analysis") -> list[Path]:
-    """Save a script and the data file it reads (analysis columns only) as a self-contained pair."""
+_BASE_R = {"base", "stats", "utils", "tools", "graphics", "grDevices", "methods", "grid", "parallel", "splines"}
+_PKG = re.compile(r"\b([A-Za-z][A-Za-z0-9.]*[A-Za-z0-9])::")
+_ID_COLUMN = re.compile(r"\bsx_(?:gid|id) <- factor\(sx_dd?\$(v\d{3,})\)")
+
+
+def required_packages(script: str) -> list[str]:
+    """Non-base packages a script calls with pkg:: (comment lines ignored)."""
+    code = "\n".join(line for line in script.split("\n") if not line.lstrip().startswith("#"))
+    return sorted({m for m in _PKG.findall(code)} - _BASE_R)
+
+
+def package_check(packages: list[str]) -> str:
+    if not packages:
+        return ""
+    return ("# ---- required R packages (checked before anything runs) ----\n"
+            f"sx_needed <- c({', '.join(json.dumps(p) for p in packages)})\n"
+            "sx_missing <- sx_needed[!vapply(sx_needed, requireNamespace, logical(1), quietly = TRUE)]\n"
+            "if (length(sx_missing)) stop(\"Missing R packages: \", paste(sx_missing, collapse = \", \"), \". Install them \",\n"
+            "  \"(offline: install.packages('<file>.zip', repos = NULL)) and run this script again.\", call. = FALSE)\n")
+
+
+def _md5(path: Path) -> str:
+    import hashlib
+
+    h = hashlib.md5()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def _pseudonymize(path: Path, columns: list[str]) -> list[str]:
+    """Replace numeric participant IDs by their rank (1, 2, ...). Ranks keep R's factor order, so grouping, row order
+    and every fitted number are unchanged. Text IDs are kept (R's locale-dependent sort could not be matched)."""
+    if not columns:
+        return []
+    frame = pd.read_csv(path, dtype=str, keep_default_na=False)
+    done = []
+    for c in columns:
+        if c not in frame:
+            continue
+        num = pd.to_numeric(frame[c].replace("", None), errors="coerce")
+        if num.notna().sum() != (frame[c] != "").sum():
+            continue
+        codes = num.rank(method="dense")
+        frame[c] = codes.map(lambda x: "" if pd.isna(x) else str(int(x)))
+        done.append(c)
+    if done:
+        frame.to_csv(path, index=False, encoding="utf-8", lineterminator="\n")
+    return done
+
+
+def write_portable(script: str, folder: Path, ds: Dataset, name: str = "analysis",
+                   pseudonymize_ids: bool = True) -> list[Path]:
+    """Save a script, the data file it reads (analysis columns only) and a manifest as a self-contained set.
+    The script checks its packages first and refuses a data file whose MD5 differs from the exported one
+    (P1-EXPORT). Numeric participant IDs are replaced by order-preserving codes unless `pseudonymize_ids` is off."""
+    import datetime as _dt
+
+    from .. import __version__
+
     folder.mkdir(parents=True, exist_ok=True)
     data_name = f"{name}_data.csv"
-    text, used = portable_text(script, data_name)
-    export_data_csv(ds, folder / data_name, used)
+    used = used_aliases(script)
+    data_path = folder / data_name
+    export_data_csv(ds, data_path, used)
+    ids = _pseudonymize(data_path, sorted(set(_ID_COLUMN.findall(script)))) if pseudonymize_ids else []
+    md5 = _md5(data_path)
+    check = (f'sx_data_md5 <- "{md5}"  # MD5 of {data_name} as exported (see {name}_manifest.json)\n'
+             "if (!isTRUE(get0(\"sx_skip_checksum\")) && !identical(unname(tools::md5sum(sx_data_file)), sx_data_md5))\n"
+             "  stop(\"The data file \", sx_data_file, \" is not the file exported with this script (MD5 differs). \",\n"
+             "       \"Use the exported file, or set sx_skip_checksum <- TRUE before source() to run anyway.\", call. = FALSE)")
+    text, used = portable_text(script, data_name, check)
+    packages = required_packages(text)
+    text = package_check(packages) + text
+    if ids:
+        text = ("# Participant IDs in the data file are order-preserving codes (1, 2, ...), not the original IDs; "
+                "grouping, row order and results are unchanged.\n" + text)
     (folder / f"{name}.R").write_text(text, encoding="utf-8")
-    return [folder / f"{name}.R", folder / data_name]
+    rows = sum(1 for _ in open(data_path, encoding="utf-8")) - 1
+    manifest = {"created": _dt.datetime.now().isoformat(timespec="seconds"), "statexplore": __version__,
+                "script": f"{name}.R", "data": {"file": data_name, "md5": md5, "rows": rows,
+                                                "columns": sorted(used) if used is not None else None,
+                                                "pseudonymized_id_columns": ids},
+                "r_packages": packages,
+                "notes": "Paths are relative to this folder. Run: source(\"" + name + ".R\") or Rscript " + name + ".R"}
+    (folder / f"{name}_manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+    return [folder / f"{name}.R", data_path, folder / f"{name}_manifest.json"]
 
 
 def python_launcher(result: AnalysisResult, r_name: str) -> str:

@@ -6,13 +6,16 @@ changes the selection. `selected()` returns variables in the order they were che
 uses this for x-then-y plots).
 
 `self.list` is the underlying QListWidget; item check states are the source of truth, so
-code that walks the items keeps working.
+code that walks the items keeps working. With `selected_first` (UI-31) checked variables are
+regrouped under a "Selected" header above the others; header rows carry no variable name
+(`data(Qt.UserRole)` is None) and are skipped by every method here. Regrouping only changes the
+display: `selected()` keeps the check order.
 """
 from __future__ import annotations
 
 from typing import Callable
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import (
     QComboBox, QHBoxLayout, QLabel, QLineEdit, QListWidget, QListWidgetItem, QPushButton, QVBoxLayout, QWidget,
 )
@@ -21,6 +24,7 @@ from ...core.dataset import Dataset
 
 ALL_LEVELS = "All measurement levels"
 PIN = "★ "
+HEADER = Qt.UserRole + 2      # section header rows (selected_first mode)
 
 
 def _pinned() -> set[str]:
@@ -41,9 +45,15 @@ class VariableSelector(QWidget):
     changed = Signal()
 
     def __init__(self, parent: QWidget | None = None, *, single: bool = False, max_height: int | None = None,
-                 placeholder: str = "Search name, label or original name…", show_level_filter: bool = True):
+                 placeholder: str = "Search name, label or original name…", show_level_filter: bool = True,
+                 selected_first: bool = False):
         super().__init__(parent)
         self.single = single
+        self.selected_first = selected_first
+        self._regroup_timer = QTimer(self)
+        self._regroup_timer.setSingleShot(True)
+        self._regroup_timer.setInterval(0)
+        self._regroup_timer.timeout.connect(self._regroup)
         self._order: list[str] = []
         self._decorate: Callable[[str], str] | None = None
         lay = QVBoxLayout(self)
@@ -85,9 +95,10 @@ class VariableSelector(QWidget):
             self.buttons[key] = b
             bar.addWidget(b)
         bar.addStretch()
-        self.count = QLabel()
-        bar.addWidget(self.count)
         lay.addLayout(bar)
+        self.count = QLabel()          # own line (UI-33): beside the buttons it forced a ~390 px minimum width
+        self.count.setWordWrap(True)
+        lay.addWidget(self.count)
         self._levels: dict[str, str] = {}
         self._update_count()
 
@@ -123,6 +134,9 @@ class VariableSelector(QWidget):
             self.list.addItem(it)
         self.list.blockSignals(False)
         self._order = previous + ([n for n in names if default_checked and not keep and n not in previous])
+        self._base_order = names
+        if self.selected_first:
+            self._regroup()
         self._apply_filter()
         self.changed.emit()
 
@@ -130,7 +144,7 @@ class VariableSelector(QWidget):
         from PySide6.QtWidgets import QMenu
 
         it = self.list.itemAt(pos)
-        if it is None:
+        if it is None or it.data(HEADER):
             return
         name = it.data(Qt.UserRole)
         pins = _pinned()
@@ -143,13 +157,16 @@ class VariableSelector(QWidget):
             self.set_variables(self._ds, self._names, keep=False, decorate=self._decorate)
             self.set_selected(checked)
 
+    def items(self) -> list[QListWidgetItem]:
+        """Variable rows (section headers excluded)."""
+        return [it for it in (self.list.item(i) for i in range(self.list.count())) if not it.data(HEADER)]
+
     def names(self) -> list[str]:
-        return [self.list.item(i).data(Qt.UserRole) for i in range(self.list.count())]
+        return [it.data(Qt.UserRole) for it in self.items()]
 
     # ---- selection ----------------------------------------------------------------
     def selected(self) -> list[str]:
-        checked = {self.list.item(i).data(Qt.UserRole) for i in range(self.list.count())
-                   if self.list.item(i).checkState() == Qt.Checked}
+        checked = {it.data(Qt.UserRole) for it in self.items() if it.checkState() == Qt.Checked}
         return [n for n in self._order if n in checked] + [n for n in self.names() if n in checked and n not in self._order]
 
     def set_selected(self, names: list[str]) -> None:
@@ -157,11 +174,11 @@ class VariableSelector(QWidget):
         if self.single:
             wanted = wanted[:1]
         self.list.blockSignals(True)
-        for i in range(self.list.count()):
-            it = self.list.item(i)
+        for it in self.items():
             it.setCheckState(Qt.Checked if it.data(Qt.UserRole) in wanted else Qt.Unchecked)
         self.list.blockSignals(False)
         self._order = [n for n in wanted if n in self.names()]
+        self._schedule_regroup()
         self._update_count()
         self.changed.emit()
 
@@ -171,11 +188,12 @@ class VariableSelector(QWidget):
             it.setCheckState(state)
         self.list.blockSignals(False)
         self._sync_order()
+        self._schedule_regroup()
         self._update_count()
         self.changed.emit()
 
     def visible_items(self) -> list[QListWidgetItem]:
-        return [self.list.item(i) for i in range(self.list.count()) if not self.list.item(i).isHidden()]
+        return [it for it in self.items() if not it.isHidden()]
 
     def check_visible(self) -> None:
         self._set_items(self.visible_items(), Qt.Checked)
@@ -184,12 +202,14 @@ class VariableSelector(QWidget):
         self._set_items(self.visible_items(), Qt.Unchecked)
 
     def check_all(self) -> None:
-        self._set_items([self.list.item(i) for i in range(self.list.count())], Qt.Checked)
+        self._set_items(self.items(), Qt.Checked)
 
     def clear_all(self) -> None:
-        self._set_items([self.list.item(i) for i in range(self.list.count())], Qt.Unchecked)
+        self._set_items(self.items(), Qt.Unchecked)
 
     def _item_changed(self, it: QListWidgetItem) -> None:
+        if it.data(HEADER):
+            return
         name = it.data(Qt.UserRole)
         if it.checkState() == Qt.Checked:
             if self.single:
@@ -204,23 +224,71 @@ class VariableSelector(QWidget):
                 self._order.append(name)
         elif name in self._order:
             self._order.remove(name)
+        self._schedule_regroup()
         self._update_count()
         self.changed.emit()
 
     def _sync_order(self) -> None:
-        checked = [self.list.item(i).data(Qt.UserRole) for i in range(self.list.count())
-                   if self.list.item(i).checkState() == Qt.Checked]
+        checked = [it.data(Qt.UserRole) for it in self.items() if it.checkState() == Qt.Checked]
         self._order = [n for n in self._order if n in checked] + [n for n in checked if n not in self._order]
 
     # ---- filtering --------------------------------------------------------------------
     def set_filter(self, text: str) -> None:
         self.search.setText(text)
 
+    # ---- selected-first grouping (UI-31) ---------------------------------------------------
+    def _schedule_regroup(self) -> None:
+        # deferred: never reorder the list inside its own itemChanged signal or under a loop over its items
+        if self.selected_first:
+            self._regroup_timer.start()
+
+    def _regroup(self) -> None:
+        """Checked variables first (in check order) under a 'Selected (k)' header, then the rest in their usual
+        order under 'Not selected (m)'. The scroll position and current row are kept."""
+        if not self.selected_first:
+            return
+        bar = self.list.verticalScrollBar()
+        pos = bar.value() if bar else 0
+        cur = self.list.currentItem()
+        cur_name = cur.data(Qt.UserRole) if cur is not None else None
+        self.list.blockSignals(True)
+        rows = {}
+        while self.list.count():
+            it = self.list.takeItem(0)
+            if not it.data(HEADER):
+                rows[it.data(Qt.UserRole)] = it
+        checked = [n for n in self.selected_order(rows) if n in rows]
+        rest = [n for n in getattr(self, "_base_order", list(rows)) if n in rows and n not in checked]
+        rest += [n for n in rows if n not in checked and n not in rest]
+        for title, group in ((f"Selected ({len(checked)})", checked), (f"Not selected ({len(rest)})", rest)):
+            h = QListWidgetItem(title)
+            h.setData(HEADER, True)
+            h.setFlags(Qt.NoItemFlags)
+            f = h.font()
+            f.setBold(True)
+            h.setFont(f)
+            h.setToolTip("Display grouping only: it does not change the predictor set, the formula or the search order.")
+            self.list.addItem(h)
+            for n in group:
+                self.list.addItem(rows[n])
+        self.list.blockSignals(False)
+        if cur_name is not None and cur_name in rows:
+            self.list.setCurrentItem(rows[cur_name])
+        self._apply_filter()
+        if bar:
+            bar.setValue(pos)
+
+    def selected_order(self, rows: dict) -> list[str]:
+        checked = {n for n, it in rows.items() if it.checkState() == Qt.Checked}
+        return [n for n in self._order if n in checked] + [n for n in rows if n in checked and n not in self._order]
+
     def _apply_filter(self, *_args) -> None:
         text = self.search.text().strip().lower()
         level = self.level.currentData()
         for i in range(self.list.count()):
             it = self.list.item(i)
+            if it.data(HEADER):
+                continue
             hay = it.data(Qt.UserRole + 1) or it.text().lower()
             hide = (bool(text) and text not in hay and text not in it.text().lower()) or \
                    (level is not None and self._levels.get(it.data(Qt.UserRole)) != level)
@@ -229,9 +297,8 @@ class VariableSelector(QWidget):
 
     def _update_count(self) -> None:
         sel = self.selected()
-        hidden = sum(1 for i in range(self.list.count())
-                     if self.list.item(i).isHidden() and self.list.item(i).checkState() == Qt.Checked)
-        txt = f"{len(sel)} of {self.list.count()} selected"
+        hidden = sum(1 for it in self.items() if it.isHidden() and it.checkState() == Qt.Checked)
+        txt = f"{len(sel)} of {len(self.items())} selected"
         if hidden:
             txt += f" ({hidden} hidden by the search)"
         self.count.setText(txt)

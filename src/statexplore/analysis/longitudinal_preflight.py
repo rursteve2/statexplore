@@ -202,9 +202,11 @@ def _model_checks(ds: Dataset, f: pd.DataFrame, complete: pd.Series, outcome: st
             ug = sorted(set(np.round(gaps.to_numpy(), 8)))
             if len(ug) > 1:
                 notes.append(f"Unequal spacing: within-participant gaps between observed occasions take {len(ug)} "
-                           f"different values ({', '.join(f'{x:g}' for x in ug[:6])}). Discrete-time AR(1) treats "
-                           "consecutive observed occasions as equally spaced; continuous-time AR(1) uses the actual "
-                           "time values.")
+                           f"different values ({', '.join(f'{x:g}' for x in ug[:6])}). Discrete-time AR(1) uses a "
+                           "global observed-occasion index (rank of the time values present in the analysed rows): "
+                           "a time value nobody has is compressed away, but a participant who skips an occasion "
+                           "other participants have keeps an index gap (correlation phi^2 across a gap of 2); "
+                           "continuous-time AR(1) uses the actual time differences.")
     v = ds.var(outcome)
     if getattr(spec, "family", "gaussian") == "gaussian" and v.is_categorical:
         out.append(f"{v.display_name} is {v.measure.value}: a Gaussian residual structure is only possible with "

@@ -203,9 +203,14 @@ def fit_identity(ds: Dataset, s: SearchSettings, family: str) -> str:
 ENGINE_PACKAGES = ["detectseparation", "lme4", "ordinal", "nnet", "stats", "nlme", "mmrm", "geepack"]
 
 
+# Version of the rules that turn a fit into a row (bump when a stored statistic changes definition).
+# 2 = v1.3.1: AIC/BIC from the fitted object (STAT-16). Rows from older rules are refitted, never reused.
+FIT_RULES = 2
+
+
 def _engine_id(engine: dict[str, Any]) -> tuple:
     pk = engine.get("packages") or {}
-    return (engine.get("r_version"), tuple((k, pk.get(k)) for k in ENGINE_PACKAGES))
+    return (engine.get("r_version"), tuple((k, pk.get(k)) for k in ENGINE_PACKAGES), engine.get("fit_rules"))
 
 
 def cache_from(run: DiscoveryRun, previous: list[DiscoveryRun], ds: Dataset | None = None) -> dict[str, dict[str, Any]]:
@@ -267,6 +272,7 @@ def execute(run: DiscoveryRun, ds: Dataset, *, rscript: str | None = None,
                 f.result()
             run.n_sample = pooled[0].n_sample if s.sample == "shared" else None
             current = pooled[0].session.worker.request("versions", {"packages": ENGINE_PACKAGES}).result
+            current = {**current, "fit_rules": FIT_RULES}
             if not run.engine:
                 run.engine = current
             # cached fits are reused only when R and the fitting packages are the same versions (F6)
@@ -340,7 +346,7 @@ def _dispatch(run: DiscoveryRun, ds: Dataset, pooled: list[_PooledSession], ex: 
             try:
                 results, versions = fut.result()
                 if versions and not run.engine:
-                    run.engine = versions
+                    run.engine = {**versions, "fit_rules": FIT_RULES}
             except RTimeoutError as e:     # P1-06: a timeout is not a completed evaluation
                 log.error("Batch timed out: %s", e)
                 results = [{"i": c.index, "status": "failed", "reason": f"timed out (worker execution limit): {e}",
@@ -504,11 +510,11 @@ def _row(ds: Dataset, run: DiscoveryRun, c: Candidate, r: dict[str, Any]) -> dic
     }
     if run.family in ("lmm", "glmm", "clmm", "gee"):
         row["df2"] = None       # v1.1 stored the participant count here; it is n_groups (M §9)
-    if run.family in ("lmm", "glmm", "clmm") and row["loglik"] is not None and row["n_params"] is not None:
-        # one convention for every engine (mmrm's own AIC omits the fixed effects): k = fixed + covariance parameters
-        k = row["n_params"] + (row["n_re_params"] or 0)
-        row["aic"] = -2 * row["loglik"] + 2 * k
-        row["bic"] = -2 * row["loglik"] + np.log(row["n"]) * k
+    # AIC/BIC come from the fitted object (sx_ic): native for every engine but mmrm (STAT-16: recomputing BIC with
+    # log(n) here disagreed with nlme's REML log(n - p) by ~0.004)
+    row["bic_n"] = _num(r.get("bic_n"))
+    row["ic_basis"] = str(r.get("ic_basis") or "")
+    row["rows_sig"] = str(r.get("rows_sig") or "")
     if r.get("qic") is not None:
         row["qic"] = _num(r.get("qic"))
     return row
@@ -601,6 +607,8 @@ def _legacy_test(row: dict[str, Any], family: str, conf: float) -> dict[str, Any
 
 # Nested covariance structures (smaller, larger): (extra parameters, chi-square mixture weights by df).
 # A variance tested at zero lies on the boundary: the LR statistic follows a 50:50 mixture (Self & Liang).
+# Discrete AR(1) (occasion index) and continuous-time AR(1) (actual time) are NOT nested: never LR-tested against each
+# other; they are ranked by AIC/BIC in the model-comparison tab.
 NESTED_STRUCTURES = {
     ("ri", "rs"): ("random time slope (variance + covariance)", {1: 0.5, 2: 0.5}),
     ("ri", "rs_uncorr"): ("random time slope variance", {0: 0.5, 1: 0.5}),
@@ -636,6 +644,8 @@ def structure_tests(run: DiscoveryRun) -> dict[int, list[dict[str, Any]]]:
         a, b = by.get(small), by.get(large)
         if not a or not b or a.get("loglik") is None or b.get("loglik") is None or a.get("n") != b.get("n"):
             continue
+        if a.get("rows_sig") and b.get("rows_sig") and a["rows_sig"] != b["rows_sig"]:
+            continue        # same count but different rows: not a valid nested comparison
         lr = 2 * (b["loglik"] - a["loglik"])
         if weights is None:
             df = (b.get("n_re_params") or 0) - (a.get("n_re_params") or 0)
@@ -1048,6 +1058,8 @@ def summary(run: DiscoveryRun, df: pd.DataFrame) -> dict[str, Any]:
         "invalid": counts.get("invalid", 0), "failed": counts.get("failed", 0),
         "speculative": int(df["speculative"].sum()) if n_attempted else 0,
         "timed_out": int(df["timed_out"].fillna(False).astype(bool).sum()) if n_attempted and "timed_out" in df else 0,
+        "reused": sum(1 for r in run.rows if r.get("cached")),     # taken from an earlier search's identical fit
+        "not_visited": max(run.total - n_attempted, 0),
         "sig_raw": int(df["sig_raw"].sum()) if n_attempted else 0,
         "sig_adj": int(df["sig_adj"].sum()) if n_attempted else 0,
         "expected_false_raw": fam * run.settings.alpha,

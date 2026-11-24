@@ -9,8 +9,8 @@ import html
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QAbstractItemView, QCheckBox, QComboBox, QDialog, QDialogButtonBox, QHBoxLayout, QHeaderView, QLabel,
-    QListWidget, QListWidgetItem, QMessageBox, QPushButton, QSplitter, QTableWidget, QTableWidgetItem,
+    QAbstractItemView, QComboBox, QDialog, QDialogButtonBox, QHBoxLayout, QHeaderView, QLabel,
+    QLineEdit, QListWidget, QListWidgetItem, QMessageBox, QPushButton, QSplitter, QTableWidget, QTableWidgetItem,
     QTextBrowser, QVBoxLayout, QWidget,
 )
 
@@ -19,7 +19,12 @@ from ...core.dataset import DatasetError
 from ...core.variables import Measure
 from ..state import AppState
 
-COLUMNS = ["Variable", "Label", "Source (SPSS) level", "Project level", "Suggested level", "Reason", "Status"]
+COLUMNS = ["Variable", "Source name", "Label", "Source (SPSS) level", "Project level", "Suggested level", "Override",
+           "Missing", "Reason", "Status"]
+SCOPES = [("Variables that need review", "review"), ("Variables with a suggestion", "suggested"),
+          ("All variables", "all")]
+SORTS = [("Dataset order", "order"), ("Variable name A–Z", "az"), ("Variable name Z–A", "za"),
+         ("Project level (type)", "type"), ("Most missing first", "miss_desc"), ("Fewest missing first", "miss_asc")]
 STATUS_TEXT = {"source": "not reviewed", "approved": "approved", "kept": "reviewed, kept"}
 
 
@@ -85,14 +90,30 @@ class MeasurementReviewWidget(QWidget):
         intro.setWordWrap(True)
         lay.addWidget(intro)
         bar = QHBoxLayout()
-        self.only_flagged = QCheckBox("Show only variables that need review")
-        self.only_flagged.setChecked(True)
-        self.only_flagged.toggled.connect(self.refresh)
-        bar.addWidget(self.only_flagged)
-        self.count = QLabel()
-        bar.addWidget(self.count)
-        bar.addStretch()
+        self.scope = QComboBox()
+        for text, key in SCOPES:
+            self.scope.addItem(text, key)
+        self.scope.currentIndexChanged.connect(self.refresh)
+        self.search = QLineEdit()
+        self.search.setPlaceholderText("Search name, label, level or override…")
+        self.search.setClearButtonEnabled(True)
+        self.search.setToolTip("Matches the variable's source name, display name, label, source / project / "
+                               "suggested level and saved override (case-insensitive). Searching looks in all "
+                               "variables, whatever the list above shows.")
+        self.search.textChanged.connect(self.refresh)
+        self.sort = QComboBox()
+        for text, key in SORTS:
+            self.sort.addItem(text, key)
+        self.sort.currentIndexChanged.connect(self.refresh)
+        bar.addWidget(QLabel("Show:"))
+        bar.addWidget(self.scope)
+        bar.addWidget(self.search, 1)
+        bar.addWidget(QLabel("Sort:"))
+        bar.addWidget(self.sort)
         lay.addLayout(bar)
+        self.count = QLabel()
+        self.count.setWordWrap(True)
+        lay.addWidget(self.count)
 
         self.table = QTableWidget(0, len(COLUMNS))
         self.table.setHorizontalHeaderLabels(COLUMNS)
@@ -143,22 +164,27 @@ class MeasurementReviewWidget(QWidget):
             self.count.setText("")
             self._enable(False)
             return
-        rows = M.review_rows(ds, only_mismatches=self.only_flagged.isChecked())
+        rows = self.rows(ds)
         flagged = sum(1 for r in M.review_rows(ds, only_mismatches=True) if r["needs_review"])
-        self.count.setText(f"{flagged} variable(s) with a suggestion that differs from the project level")
+        saved = sum(1 for r in M.review_rows(ds, include_all=True) if r["override"].startswith("saved"))
+        self.count.setText(f"{len(rows):,} shown · {flagged} variable(s) with a suggestion that differs from the "
+                           f"project level · {saved} saved override(s)")
         self.table.setRowCount(len(rows))
         for i, r in enumerate(rows):
-            vals = [ds.var(r["name"]).display_name, r["label"], r["source"], r["project"], r["suggested"],
-                    r["reason"], STATUS_TEXT.get(r["status"], r["status"])]
+            vals = [ds.var(r["name"]).display_name, r["name"], r["label"], r["source"], r["project"],
+                    r["suggested"] or "—", r["override"], r["missing"], r["reason"],
+                    STATUS_TEXT.get(r["status"], r["status"])]
             for j, val in enumerate(vals):
-                it = QTableWidgetItem(str(val))
+                it = QTableWidgetItem(f"{val:,}" if isinstance(val, int) else str(val))
                 it.setToolTip(str(val))
-                if r["needs_review"] and j == 4:
+                if j == 7:
+                    it.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+                if r["needs_review"] and j == 5:
                     it.setForeground(Qt.darkYellow)
                 self.table.setItem(i, j, it)
             self._names.append(r["name"])
         self.table.resizeColumnsToContents()
-        for j in (1, 5):
+        for j in (2, 8):
             self.table.setColumnWidth(j, min(self.table.columnWidth(j), 320))
         if current in self._names:
             self.table.selectRow(self._names.index(current))
@@ -166,13 +192,38 @@ class MeasurementReviewWidget(QWidget):
             self.table.selectRow(0)
         self._show_detail()
 
+    def rows(self, ds) -> list[dict]:
+        """Review rows in the chosen scope, filtered by the search text and sorted (display only: nothing about a
+        variable changes)."""
+        scope = self.scope.currentData()
+        text = self.search.text().strip().lower()
+        rows = M.review_rows(ds, only_mismatches=scope == "review", include_all=scope == "all" or bool(text))
+        if text:
+            rows = [r for r in rows if any(text in str(x).lower() for x in (
+                r["name"], ds.var(r["name"]).display_name, r["label"], r["source"], r["project"], r["suggested"] or "",
+                r["override"]))]
+        for r in rows:
+            r["missing"] = ds.missing_count(r["name"])
+        key = self.sort.currentData()
+        name = lambda r: ds.var(r["name"]).display_name.lower()  # noqa: E731
+        if key == "az":
+            rows.sort(key=name)
+        elif key == "za":
+            rows.sort(key=name, reverse=True)
+        elif key == "type":
+            rows.sort(key=lambda r: (r["project"], name(r)))
+        elif key in ("miss_desc", "miss_asc"):
+            rows.sort(key=lambda r: (-r["missing"] if key == "miss_desc" else r["missing"], name(r)))
+        return rows
+
     def current(self) -> str | None:
         rows = self.table.selectionModel().selectedRows() if self.table.selectionModel() else []
         return self._names[rows[0].row()] if rows and rows[0].row() < len(self._names) else None
 
     def select(self, name: str) -> None:
         if name not in self._names:
-            self.only_flagged.setChecked(False)
+            self.search.clear()
+            self.scope.setCurrentIndex(self.scope.findData("all"))
         if name in self._names:
             self.table.selectRow(self._names.index(name))
 

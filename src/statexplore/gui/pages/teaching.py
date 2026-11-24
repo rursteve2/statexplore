@@ -5,13 +5,14 @@ from pathlib import Path
 
 from PySide6.QtWidgets import (
     QCheckBox, QComboBox, QFileDialog, QFormLayout, QGroupBox, QHBoxLayout, QLabel, QLineEdit, QMessageBox,
-    QPushButton, QScrollArea, QSplitter, QTextBrowser, QVBoxLayout, QWidget,
+    QPushButton, QSplitter, QTextBrowser, QVBoxLayout, QWidget,
 )
 
 from ...analysis import teaching
 from ...analysis.models import ModelSpec
 from ..model_editor import ModelEditor
 from ..result_view import render
+from ..widgets.layout import section_scroll
 from ..state import AppState
 from .eda import CodeDialog
 
@@ -90,10 +91,7 @@ class TeachingPage(QWidget):
                                    "interactions, adjustment, instability, assumption problems, model disagreement)")
         self.finder_btn.clicked.connect(self.show_examples)
         ll.addWidget(self.finder_btn)
-        scroll = QScrollArea()
-        scroll.setWidget(left)
-        scroll.setWidgetResizable(True)
-        scroll.setMinimumWidth(440)
+        scroll = section_scroll(left, 440)
 
         self.output = QTextBrowser()
         split = QSplitter()

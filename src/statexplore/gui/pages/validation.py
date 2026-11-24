@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from PySide6.QtWidgets import (
     QComboBox, QDialog, QDoubleSpinBox, QFormLayout, QGroupBox, QHBoxLayout, QLabel, QMessageBox, QPushButton,
-    QScrollArea, QSpinBox, QSplitter, QTextBrowser, QVBoxLayout, QWidget,
+    QSpinBox, QSplitter, QTextBrowser, QVBoxLayout, QWidget,
 )
 
 from ...analysis import validation
@@ -12,6 +12,7 @@ from ...core.dataset import DatasetError, HoldoutSpec
 from ...core.variables import Role
 from ..model_editor import ModelDialog
 from ..result_view import render
+from ..widgets.layout import section_scroll
 from ..state import AppState
 from .eda import CodeDialog
 
@@ -111,10 +112,7 @@ class ValidationPage(QWidget):
         crow.addStretch()
         ll.addLayout(crow)
         ll.addStretch()
-        scroll = QScrollArea()
-        scroll.setWidget(left)
-        scroll.setWidgetResizable(True)
-        scroll.setMinimumWidth(440)
+        scroll = section_scroll(left, 440)
         self.output = QTextBrowser()
         split = QSplitter()
         split.addWidget(scroll)
