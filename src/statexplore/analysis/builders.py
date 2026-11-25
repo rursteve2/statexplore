@@ -11,7 +11,7 @@ from __future__ import annotations
 from typing import Any
 
 from ..core.variables import Measure
-from ..rbridge.codegen import r_num, r_str, r_vec
+from ..rbridge.codegen import factor_label, r_num, r_str, r_vec
 from .framework import (
     ADJUST, ALTERNATIVE, CONF, INTERACTIONS, AnalysisInputError, AnalysisSpec, Ctx, Option, Slot,
 )
@@ -432,7 +432,8 @@ def _linear(ctx: Ctx) -> str:
         "  notes = paste0(\"Each row compares the model with and without that term; terms contained in a higher-order \",",
         "  \"interaction are not tested on their own (marginality).\"))",
     ] + _slopes(ctx, "sx_fit") + _diagnostics(ctx, n_main) + [
-        f"sx_result <- list(tables = sx_tabs, checks = sx_checks, {COMMON_TAIL})",
+        f"sx_ident <- sx_identity(sx_d, {y} ~ {rhs}, \"{y}\")",
+        f"sx_result <- list(tables = sx_tabs, checks = sx_checks, identity = sx_ident, {COMMON_TAIL})",
     ]
     return "\n".join(L) + "\n"
 
@@ -531,7 +532,7 @@ def _event_lines(ctx: Ctx, y: str) -> list[str]:
                 "sx_event_label <- as.character(sx_lv[2])"]
     name = ctx.vars["dependent"][0]
     if ctx.ds.var(name).is_categorical:
-        lab = ctx.ds.level_label(name, ev)
+        lab = factor_label(ctx.ds, name, ev)
         return [f"sx_event_label <- {r_str(lab)}  # event chosen by the user",
                 "sx_d$sx_event <- as.integer(as.character(sx_y) == sx_event_label)"]
     return [f"sx_d$sx_event <- as.integer(sx_y == {r_num(ev)})  # event chosen by the user",
@@ -604,7 +605,8 @@ def _ordinal_reg(ctx: Ctx) -> str:
         "if (any(sx_po$status == \"tested\" & sx_po$p < 0.05)) sx_checks <- c(sx_checks, paste0(\"The proportional-odds \",",
         "  \"assumption is doubtful for: \", paste(sx_po$term[sx_po$status == \"tested\" & sx_po$p < 0.05], collapse = \", \"),",
         "  \" (p < .05).\"))",
-        f"sx_result <- list(tables = sx_tabs, checks = sx_checks, {COMMON_TAIL})",
+        f"sx_ident <- sx_identity(sx_d, sx_form, \"{y}\")",
+        f"sx_result <- list(tables = sx_tabs, checks = sx_checks, identity = sx_ident, {COMMON_TAIL})",
     ]
     return "\n".join(L) + "\n"
 
@@ -619,7 +621,7 @@ def _multinom_reg(ctx: Ctx) -> str:
     conf = ctx.num("conf")
     _codes, labels = category_codes(ctx.ds, name)
     ref = ctx.opts.get("reference")
-    ref_lab = ctx.ds.level_label(name, ref) if ref is not None else labels[0]
+    ref_lab = factor_label(ctx.ds, name, ref) if ref is not None else labels[0]
     L = _prologue(ctx, "dependent", "predictors") + [
         f"sx_d${y} <- droplevels(factor(as.character(sx_d${y}), levels = {r_vec(labels)}))",
         f"sx_ref <- {r_str(ref_lab)}",
@@ -660,7 +662,8 @@ def _multinom_reg(ctx: Ctx) -> str:
         "if (!is.null(sx_an)) sx_tabs[[3]] <- sx_table(\"Term tests (likelihood-ratio, Type II)\", data.frame(term = rownames(sx_an),",
         "  LR_chi2 = sx_an[[\"LR Chisq\"]], df = sx_an$Df, p = sx_an[[\"Pr(>Chisq)\"]]),",
         "  notes = \"car::Anova: joint test of each term over all outcome contrasts.\")",
-        f"sx_result <- list(tables = sx_tabs, checks = sx_checks, {COMMON_TAIL})",
+        f"sx_ident <- sx_identity(sx_d, sx_form, \"{y}\")",
+        f"sx_result <- list(tables = sx_tabs, checks = sx_checks, identity = sx_ident, {COMMON_TAIL})",
     ]
     return "\n".join(L) + "\n"
 
@@ -813,7 +816,8 @@ def _logistic(ctx: Ctx) -> str:
             "  ggplot2::theme_minimal()",
             f"ggplot2::ggsave({r_str(ctx.plot_paths[0])}, sx_p, width = 6.5, height = 4.5, dpi = 120)",
         ]
-    L.append(f"sx_result <- list(tables = sx_tabs, checks = sx_checks, {COMMON_TAIL})")
+    L.append("sx_ident <- sx_identity(sx_d, sx_form, \"sx_event\")")
+    L.append(f"sx_result <- list(tables = sx_tabs, checks = sx_checks, identity = sx_ident, {COMMON_TAIL})")
     return "\n".join(L) + "\n"
 
 

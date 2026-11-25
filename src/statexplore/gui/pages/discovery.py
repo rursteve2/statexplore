@@ -46,7 +46,9 @@ _TEST_COLS = {"status_text": STATUS_COL, "test_id": "Test ID", "idx": "#", "mode
               "or_high": "OR CI high", "ci_status": "CI applicability",
               "predictors_txt": "Predictors", "n_terms": "Model terms", "n_params": "Fixed coefficients",
               "n_lik": "Likelihood parameters", "estimation": "Estimation",
-              "n": "n", "n_groups": "Groups (participants)", "diag_text": "Diagnostics status", "flags": "Flags",
+              "n": "n", "n_groups": "Groups (participants)", "observed_clusters": "Clusters (observed)",
+              "modeled_clusters": "Clusters (modeled)", "diag_text": "Diagnostics status", "flags": "Flags",
+              "test_status": "Test status", "reference_distribution": "Reference distribution",
               "search_scope": "Search complete/partial", "validation": "Validation status",
               "interpretation": "Teaching interpretation"}
 DISCOVERY_COLS = dict(_TEST_COLS)
@@ -63,9 +65,11 @@ COMPARE_COLS = {"idx": "#", "model_type": "Model type", "formula": "Model", "pre
                 "n_main": "Main-effect terms", "n_two_way": "Two-way terms", "n_three_way": "Three-way terms",
                 "n_terms": "Model terms", "n_params": "Fixed coefficients", "n_re_params": "Covariance parameters",
                 "n_lik": "Likelihood parameters", "estimation": "Estimation", "structure_label": "Structure",
-                "n": "n", "n_groups": "Groups (participants)", "aic": "AIC", "d_aic": "ΔAIC", "bic": "BIC",
-                "d_bic": "ΔBIC", "r2": "R²", "adj_r2": "Adjusted R²", "loglik": "log-likelihood",
-                "diag_text": "Diagnostics status"}
+                "n": "n", "n_groups": "Groups (participants)", "observed_clusters": "Clusters (observed)",
+                "modeled_clusters": "Clusters (modeled)", "aic": "AIC", "d_aic": "ΔAIC", "bic": "BIC",
+                "bic_n": "BIC n", "d_bic": "ΔBIC", "bic_harmonized": "BIC (harmonized, n − p)",
+                "d_bic_harmonized": "ΔBIC (harmonized)", "r2": "R²", "adj_r2": "Adjusted R²",
+                "loglik": "log-likelihood", "diag_text": "Diagnostics status"}
 ALPHA_PRESETS = ("0.05", "0.01", "0.001")
 COLUMN_TIPS = {
     "Fixed coefficients": "Fixed-effect coefficients including the intercept; ordinal models add the K-1 thresholds, "
@@ -84,6 +88,14 @@ COLUMN_TIPS = {
     "Structure": "Random-effect / residual-correlation structure. AR(1) uses the observed-occasion index; CAR(1) uses "
                  "actual time differences.",
     "log-likelihood": "From the estimation method in the Estimation column (ML or REML).",
+    "Clusters (observed)": "Higher-level clusters in the analysed rows.",
+    "Clusters (modeled)": "Clusters with a random intercept in this model (0 = exploratory fit without the cluster).",
+    "Test status": "tested = clean; provisional = a compared fit is flagged (not clean evidence); withheld = no valid "
+                   "reference distribution or an unreliable likelihood (no p-value).",
+    "Reference distribution": "The null distribution used for this test: chi-square, or a 50:50 mixture when a variance "
+                              "or a CAR(1) correlation is tested on the boundary of its range.",
+    "BIC n": "Sample size in the native BIC: n for lme4, n − p for REML nlme fits.",
+    "BIC (harmonized, n − p)": "Every model's BIC recomputed on one basis (n − p) when native BICs use different n.",
 }
 
 
@@ -115,6 +127,9 @@ class ResultTable(QWidget):
         copy.setToolTip("Copy the rows shown (current filter, search and sort; visible columns) as CSV")
         copy.clicked.connect(self.copy_csv)
         top.addWidget(copy)
+        self.copy_note = QLabel("")         # UI-41: say what was copied (or that copying failed)
+        self.copy_note.setObjectName("hint")
+        top.addWidget(self.copy_note)
         lay.addLayout(top)
         self.model = ResultFrameModel(p_columns=P_COLS)
         self.model.header_tips = COLUMN_TIPS
@@ -234,6 +249,7 @@ class ResultTable(QWidget):
         if self._frozen is not None:
             self._frozen.setFont(f)
             self._frozen.verticalHeader().setDefaultSectionSize(self.view.verticalHeader().defaultSectionSize())
+            self._frozen_geometry()
 
     def fit_columns(self) -> None:
         """Resize every visible column to its contents (sampled rows), capped so one long formula cannot push the
@@ -284,6 +300,11 @@ class ResultTable(QWidget):
             f.verticalScrollBar().valueChanged.connect(self.view.verticalScrollBar().setValue)
             self.view.verticalScrollBar().valueChanged.connect(f.verticalScrollBar().setValue)
             hdr.sectionResized.connect(lambda *_: self._frozen_geometry())
+            # UI-43: re-place the overlay whenever the viewport or headers change size (maximize, scrollbars
+            # appearing, row-number width growing), not only when the view itself is resized
+            hdr.geometriesChanged.connect(self._frozen_geometry)
+            self.view.verticalHeader().geometriesChanged.connect(self._frozen_geometry)
+            self.view.viewport().installEventFilter(self)
             self.view.installEventFilter(self)
             self._frozen = f
         f = self._frozen
@@ -308,22 +329,38 @@ class ResultTable(QWidget):
         w = self.view.columnWidth(idc)
         f.setColumnWidth(idc, w)
         fw = self.view.frameWidth()
-        f.setGeometry(self.view.verticalHeader().width() + fw, fw, w,
-                      self.view.viewport().height() + self.view.horizontalHeader().height())
+        vp = self.view.viewport().geometry()          # excludes the horizontal scrollbar: never covers it
+        f.setGeometry(self.view.verticalHeader().width() + fw, fw, w, vp.bottom() - fw + 1)
+        f.verticalScrollBar().setValue(self.view.verticalScrollBar().value())
 
     def eventFilter(self, obj, ev) -> bool:  # noqa: N802 (Qt override)
         from PySide6.QtCore import QEvent
 
-        if obj is self.view and ev.type() in (QEvent.Resize, QEvent.Show):
+        if obj in (self.view, self.view.viewport()) and ev.type() in (QEvent.Resize, QEvent.Show):
             self._frozen_geometry()
         return super().eventFilter(obj, ev)
 
-    def copy_csv(self) -> None:
+    def csv_text(self) -> str:
+        """The rows shown as CSV. The Highlight column carries the status text the table displays (UI-42: it used to
+        be blank because the text lives in the view, not in the frame)."""
         hdr = self.view.horizontalHeader()
         cols = [self.model.frame.columns[hdr.logicalIndex(v)] for v in range(hdr.count())
                 if not hdr.isSectionHidden(hdr.logicalIndex(v))]
-        rows = self.model.frame.iloc[list(self.model._order)][cols] if len(self.model.frame) else self.model.frame
-        QApplication.clipboard().setText(rows.to_csv(index=False))
+        order = list(self.model._order)
+        rows = self.model.frame.iloc[order][cols].copy() if len(self.model.frame) else self.model.frame
+        if STATUS_COL in rows.columns and len(rows):
+            st = self.model.status_text
+            txt = [str(st[i]) if st is not None and i < len(st) and st[i] else "" for i in order]
+            rows[STATUS_COL] = [t or ("highlighted" if self._highlight[i] else "not highlighted")
+                                for t, i in zip(txt, order)] if len(self._highlight) else txt
+        return rows.to_csv(index=False)
+
+    def copy_csv(self) -> None:
+        text = self.csv_text()
+        QApplication.clipboard().setText(text)
+        n = max(text.count("\n") - 1, 0)
+        self.copy_note.setText(f"Copied {n:,} rows." if QApplication.clipboard().text() == text
+                               else "Copy failed: the clipboard did not accept the text.")
 
     def _query(self, text: str) -> None:
         keep = self.selected_id()
@@ -781,6 +818,7 @@ class DiscoveryPage(QWidget):
     def _build_study_box(self, layout: QVBoxLayout) -> None:
         box = QGroupBox("Study structure")
         f = QFormLayout(box)
+        self._study_form = f
         self.study = QComboBox()
         self.study.addItem("Independent observations — no within-participant modelling", "independent")
         self.study.addItem("Repeated measures / longitudinal (participant ID + time)", "longitudinal")
@@ -794,6 +832,21 @@ class DiscoveryPage(QWidget):
         self.time_combo = QComboBox()
         self.time_combo.setToolTip("Needed for random slopes, residual correlation, marginal models and the time "
                                    "strategy. Numeric codes are used (labels mapped back).")
+        self.cluster_combo = QComboBox()
+        self.cluster_combo.setToolTip("Optional higher-level grouping (e.g. school, hospital, unit): participants are "
+                                      "nested in it and it gets a random intercept in every model. It is a grouping "
+                                      "level, never a predictor or interaction term. Gaussian outcomes only.")
+        self.id_policy = QComboBox()
+        self.id_policy.addItem("IDs are unique across clusters (checked: each ID in one cluster)", "global")
+        self.id_policy.addItem("IDs are numbered within each cluster (same ID in two clusters = two people)", "local")
+        self.id_policy.setToolTip("How participant IDs relate to the cluster. With numbering within clusters, the "
+                                  "participant is the (cluster, ID) pair. People who move between clusters (crossed "
+                                  "designs) are not supported and are refused, never reinterpreted.")
+        self.cluster_compare = QCheckBox("Exploratory: also fit each structure without the cluster")
+        self.cluster_compare.setToolTip("Workflow B only. The study design may require the cluster regardless of this "
+                                        "comparison. Off by default. The cluster is never removed automatically: with this option "
+                                        "each structure is fitted with and without the cluster on the same rows and "
+                                        "composite participants, and the cluster variance is tested at the boundary.")
         self.time_type = QComboBox()
         self.time_type.addItem("Continuous (linear trend)", "continuous")
         self.time_type.addItem("Categorical (one effect per occasion)", "categorical")
@@ -815,8 +868,11 @@ class DiscoveryPage(QWidget):
         self.long_info = QTextBrowser()
         self.long_info.setMaximumHeight(170)
         self._long_widgets = [self.participant, self.time_combo, self.time_type, self.time_fixed, self.workflow,
-                              self.structure, self.structures_list, self.time_inter, self.role_btn, self.long_info]
-        for label, w in [("Participant ID", self.participant), ("", self.role_btn), ("Time", self.time_combo),
+                              self.structure, self.structures_list, self.time_inter, self.role_btn, self.long_info,
+                              self.cluster_combo, self.id_policy, self.cluster_compare]
+        for label, w in [("Participant ID", self.participant), ("", self.role_btn),
+                         ("Higher-level cluster", self.cluster_combo), ("Participant IDs", self.id_policy),
+                         ("", self.cluster_compare), ("Time", self.time_combo),
                          ("Time enters as", self.time_type), ("", self.time_fixed), ("Workflow", self.workflow),
                          ("Structure (workflow A)", self.structure), ("Structures (workflow B)", self.structures_list),
                          ("", self.time_inter), ("Preflight", self.long_info)]:
@@ -825,26 +881,38 @@ class DiscoveryPage(QWidget):
             else:
                 f.addRow(w)
         layout.addWidget(box)
-        for w in (self.study, self.participant, self.time_combo, self.time_type, self.workflow, self.structure):
+        for w in (self.study, self.participant, self.time_combo, self.time_type, self.workflow, self.structure,
+                  self.cluster_combo, self.id_policy):
             w.currentIndexChanged.connect(self._study_changed)
+        self.cluster_combo.currentIndexChanged.connect(self._fill_structures)
+        self.cluster_compare.toggled.connect(self._study_changed)
         self.time_fixed.toggled.connect(self._study_changed)
         self.time_inter.toggled.connect(self._invalidate_estimate)
         self.structures_list.itemChanged.connect(self._invalidate_estimate)
 
-    def _fill_structures(self) -> None:
+    def _fill_structures(self, *_: Any) -> None:
+        """Only structures valid for the family (and, with a cluster, the Gaussian RI/DIAG/RS x residual table).
+        Checked states and the locked structure are kept when the list refreshes (one configuration state)."""
+        from ...analysis.covstruct import GAUSSIAN_STRUCTURES
+        from ...discovery.space import DEFAULT_GAUSSIAN_B
+
         fam = self.family.currentData() or "gaussian"
+        clustered = bool(self.cluster_combo.currentData()) if hasattr(self, "cluster_combo") else False
         keep, keep_list = self.structure.currentData(), set(self._checked_structures())
         self.structure.blockSignals(True)
         self.structure.clear()
         self.structures_list.blockSignals(True)
         self.structures_list.clear()
         for key in structures_for(fam):
+            if clustered and key not in GAUSSIAN_STRUCTURES:
+                continue        # clustered GEE / mmrm / GLMM / CLMM are not part of this release (shown as refused)
             label = STRUCTURES[key][0]
             self.structure.addItem(label, key)
             it = QListWidgetItem(label)
             it.setData(Qt.UserRole, key)
             it.setFlags(it.flags() | Qt.ItemIsUserCheckable)
-            default = key in ("ri", "rs", "glmer_ri", "glmer_rs", "clmm_ri", "clmm_rs") if not keep_list else key in keep_list
+            default = (key in DEFAULT_GAUSSIAN_B + ["glmer_ri", "glmer_rs", "clmm_ri", "clmm_rs"]) if not keep_list \
+                else key in keep_list
             it.setCheckState(Qt.Checked if default else Qt.Unchecked)
             self.structures_list.addItem(it)
         self.structure.setCurrentIndex(max(0, self.structure.findData(keep)))
@@ -864,6 +932,14 @@ class DiscoveryPage(QWidget):
             self.structure.setEnabled(wf == "fixed")
             self.structures_list.setEnabled(wf == "structure")
             self.time_inter.setEnabled(wf == "structure")
+            has_cluster = bool(self.cluster_combo.currentData())
+            self.id_policy.setEnabled(has_cluster)           # hidden choices keep their values (one state)
+            self.cluster_compare.setEnabled(has_cluster and wf == "structure")
+
+        # progressive disclosure (UI-28): the cluster sub-options take space only once a cluster is chosen
+        show = long and bool(self.cluster_combo.currentData())
+        for w in (self.id_policy, self.cluster_compare):
+            self._study_form.setRowVisible(w, show)
         self._update_long_info()
         self._invalidate_estimate()
 
@@ -896,10 +972,28 @@ class DiscoveryPage(QWidget):
             from ..result_view import table_html
 
             v = self._search_view()
-            rep = preflight(v, out, pid, time, [n for n in self.cand_sel.selected() if n not in (out, pid, time)])
+            cl = self.cluster_combo.currentData()
+            preds = [n for n in self.cand_sel.selected() + self.req_sel.selected() if n not in (out, pid, time, cl)]
+            rep = preflight(v, out, pid, time, preds, cluster=cl)
+            rng = rep._range_text(v)
+            crng = rep._range_text(v, rep.complete_range)
             parts = [f"<p><b>Rows</b> {rep.n_records:,} · <b>Participants</b> {rep.n_participants:,} · "
                      f"<b>Waves</b> {len(rep.time_points) if time else '—'} · participants with 2+ observations "
-                     f"{rep.n_multi_obs:,} · duplicate participant-time rows {rep.duplicates}</p>"]
+                     f"{rep.n_multi_obs:,} · duplicate participant-time rows {rep.duplicates}</p>",
+                     f"<p><b>Outcome observed</b>: {rng} · <b>complete model rows</b> (outcome, time, every candidate "
+                     f"and required predictor, ID{', cluster' if cl else ''}): {rep.n_complete:,} rows, time range "
+                     f"{crng}, {rep.n_usable:,} participants ({rep.n_usable_one:,} with a single occasion)</p>"]
+            if cl:
+                sizes = f"{rep.cluster_sizes[0]}–{rep.cluster_sizes[1]}" if rep.cluster_sizes else "—"
+                key = ("(cluster, ID) pairs" if self.id_policy.currentData() == "local" else "IDs (unique across clusters)")
+                parts.append(f"<p><b>Nested design</b>: {rep.n_clusters:,} {html.escape(v.var(cl).display_name)} "
+                             f"clusters · participants per cluster {sizes} · participants = {key} · rows without a "
+                             f"cluster (excluded) {rep.n_cluster_missing:,} · IDs seen in 2+ clusters "
+                             f"{rep.n_crossing:,}</p>")
+                if rep.n_crossing and self.id_policy.currentData() == "global":
+                    parts.append(f"<p style='color:#c62828'>⚠ {rep.n_crossing:,} IDs occur in more than one cluster: "
+                                 "declare IDs as numbered within each cluster, or the design is crossed (not "
+                                 "supported). The search will not start.</p>")
             parts += [f"<p style='color:#8d6e00'>⚠ {html.escape(w)}</p>" for w in rep.warnings]
             parts += [f"<p class='note'>{html.escape(n)}</p>" for n in rep.notes]
             if time:
@@ -910,7 +1004,10 @@ class DiscoveryPage(QWidget):
 
     # ---------- variable lists ----------
     def _reload(self) -> None:
-        self.run = None
+        # UI-49: a reopened project shows its most recent search (settings, results, summary) immediately instead of
+        # an empty page until a history entry is picked
+        p = self.state.project
+        self.run = p.searches[-1] if p is not None and p.searches else None
         self._load_highlight_prefs()
         self._reload_lists()
         self._refresh_history()
@@ -920,9 +1017,13 @@ class DiscoveryPage(QWidget):
         ds = self.state.dataset
         keep_outcome = self.outcome.currentData()
         keep_part, keep_time = self.participant.currentData(), self.time_combo.currentData()
+        keep_cluster = self.cluster_combo.currentData()
         self.participant.clear()
         self.time_combo.clear()
         self.time_combo.addItem("(none)", None)
+        self.cluster_combo.blockSignals(True)
+        self.cluster_combo.clear()
+        self.cluster_combo.addItem("(none — participants only)", None)
         ids, others, times, tothers = [], [], [], []
         self.outcome.blockSignals(True)
         self.outcome.clear()
@@ -953,6 +1054,12 @@ class DiscoveryPage(QWidget):
             self.time_combo.addItem(f"{v.display_name}  (time role)", v.name)
         for v in tothers:
             self.time_combo.addItem(v.display_name, v.name)
+        # any column may be the cluster if the nesting is valid; cluster / ID roles are suggested first
+        for v in sorted(ids + others, key=lambda v: (v.role.value != "cluster", v.role.value != "id")):
+            self.cluster_combo.addItem(f"{v.display_name}  ({v.role.value} role)" if v.role.value in ("cluster", "id")
+                                       else v.display_name, v.name)
+        self.cluster_combo.setCurrentIndex(max(0, self.cluster_combo.findData(keep_cluster)))
+        self.cluster_combo.blockSignals(False)
         self.participant.setCurrentIndex(max(0, self.participant.findData(keep_part)))
         self.time_combo.setCurrentIndex(max(0, self.time_combo.findData(keep_time)))
         idx = self.outcome.findData(keep_outcome)
@@ -1059,6 +1166,47 @@ class DiscoveryPage(QWidget):
         self.workers.setValue(p["workers"])
 
     # ---------- settings ----------
+    # ---------- form persistence (UI-48 / CD-12) ----------
+    def form_state(self) -> dict[str, Any]:
+        return {"outcome": self.outcome.currentData(), "family": self.family.currentData(),
+                "candidates": self.cand_sel.selected(), "required": self.req_sel.selected(),
+                "study": self.study.currentData(), "participant": self.participant.currentData(),
+                "time": self.time_combo.currentData(), "time_type": self.time_type.currentData(),
+                "time_fixed": self.time_fixed.isChecked(), "workflow": self.workflow.currentData(),
+                "structure": self.structure.currentData(), "structures": self._checked_structures(),
+                "time_interactions": self.time_inter.isChecked(), "cluster": self.cluster_combo.currentData(),
+                "id_policy": self.id_policy.currentData(), "cluster_compare": self.cluster_compare.isChecked(),
+                "strategy": self.strategy.currentData()}
+
+    def restore_form(self, st: dict[str, Any]) -> None:
+        def pick(combo, val):
+            i = combo.findData(val)
+            if i >= 0:
+                combo.setCurrentIndex(i)
+        pick(self.outcome, st.get("outcome"))
+        pick(self.family, st.get("family"))
+        pick(self.study, st.get("study"))
+        pick(self.participant, st.get("participant"))
+        pick(self.time_combo, st.get("time"))
+        pick(self.time_type, st.get("time_type"))
+        pick(self.cluster_combo, st.get("cluster"))
+        pick(self.id_policy, st.get("id_policy"))
+        pick(self.workflow, st.get("workflow"))
+        pick(self.strategy, st.get("strategy"))
+        self.time_fixed.setChecked(bool(st.get("time_fixed", True)))
+        self.time_inter.setChecked(bool(st.get("time_interactions")))
+        self.cluster_compare.setChecked(bool(st.get("cluster_compare")))
+        self._fill_structures()
+        pick(self.structure, st.get("structure"))
+        wanted = set(st.get("structures") or [])
+        if wanted:
+            lst = self.structures_list
+            for i in range(lst.count()):
+                lst.item(i).setCheckState(Qt.Checked if lst.item(i).data(Qt.UserRole) in wanted else Qt.Unchecked)
+        self.cand_sel.set_selected(list(st.get("candidates") or []))
+        self.req_sel.set_selected(list(st.get("required") or []))
+        self._study_changed()
+
     def _settings(self) -> SearchSettings:
         outcome = self.outcome.currentData()
         if not outcome:
@@ -1092,6 +1240,10 @@ class DiscoveryPage(QWidget):
             time=self.time_combo.currentData() if long else None, time_type=self.time_type.currentData(),
             structure=self.structure.currentData() or "ri", workflow=self.workflow.currentData() if long else "fixed",
             structures=self._checked_structures(), time_interactions=self.time_inter.isChecked(),
+            cluster=self.cluster_combo.currentData() if long else None,
+            id_policy=self.id_policy.currentData() or "global",
+            cluster_compare=bool(long and self.cluster_combo.currentData() and self.workflow.currentData() == "structure"
+                                 and self.cluster_compare.isChecked()),
             all_two_way=bool(self.all2.currentData()) and self.cov_mode.currentData() == "subsets"
             and self.strategy.currentData() == "focal",
             strategy=self.strategy.currentData(), include_main=self.include_main.isChecked(),
@@ -1398,7 +1550,9 @@ class DiscoveryPage(QWidget):
             parts += [f"<p><b>{e(t)}</b></p>" for t in engine.headline(run, fams)]
             if fams:
                 parts.append(
-                    f"<p><b>Hypotheses by family</b> — {corr} (and Holm) adjustment is applied separately within each "
+                    f"<p><b>Hypotheses by family</b> — {corr} adjustment (selected; the "
+                    f"{'Holm' if s.correction == 'BH' else 'Benjamini-Hochberg'} column is shown for comparison) is "
+                    "applied separately within each "
                     "prespecified hypothesis family; families are never ranked together. 'Expected by chance' "
                     "(α × tests) refers to that family only:</p><table cellpadding='3' border='0'><tr><th align='left'>"
                     "Family</th><th>Tests</th><th>Raw p &lt; α</th><th>BH</th><th>Holm</th><th>≈ chance</th>"
@@ -1410,10 +1564,16 @@ class DiscoveryPage(QWidget):
             if sm["provisional"]:
                 parts.append("<p style='color:#8d6e00'>Adjusted p-values are <b>provisional</b>: they are "
                              "conditional on the candidates evaluated, not the full search space.</p>")
+        structure_run = bool(s.participant) and s.workflow == "structure"
         parts.append(
             "<p class='note'>Multiple-testing adjustment controls false discoveries among the tests run; it does "
-            "not remove post-selection bias. Effect sizes and confidence intervals of the top-ranked models are "
-            "optimistic. Confirm promising interactions on new data or a holdout sample (Phase 6).</p>")
+            "not remove post-selection bias. "
+            + ("Covariance-structure comparisons describe the dependence between a participant's observations under "
+               "one locked fixed part; check that the preferred structure is stable (e.g. with new data) before "
+               "relying on it.</p>" if structure_run else
+               "Effect sizes and confidence intervals of the top-ranked models are optimistic. Confirm promising "
+               "findings (of the tested type: interaction, main-effect or whole-model) on new data or a holdout "
+               "sample.</p>"))
         fam = {"gaussian": "Linear models, focal F-test (nested comparison)",
                "binomial": "Logistic models, focal likelihood-ratio test",
                "ordinal": "Ordinal logistic models (ordinal::clm), focal likelihood-ratio test",
@@ -1430,11 +1590,15 @@ class DiscoveryPage(QWidget):
                        "subject-specific log-odds; proportional odds assumed",
                "gee": "GEE (geepack::geeglm): population-average effects, robust sandwich Wald tests; no likelihood "
                       "(QIC instead of AIC)"}[run.family]
-        effect = {"gaussian": "ΔR² (variance uniquely explained by the interaction)",
+        effect = {"gaussian": "ΔR² (variance uniquely explained by the tested terms — an interaction, a main-effect term or "
+                              "the whole model, as each test's type says)",
                   "binomial": "ΔMcFadden R² (deviance reduction / null deviance)",
                   "ordinal": "ΔMcFadden pseudo-R² (LR statistic / -2 log-likelihood of the null model)",
                   "multinomial": "ΔMcFadden pseudo-R² (deviance reduction / null deviance)",
-                  "lmm": "Δ marginal R² (random-intercept lme4 fits only; otherwise not computed)",
+                  "lmm": ("not applicable: covariance-structure comparisons have no effect size (LR statistic and "
+                          "AIC/BIC instead)" if s.participant and s.workflow == "structure" else
+                          "Δ marginal R² of the tested terms (direct variance decomposition, ML fits, every Gaussian "
+                          "structure)"),
                   "glmm": "not computed (use the LR statistic and odds ratios)",
                   "clmm": "not computed (use the LR statistic and odds ratios)",
                   "gee": "not computed (use the Wald statistic and coefficients)"}[run.family]
@@ -1615,6 +1779,40 @@ class DiscoveryPage(QWidget):
             return None
         return next(r for r in self.run.rows if r["idx"] == idx)
 
+    def _historical_view(self, action: str):
+        """(dataset, new-analysis reasons) for refitting a candidate of this search, or None when cancelled.
+        Current project = the search's view: refit as is. Changed project: the user chooses between rebuilding the
+        search's original data view and an explicitly NEW analysis under the current settings (STAT-39, H5)."""
+        from ...discovery.history import context
+
+        ctx = context(self.state.dataset, self.run)
+        if ctx.current:
+            return self.state.dataset, None
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Warning)
+        box.setWindowTitle("The project changed since this search")
+        diffs = "\n".join(f"• {d}" for d in ctx.differences)
+        original = None
+        if ctx.original is not None:
+            original = box.addButton("Refit the original model (rebuild the search's data view)",
+                                     QMessageBox.ButtonRole.AcceptRole)
+        new = box.addButton("New analysis with the current settings", QMessageBox.ButtonRole.ActionRole)
+        box.addButton(QMessageBox.StandardButton.Cancel)
+        box.setText(f"{action}: the data view this search used is no longer the project's current one.\n\n{diffs}\n\n"
+                    + ("Refitting the original rebuilds the search's filters, coding and variables from the snapshot "
+                       "stored with it (same source data) and checks the refit against the stored identity. "
+                       if ctx.original is not None else
+                       "The original model cannot be rebuilt, so it cannot be refitted or verified; its stored result "
+                       "stays available unchanged in this search. ")
+                    + "A new analysis uses the current data and settings and is labelled as a new analysis, never as "
+                      "the historical model.")
+        box.exec()
+        if original is not None and box.clickedButton() is original:
+            return ctx.original, None
+        if box.clickedButton() is new:
+            return self.state.dataset, list(ctx.differences)
+        return None
+
     def _open_detail(self) -> None:
         row = self._selected_row()
         if row is None:
@@ -1622,12 +1820,16 @@ class DiscoveryPage(QWidget):
         if row["status"] in ("invalid", "failed"):
             QMessageBox.information(self, "Discovery", f"This candidate was not fitted: {row['reason']}")
             return
-        ds, run = self.state.dataset, self.run
+        run = self.run
+        hv = self._historical_view("Open full analysis")
+        if hv is None:
+            return
+        ds, reasons = hv
         if run.settings.participant:
-            self._to_mixed(row)
+            self._to_mixed(row, ds, reasons)
             return
         cand = candidate_from_row(run, row)
-        self.state.run_r(lambda s: full_analysis(s, ds, run, cand), self._detail_done,
+        self.state.run_r(lambda s: full_analysis(s, ds, run, cand, reasons), self._detail_done,
                          lambda m: QMessageBox.warning(self, "Analysis failed", m))
 
     def _detail_done(self, out) -> None:
@@ -1671,23 +1873,43 @@ class DiscoveryPage(QWidget):
                 "workspace, where the refit is checked against the search.")
             return None
         try:
-            return from_candidate(self.run, row)
+            m = from_candidate(self.run, row)
         except TransferError as e:
             QMessageBox.information(self, "Discovery", str(e))
             return None
+        hv = self._historical_view(action)
+        if hv is None:
+            return None
+        ds, reasons = hv
+        if ds is not self.state.dataset:
+            QMessageBox.information(self, "Discovery", f"{action} fits models on the project's current data. To use the "
+                                    "original model there, restore the search's filters and variable settings in the "
+                                    "project first (or open the full analysis, which can rebuild the original view).")
+            return None
+        if reasons and isinstance(getattr(m, "descriptor", None), dict):
+            m.descriptor = dict(m.descriptor, new_analysis=True, new_analysis_reasons=list(reasons))
+        return m
 
-    def _to_mixed(self, row: dict[str, Any]) -> None:
+    def _to_mixed(self, row: dict[str, Any], ds=None, reasons: list[str] | None = None) -> None:
         """Longitudinal candidates: refit the exact formula and structure in the Mixed workspace, which draws
-        population-average and participant-specific trajectories (M §8.7). The result is labelled a refit."""
-        from ...analysis.mixed import MixedInputError, spec_from_discovery
+        population-average and participant-specific trajectories (M §8.7). The result is labelled a refit. On a
+        rebuilt historical view the refit runs here, on that view, never on the current project data."""
+        from ...analysis import mixed as mx
 
         if row["status"] in ("invalid", "failed"):
             QMessageBox.information(self, "Discovery", f"This candidate was not fitted: {row['reason']}")
             return
         try:
-            spec = spec_from_discovery(self.run, row)
-        except MixedInputError as e:
+            spec = mx.spec_from_discovery(self.run, row)
+        except mx.MixedInputError as e:
             QMessageBox.information(self, "Discovery", str(e))
+            return
+        if reasons:
+            spec.descriptor = dict(spec.descriptor or {}, new_analysis=True, new_analysis_reasons=list(reasons))
+            spec.source = f"NEW analysis under the current settings, started from {spec.source.split(' (')[0]}"
+        if ds is not None and ds is not self.state.dataset:      # rebuilt original view
+            self.state.run_r(lambda s: mx.run(s, ds, spec), self._detail_done,
+                             lambda m: QMessageBox.warning(self, "Analysis failed", m))
             return
         self.state.show_in_mixed.emit(spec)
 
@@ -1738,7 +1960,17 @@ class DiscoveryPage(QWidget):
         row = self._selected_row()
         if row is None:
             return
-        ds, run = self.state.dataset, self.run
+        run = self.run
+        hv = self._historical_view("View candidate code")
+        if hv is None:
+            return
+        ds, reasons = hv
+        if reasons:
+            QMessageBox.information(self, "View code", "The candidate code reproduces the search's model on the "
+                                    "search's data view, which can no longer be rebuilt from this project:\n\n"
+                                    + "\n".join(f"• {r}" for r in reasons) + "\n\nThe stored result is unchanged; "
+                                    "run a new search to obtain code for the current data.")
+            return
         cand = candidate_from_row(run, row)
 
         comparisons = (engine.structure_tests(run).get(int(row["idx"]), [])

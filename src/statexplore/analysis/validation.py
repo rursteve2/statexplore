@@ -226,6 +226,16 @@ class ResampleSpec:
     seed: int = 1
     folds: int = 5
     max_candidates: int = 2000
+    target: str = "auto"      # longitudinal procedure CV: auto | cluster | participant | temporal (CD-11)
+
+
+TARGETS = {
+    "cluster": "New organizations: whole clusters held out; population-level predictions (fixed effects only)",
+    "participant": "New participants in known organizations: whole participants held out; predictions use the "
+                   "estimated cluster effects of the training data (participant effects unknown)",
+    "temporal": "Future visits of known participants: each fold trains on earlier occasions only and predicts the next "
+                "occasion with the participants' training-data random effects",
+}
 
 
 def _discovery_setup(ds: Dataset, run: Any) -> tuple[str, list[Any], str | None]:
@@ -304,6 +314,8 @@ def procedure_cv(session: RSession, ds: Dataset, run: Any, rs: ResampleSpec) -> 
     """Repeat the whole search inside each training fold; evaluate the selected model on the test fold."""
     from ..discovery.space import focal_label, model_terms, view
 
+    if run.family == "lmm":
+        return procedure_cv_longitudinal(session, ds, run, rs)
     ds = view(ds, run.settings)
 
     body, cands, idv = _discovery_setup(ds, run)
@@ -423,4 +435,135 @@ def prediction_uncertainty(session: RSession, ds: Dataset, m: ModelSpec, x: str 
             key = f"plots/{p.name}"
             art[key] = p.read_bytes()
             res.plots.append(key)
+    return res, art
+
+
+# ---- clustered / longitudinal full-procedure validation (v1.3.2, CD-11) ----------------------------------------
+
+def _validation_target(run: Any, n_clusters: int | None, target: str) -> str:
+    s = run.settings
+    if target != "auto":
+        return target
+    return "cluster" if getattr(s, "cluster", None) and (n_clusters or 0) >= 10 else "participant"
+
+
+def procedure_cv_longitudinal(session: RSession, ds: Dataset, run: Any,
+                              rs: ResampleSpec) -> tuple[AnalysisResult, dict[str, bytes]]:
+    """Gaussian longitudinal searches (workflow A): the entire search runs inside each training fold and the selected
+    model is evaluated on data that played no part in selecting it. The split matches the declared prediction target;
+    individual repeated rows are never split at random, and too few groups means 'unavailable', not a row split."""
+    from ..discovery.history import context
+    from ..discovery.rcode import candidate_args, setup_script
+    from ..discovery.space import STRUCTURES, enumerate_candidates, focal_label, view
+
+    s = run.settings
+    if s.workflow == "structure":
+        raise ValidationInputError("Workflow B compares covariance structures for one fixed part; there is no "
+                                   "fixed-effect selection to cross-validate.")
+    if (s.structure or "ri").startswith("mmrm"):
+        raise ValidationInputError(f"Procedure validation is not available for {STRUCTURES[s.structure][0]}.")
+    if run.total > rs.max_candidates:
+        raise ValidationInputError(f"The whole search is repeated in every fold: limit it to searches with at most "
+                                   f"{rs.max_candidates:,} candidates.")
+    ctx = context(ds, run)
+    if not ctx.current:
+        raise ValidationInputError("The project changed since this search (" + "; ".join(ctx.differences) + "). "
+                                   "Validation repeats the search on its own data view: run a new search first.")
+    v = view(ds, s)
+    leaky = [d.name for d in v.derived.values() if d.op in ("zscore", "center")]
+    used = set([s.outcome] + s.candidates + s.required)
+    if used & set(leaky):
+        raise ValidationInputError("Standardized / centred derived variables (" + ", ".join(
+            v.var(n).display_name for n in sorted(used & set(leaky))) + ") use whole-sample means: their scaling would "
+            "leak information from the test folds. Use the raw variables for procedure validation.")
+    n_cl = int(v.analysis_frame([s.cluster])[s.cluster].nunique()) if getattr(s, "cluster", None) else None
+    target = _validation_target(run, n_cl, rs.target)
+    if target not in TARGETS:
+        raise ValidationInputError(f"Unknown validation target {target!r}.")
+    if target == "cluster" and not getattr(s, "cluster", None):
+        raise ValidationInputError("Holding out organizations needs a higher-level cluster in the search.")
+    if target == "temporal" and not s.time:
+        raise ValidationInputError("Future-visit validation needs a time variable.")
+    cands = list(enumerate_candidates(s))
+    setup = setup_script(v, s, run.family).replace("sx_result <- list(", "sx_setup_info <- list(")
+    labels = [focal_label(v, c) for c in cands]
+    k = int(rs.folds)
+    min_units = {"cluster": max(2 * k, 10), "participant": max(2 * k, 20), "temporal": 0}[target]
+    unit = {"cluster": "sx_cluster", "participant": "sx_gid", "temporal": "sx_gid"}[target]
+    body = "\n".join([
+        setup,
+        "sx_cands <- list(" + ",\n  ".join(f"list({candidate_args(v, c, s)})" for c in cands) + ")",
+        f"sx_labels <- {r_vec(labels)}",
+        "sx_pvals <- function() vapply(sx_cands, function(a) tryCatch(do.call(sx_discover_one, a)$p, "
+        "error = function(e) NA_real_), 0)",
+        "sx_fit_selected <- function(a, d) {",
+        "  f <- stats::reformulate(if (length(a$full)) a$full else \"1\", response = \"sx_y\")",
+        "  d <- sx_complete(d, c(\"sx_y\", a$vars, \"sx_gid\", if (sx_disc_has_cluster) \"sx_cluster\",",
+        "                       if (sx_disc_has_time) c(\"sx_time\", \"sx_timef\", \"sx_occ\")))",
+        "  if (sx_disc_has_time) d$sx_occ <- as.integer(d$sx_timef)",
+        "  sx_fit_model(f, d)",
+        "}",
+        "sx_predict_target <- function(m, newd, target) {",
+        "  if (inherits(m, \"merMod\")) {",
+        "    rf <- switch(target, cluster = NA, participant = if (sx_disc_clustered) ~ (1 | sx_cluster) else NA, temporal = NULL)",
+        "    return(as.numeric(stats::predict(m, newdata = newd, re.form = rf, allow.new.levels = TRUE)))",
+        "  }",
+        "  lev <- switch(target, cluster = 0, participant = if (sx_disc_clustered) 1 else 0,",
+        "                temporal = if (sx_disc_clustered) 2 else 1)",
+        "  as.numeric(stats::predict(m, newdata = newd, level = lev))",
+        "}",
+        f"sx_target <- {r_str(target)}",
+        f"set.seed({int(rs.seed)})",
+        "sx_full <- sx_dd",
+        "sx_rows <- list(); sx_skip <- character()",
+        "if (sx_target == \"temporal\") {",
+        "  sx_times <- sort(unique(sx_full$sx_time))",
+        f"  sx_cut <- utils::tail(sx_times, min({k}, max(length(sx_times) - 3, 0)))   # rolling origin: >= 3 earlier occasions",
+        "  sx_folds <- lapply(sx_cut, function(t) list(train = sx_full$sx_time < t, test = sx_full$sx_time == t, label = t))",
+        "} else {",
+        f"  sx_units <- sort(unique(as.character(sx_full${unit})))",
+        f"  sx_folds <- if (length(sx_units) < {min_units}) list() else {{",
+        f"    sx_gf <- sample(rep(seq_len({k}), length.out = length(sx_units)))",
+        f"    sx_uf <- sx_gf[match(as.character(sx_full${unit}), sx_units)]",
+        f"    lapply(seq_len({k}), function(f) list(train = sx_uf != f, test = sx_uf == f, label = f)) }}",
+        "}",
+        "if (!length(sx_folds)) stop(paste0(\"Validation unavailable: too few \", switch(sx_target, cluster = \"clusters\",",
+        f"  participant = \"participants\", temporal = \"occasions\"), \" for this target (need at least \", {min_units if min_units else 4},",
+        "  \"). Rows of the same participant are never split at random instead.\"))",
+        "for (sx_f in seq_along(sx_folds)) {",
+        "  sx_dd <- sx_full[sx_folds[[sx_f]]$train, , drop = FALSE]      # the whole search sees the training part only",
+        "  sx_p <- sx_pvals()",
+        "  if (all(is.na(sx_p))) { sx_skip <- c(sx_skip, paste0(\"fold \", sx_f, \": no candidate could be fitted\")); next }",
+        "  sx_j <- which.min(sx_p)",
+        "  sx_m <- tryCatch(sx_fit_selected(sx_cands[[sx_j]], sx_dd), error = function(e) e)",
+        "  if (inherits(sx_m, \"error\")) { sx_skip <- c(sx_skip, paste0(\"fold \", sx_f, \": \", conditionMessage(sx_m))); next }",
+        "  sx_test <- sx_full[sx_folds[[sx_f]]$test, , drop = FALSE]",
+        "  sx_vars <- sx_cands[[sx_j]]$vars",
+        "  sx_test <- sx_complete(sx_test, c(\"sx_y\", sx_vars, \"sx_gid\", if (sx_disc_has_cluster) \"sx_cluster\",",
+        "    if (sx_disc_has_time) c(\"sx_time\", \"sx_timef\", \"sx_occ\")))",
+        "  sx_test <- sx_test[sx_seen(sx_dd, sx_test, setdiff(sx_vars, c(\"sx_timef\"))), , drop = FALSE]",
+        "  if (sx_target == \"temporal\") sx_test <- sx_test[as.character(sx_test$sx_gid) %in% as.character(sx_dd$sx_gid), , drop = FALSE]",
+        "  sx_pred <- tryCatch(sx_predict_target(sx_m, sx_test, sx_target), error = function(e) rep(NA_real_, nrow(sx_test)))",
+        "  sx_ok <- is.finite(sx_pred)",
+        "  if (!any(sx_ok)) { sx_skip <- c(sx_skip, paste0(\"fold \", sx_f, \": no test row could be predicted\")); next }",
+        "  sx_rows[[length(sx_rows) + 1]] <- data.frame(fold = sx_folds[[sx_f]]$label, selected = sx_labels[sx_j],",
+        "    p_training = sx_p[sx_j], n_train = nrow(sx_dd), n_test = sum(sx_ok), test_units =",
+        f"    length(unique(as.character(sx_test${unit}[sx_ok]))), t(sx_metrics(sx_test$sx_y[sx_ok], sx_pred[sx_ok], \"gaussian\")))",
+        "}",
+        "sx_dd <- sx_full",
+        "if (!length(sx_rows)) stop(paste(\"Validation unavailable:\", paste(sx_skip, collapse = \"; \")))",
+        "sx_cvp <- do.call(rbind, sx_rows)",
+        "sx_sel <- as.data.frame(table(selected = sx_cvp$selected), stringsAsFactors = FALSE)",
+        "sx_result <- list(tables = list(",
+        f"  sx_table(\"Full-procedure validation\", sx_cvp, notes = paste0({r_str(TARGETS[target])}, \". In each fold \",",
+        "    \"the entire search ran on the training part only (selection, estimation, occasion index); the selected \",",
+        "    \"model was then evaluated on the held-out part. Exploratory: post-selection limits still apply.\")),",
+        "  sx_table(\"Models selected across folds\", sx_sel[order(-sx_sel$Freq), , drop = FALSE],",
+        "    notes = \"If different folds select different models, the discovery is unstable.\")),",
+        "  checks = sx_skip, n_used = nrow(sx_full))",
+    ]) + "\n"
+    res, art, _ = _finish(session, v, "procedure_cv", "Full-procedure validation (longitudinal)", body,
+                          {"run": run.id, "resample": vars(rs), "target": target}, ["lme4", "nlme"])
+    res.seed = rs.seed
+    res.values["validation_target"] = TARGETS[target]
     return res, art

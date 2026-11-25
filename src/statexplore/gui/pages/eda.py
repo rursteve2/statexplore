@@ -51,7 +51,10 @@ class CodeDialog(QDialog):
         self.text = text
         btns = QDialogButtonBox(QDialogButtonBox.Close)
         copy = btns.addButton("Copy", QDialogButtonBox.ActionRole)
-        copy.clicked.connect(lambda: (text.selectAll(), text.copy()))
+        self.copy_note = QLabel("")
+        lay.addWidget(self.copy_note)
+        copy.clicked.connect(self._copy)
+        self.result = result
         find = btns.addButton("Find (Ctrl+F)", QDialogButtonBox.ActionRole)
         find.clicked.connect(self.find_bar.open)
         self.dataset = dataset
@@ -62,6 +65,16 @@ class CodeDialog(QDialog):
             save.clicked.connect(self._save)
         btns.rejected.connect(self.reject)
         lay.addWidget(btns)
+
+    def _copy(self) -> None:
+        """Copy the whole script and say so (UI-41: reliable copy feedback)."""
+        from PySide6.QtWidgets import QApplication
+
+        txt = self.text.toPlainText()
+        QApplication.clipboard().setText(txt)
+        ok = QApplication.clipboard().text() == txt
+        self.copy_note.setText(f"Copied {len(txt.splitlines()):,} lines to the clipboard." if ok else
+                               "Copy failed: the clipboard did not accept the text (try again or use Save).")
 
     def _save(self) -> None:
         from pathlib import Path
@@ -74,7 +87,11 @@ class CodeDialog(QDialog):
         if not folder:
             return
         try:
-            written = write_portable(self.text.toPlainText(), Path(folder), self.dataset)
+            r = self.result
+            written = write_portable(self.text.toPlainText(), Path(folder), self.dataset,
+                                     provenance=(r.values.get("provenance") if r is not None else None),
+                                     identity=(r.values.get("identity") if r is not None else None),
+                                     engine=(r.engine if r is not None else None))
         except Exception as e:  # file system errors are user-facing
             QMessageBox.warning(self, "Save", f"Could not save: {e}")
             return

@@ -1,0 +1,455 @@
+fixture,model,metric,expected,atol,rtol,log_atol,check_in_reference_runner,source,qualification,actual,audit_status,audit_reason
+T35C_Identity,A,parameters,3,0,0,,YES,35C; equivalent fixture,,3,PASS,absolute error=0; limit=0
+T35C_Identity,A,logLik,-88.9462996,0.001,0,,YES,35C; equivalent fixture,,-88.9462995768692,PASS,absolute error=2.3130809268e-08; limit=0.001
+T35C_Identity,A,AIC,183.8925992,0.001,0,,YES,35C; equivalent fixture,,183.892599153738,PASS,absolute error=4.62620164399e-08; limit=0.001
+T35C_Identity,A,BIC,188.9592375,0.001,0,,YES,35C; equivalent fixture,,188.95923751608,PASS,absolute error=1.60800084359e-08; limit=0.001
+T35C_Identity,A,n,40,0,0,,YES,35C; equivalent fixture,,40,PASS,absolute error=0; limit=0
+T35C_Identity,A,coef.(Intercept).Estimate,50,0.00015,0,,YES,03 §7,,50,PASS,absolute error=0; limit=0.00015
+T35C_Identity,A,coef.X.Estimate,2,0.00015,0,,YES,03 §7,,2,PASS,absolute error=0; limit=0.00015
+T35C_Identity,B,parameters,3,0,0,,YES,35C; equivalent fixture,,3,PASS,absolute error=0; limit=0
+T35C_Identity,B,logLik,-88.9462996,0.001,0,,YES,35C; equivalent fixture,,-88.9462995768691,PASS,absolute error=2.3130908744e-08; limit=0.001
+T35C_Identity,B,AIC,183.8925992,0.001,0,,YES,35C; equivalent fixture,,183.892599153738,PASS,absolute error=4.62620164399e-08; limit=0.001
+T35C_Identity,B,BIC,188.9592375,0.001,0,,YES,35C; equivalent fixture,,188.95923751608,PASS,absolute error=1.60800084359e-08; limit=0.001
+T35C_Identity,B,n,40,0,0,,YES,35C; equivalent fixture,,40,PASS,absolute error=0; limit=0
+T35C_Identity,B,coef.(Intercept).Estimate,72,0.00015,0,,YES,03 §7,,72,PASS,absolute error=0; limit=0.00015
+T35C_Identity,B,coef.X.Estimate,-2,0.00015,0,,YES,03 §7,,-2,PASS,absolute error=0; limit=0.00015
+T36A,Independent,parameters,4,0,0,,YES,03 §7,,4,PASS,absolute error=0; limit=0
+T36A,Independent,logLik,-1492.816,0.001,0,,YES,03 §7,,-1492.81640878108,PASS,absolute error=0.000408781080068; limit=0.001
+T36A,Independent,n,800,0,0,,YES,03 §7,,800,PASS,absolute error=0; limit=0
+T36A,Independent,participants,100,0,0,,YES,03 §7,,100,PASS,absolute error=0; limit=0
+T36A,Independent,BIC_n,798,0,0,,YES,03 §7,,798,PASS,absolute error=0; limit=0
+T36A,AR1,parameters,5,0,0,,YES,03 §7,,5,PASS,absolute error=0; limit=0
+T36A,AR1,logLik,-1367.555,0.001,0,,YES,03 §7,,-1367.55485917073,PASS,absolute error=0.000140829270094; limit=0.001
+T36A,AR1,n,800,0,0,,YES,03 §7,,800,PASS,absolute error=0; limit=0
+T36A,AR1,participants,100,0,0,,YES,03 §7,,100,PASS,absolute error=0; limit=0
+T36A,AR1,BIC_n,798,0,0,,YES,03 §7,,798,PASS,absolute error=0; limit=0
+T36A,AR1,phi,-0.6006901,0.00015,0,,YES,03 §7,,-0.600690114877773,PASS,absolute error=1.48777730136e-08; limit=0.00015
+T36B,Independent,parameters,4,0,0,,YES,03 §7,,4,PASS,absolute error=0; limit=0
+T36B,Independent,logLik,-759.4791,0.001,0,,YES,03 §7,,-759.479139816163,PASS,absolute error=3.98161629391e-05; limit=0.001
+T36B,Independent,n,480,0,0,,YES,03 §7,,480,PASS,absolute error=0; limit=0
+T36B,Independent,participants,60,0,0,,YES,03 §7,,60,PASS,absolute error=0; limit=0
+T36B,Independent,BIC_n,478,0,0,,YES,03 §7,,478,PASS,absolute error=0; limit=0
+T36B,AR1,parameters,5,0,0,,YES,03 §7,,5,PASS,absolute error=0; limit=0
+T36B,AR1,logLik,-751.0028,0.001,0,,YES,03 §7,,-751.002809556202,PASS,absolute error=9.55620203058e-06; limit=0.001
+T36B,AR1,n,480,0,0,,YES,03 §7,,480,PASS,absolute error=0; limit=0
+T36B,AR1,participants,60,0,0,,YES,03 §7,,60,PASS,absolute error=0; limit=0
+T36B,AR1,BIC_n,478,0,0,,YES,03 §7,,478,PASS,absolute error=0; limit=0
+T36B,AR1,phi,0.24734,0.00015,0,,YES,03 §7,,0.247339828373994,PASS,absolute error=1.71626006018e-07; limit=0.00015
+T36B,CAR1,parameters,5,0,0,,YES,03 §7,,5,PASS,absolute error=0; limit=0
+T36B,CAR1,logLik,-751.0028,0.001,0,,YES,03 §7,,-751.002809551033,PASS,absolute error=9.55103303113e-06; limit=0.001
+T36B,CAR1,n,480,0,0,,YES,03 §7,,480,PASS,absolute error=0; limit=0
+T36B,CAR1,participants,60,0,0,,YES,03 §7,,60,PASS,absolute error=0; limit=0
+T36B,CAR1,BIC_n,478,0,0,,YES,03 §7,,478,PASS,absolute error=0; limit=0
+T36B,CAR1,phi,0.24734,0.00015,0,,YES,03 §7,,0.24734609351768,PASS,absolute error=6.09351767999e-06; limit=0.00015
+T36A,RI_Independent_to_AR1,LR_raw,250.5231,0.001,0,,YES,03 §7,,250.523099220698,PASS,absolute error=7.79302013143e-07; limit=0.001
+T36A,RI_Independent_to_CAR1,LR_raw,-7.008e-07,0.001,0,,NO,03 §7,"Optimizer-dependent tiny negative, audit only; test guard with injected value.",-7.00829332345165e-07,DOCUMENTARY,Not an automated historical numeric check
+T36C,RI_AR1,parameters,5,0,0,,YES,03 §7,,5,PASS,absolute error=0; limit=0
+T36C,RI_AR1,logLik,-1151.379751,0.001,0,,YES,03 §7,,-1151.37975134841,PASS,absolute error=3.4841013985e-07; limit=0.001
+T36C,RI_AR1,n,640,0,0,,YES,03 §7,,640,PASS,absolute error=0; limit=0
+T36C,RI_AR1,participants,80,0,0,,YES,03 §7,,80,PASS,absolute error=0; limit=0
+T36C,RI_AR1,BIC_n,638,0,0,,YES,03 §7,,638,PASS,absolute error=0; limit=0
+T36C,RI_CAR1,parameters,5,0,0,,YES,03 §7,,5,PASS,absolute error=0; limit=0
+T36C,RI_CAR1,logLik,-1151.379751,0.001,0,,YES,03 §7,,-1151.37975134807,PASS,absolute error=3.48069988831e-07; limit=0.001
+T36C,RI_CAR1,n,640,0,0,,YES,03 §7,,640,PASS,absolute error=0; limit=0
+T36C,RI_CAR1,participants,80,0,0,,YES,03 §7,,80,PASS,absolute error=0; limit=0
+T36C,RI_CAR1,BIC_n,638,0,0,,YES,03 §7,,638,PASS,absolute error=0; limit=0
+T36C,DIAG_AR1,parameters,6,0,0,,YES,03 §7,,6,PASS,absolute error=0; limit=0
+T36C,DIAG_AR1,logLik,-1118.134561,0.001,0,,YES,03 §7,,-1118.13456097774,PASS,absolute error=2.22601101996e-08; limit=0.001
+T36C,DIAG_AR1,n,640,0,0,,YES,03 §7,,640,PASS,absolute error=0; limit=0
+T36C,DIAG_AR1,participants,80,0,0,,YES,03 §7,,80,PASS,absolute error=0; limit=0
+T36C,DIAG_AR1,BIC_n,638,0,0,,YES,03 §7,,638,PASS,absolute error=0; limit=0
+T36C,DIAG_CAR1,parameters,6,0,0,,YES,03 §7,,6,PASS,absolute error=0; limit=0
+T36C,DIAG_CAR1,logLik,-1118.134561,0.001,0,,YES,03 §7,,-1118.13456097715,PASS,absolute error=2.28501448873e-08; limit=0.001
+T36C,DIAG_CAR1,n,640,0,0,,YES,03 §7,,640,PASS,absolute error=0; limit=0
+T36C,DIAG_CAR1,participants,80,0,0,,YES,03 §7,,80,PASS,absolute error=0; limit=0
+T36C,DIAG_CAR1,BIC_n,638,0,0,,YES,03 §7,,638,PASS,absolute error=0; limit=0
+T36C,RS_AR1,parameters,7,0,0,,YES,03 §7,,7,PASS,absolute error=0; limit=0
+T36C,RS_AR1,logLik,-1112.921533,0.001,0,,YES,03 §7,,-1112.92153331759,PASS,absolute error=3.17590092891e-07; limit=0.001
+T36C,RS_AR1,n,640,0,0,,YES,03 §7,,640,PASS,absolute error=0; limit=0
+T36C,RS_AR1,participants,80,0,0,,YES,03 §7,,80,PASS,absolute error=0; limit=0
+T36C,RS_AR1,BIC_n,638,0,0,,YES,03 §7,,638,PASS,absolute error=0; limit=0
+T36C,RS_CAR1,parameters,7,0,0,,YES,03 §7,,7,PASS,absolute error=0; limit=0
+T36C,RS_CAR1,logLik,-1112.921533,0.001,0,,YES,03 §7,,-1112.92153331731,PASS,absolute error=3.17309968523e-07; limit=0.001
+T36C,RS_CAR1,n,640,0,0,,YES,03 §7,,640,PASS,absolute error=0; limit=0
+T36C,RS_CAR1,participants,80,0,0,,YES,03 §7,,80,PASS,absolute error=0; limit=0
+T36C,RS_CAR1,BIC_n,638,0,0,,YES,03 §7,,638,PASS,absolute error=0; limit=0
+T36C,RS_AR1,AIC,2239.843067,0.001,0,,YES,03 §7,,2239.84306663517,PASS,absolute error=3.64829702448e-07; limit=0.001
+T36C,RS_AR1,BIC,2271.051435,0.001,0,,YES,03 §7,,2271.05143461859,PASS,absolute error=3.81409790862e-07; limit=0.001
+T36C,RS_AR1,ID.var_(Intercept),5.065646,0.00015,0,,YES,03 §7,,5.06564632419078,PASS,absolute error=3.24190779999e-07; limit=0.00015
+T36C,RS_AR1,ID.var_TIME,0.120237,0.00015,0,,YES,03 §7,,0.120237460183087,PASS,absolute error=4.60183086998e-07; limit=0.00015
+T36C,RS_AR1,ID.cov_intercept_TIME,0.342879,0.00015,0,,YES,03 §7,,0.342878814382109,PASS,absolute error=1.85617891002e-07; limit=0.00015
+T36C,RS_AR1,ID.corr_intercept_TIME,0.439343,0.00015,0,,YES,03 §7,,0.43934260691037,PASS,absolute error=3.93089629958e-07; limit=0.00015
+T36C,RS_AR1,Residual.variance,1.062479,0.00015,0,,YES,03 §7,,1.06247914727115,PASS,absolute error=1.47271149942e-07; limit=0.00015
+T36C,RS_AR1,phi,0.20521,0.00015,0,,YES,03 §7,,0.205209765947041,PASS,absolute error=2.34052959014e-07; limit=0.00015
+T36C,RS_Independent,parameters,6,0,0,,YES,03 §7,,6,PASS,absolute error=0; limit=0
+T36C,RS_Independent,logLik,-1118.118,0.001,0,,YES,03 §7,,-1118.1177406864,PASS,absolute error=0.000259313599827; limit=0.001
+T36C,RS_Independent,n,640,0,0,,YES,03 §7,,640,PASS,absolute error=0; limit=0
+T36C,RS_Independent,participants,80,0,0,,YES,03 §7,,80,PASS,absolute error=0; limit=0
+T36C,RS_Independent,BIC_n,638,0,0,,YES,03 §7,,638,PASS,absolute error=0; limit=0
+T36B,RI_Independent_to_CAR1,LR_raw,16.95266,0.001,0,,YES,03 §7,,16.9526605302599,PASS,absolute error=5.30259899989e-07; limit=0.001
+T36B,RI_Independent_to_CAR1,p_ordinary,3.832357e-05,0,0,0.006,YES,03 §7,,3.83235743599649e-05,PASS,absolute log error=1.13767184118e-07; limit=0.006
+T36B,RI_Independent_to_CAR1,p_boundary,1.916179e-05,0,0,0.006,YES,03 §7,,1.91617871799824e-05,PASS,absolute log error=1.47168808695e-07; limit=0.006
+T36C,RS_Independent_to_CAR1,LR_raw,10.39241,0.001,0,,YES,03 §7,,10.3924147381758,PASS,absolute error=4.73817580016e-06; limit=0.001
+T36C,RS_Independent_to_CAR1,p_ordinary,0.00126534,0,0,0.006,YES,03 §7,,0.00126534037049228,PASS,absolute log error=2.92800533153e-07; limit=0.006
+T36C,RS_Independent_to_CAR1,p_boundary,0.0006326702,0,0,0.006,YES,03 §7,,0.000632670185246138,PASS,absolute log error=2.33199886068e-08; limit=0.006
+T36D,RI_Independent_to_CAR1,LR_raw,163.9541,0.001,0,,YES,03 §7,,163.954065352595,PASS,absolute error=3.46474050161e-05; limit=0.001
+T36D,RI_Independent_to_CAR1,p_ordinary,1.548091e-37,0,0,0.006,YES,03 §7,,1.54809061898756e-37,PASS,absolute log error=2.46117622282e-07; limit=0.006
+T36D,RI_Independent_to_CAR1,p_boundary,7.740453e-38,0,0,0.006,YES,03 §7,,7.74045309493778e-38,PASS,absolute log error=1.22651471202e-08; limit=0.006
+T36D,RI_CAR1_ML,parameters,6,0,0,,YES,03 §7,,6,PASS,absolute error=0; limit=0
+T36D,RI_CAR1_ML,logLik,-1148.523,0.001,0,,YES,03 §7,,-1148.52258442181,PASS,absolute error=0.000415578189859; limit=0.001
+T36D,RI_CAR1_ML,AIC,2309.045,0.001,0,,YES,03 §7,,2309.04516884363,PASS,absolute error=0.000168843630036; limit=0.001
+T36D,RI_CAR1_ML,BIC,2335.814,0.001,0,,YES,03 §7,,2335.81397790175,PASS,absolute error=2.20982497012e-05; limit=0.001
+T36D,RI_CAR1_ML,n,640,0,0,,YES,03 §7,,640,PASS,absolute error=0; limit=0
+T36D,RI_CAR1_ML,participants,80,0,0,,YES,03 §7,,80,PASS,absolute error=0; limit=0
+T36D,RI_CAR1_ML,BIC_n,640,0,0,,YES,03 §7,,640,PASS,absolute error=0; limit=0
+T36D,RI_Independent,parameters,5,0,0,,YES,03 §7,,5,PASS,absolute error=0; limit=0
+T36D,RI_Independent,logLik,-1232.53,0.001,0,,YES,03 §7,,-1232.52957770486,PASS,absolute error=0.00042229513997; limit=0.001
+T36D,RI_Independent,n,640,0,0,,YES,03 §7,,640,PASS,absolute error=0; limit=0
+T36D,RI_Independent,participants,80,0,0,,YES,03 §7,,80,PASS,absolute error=0; limit=0
+T36D,RI_Independent,BIC_n,637,0,0,,YES,03 §7,,637,PASS,absolute error=0; limit=0
+T36D,RI_AR1,parameters,6,0,0,,YES,03 §7,,6,PASS,absolute error=0; limit=0
+T36D,RI_AR1,logLik,-1150.553,0.001,0,,YES,03 §7,,-1150.55254502897,PASS,absolute error=0.000454971030194; limit=0.001
+T36D,RI_AR1,n,640,0,0,,YES,03 §7,,640,PASS,absolute error=0; limit=0
+T36D,RI_AR1,participants,80,0,0,,YES,03 §7,,80,PASS,absolute error=0; limit=0
+T36D,RI_AR1,BIC_n,637,0,0,,YES,03 §7,,637,PASS,absolute error=0; limit=0
+T36D,RI_CAR1,parameters,6,0,0,,YES,03 §7,,6,PASS,absolute error=0; limit=0
+T36D,RI_CAR1,logLik,-1150.553,0.001,0,,YES,03 §7,,-1150.55254502856,PASS,absolute error=0.000454971440149; limit=0.001
+T36D,RI_CAR1,n,640,0,0,,YES,03 §7,,640,PASS,absolute error=0; limit=0
+T36D,RI_CAR1,participants,80,0,0,,YES,03 §7,,80,PASS,absolute error=0; limit=0
+T36D,RI_CAR1,BIC_n,637,0,0,,YES,03 §7,,637,PASS,absolute error=0; limit=0
+T37A,lmer_RI,parameters,4,0,0,,YES,03 §7,,4,PASS,absolute error=0; limit=0
+T37A,lmer_RI,logLik,-1054.949831,0.001,0,,YES,03 §7,,-1054.94983094997,PASS,absolute error=5.00299393025e-08; limit=0.001
+T37A,lmer_RI,n,640,0,0,,YES,03 §7,,640,PASS,absolute error=0; limit=0
+T37A,lmer_RI,participants,80,0,0,,YES,03 §7,,80,PASS,absolute error=0; limit=0
+T37A,lmer_RI,BIC_n,640,0,0,,YES,03 §7,,640,PASS,absolute error=0; limit=0
+T37A,lmer_DIAG,parameters,5,0,0,,YES,03 §7,,5,PASS,absolute error=0; limit=0
+T37A,lmer_DIAG,logLik,-1054.949831,0.001,0,,YES,03 §7,,-1054.94983094997,PASS,absolute error=5.00299393025e-08; limit=0.001
+T37A,lmer_DIAG,n,640,0,0,,YES,03 §7,,640,PASS,absolute error=0; limit=0
+T37A,lmer_DIAG,participants,80,0,0,,YES,03 §7,,80,PASS,absolute error=0; limit=0
+T37A,lmer_DIAG,BIC_n,640,0,0,,YES,03 §7,,640,PASS,absolute error=0; limit=0
+T37A,lmer_RS,parameters,6,0,0,,YES,03 §7,,6,PASS,absolute error=0; limit=0
+T37A,lmer_RS,logLik,-1054.936202,0.001,0,,YES,03 §7,,-1054.93620195367,PASS,absolute error=4.63301148557e-08; limit=0.001
+T37A,lmer_RS,n,640,0,0,,YES,03 §7,,640,PASS,absolute error=0; limit=0
+T37A,lmer_RS,participants,80,0,0,,YES,03 §7,,80,PASS,absolute error=0; limit=0
+T37A,lmer_RS,BIC_n,640,0,0,,YES,03 §7,,640,PASS,absolute error=0; limit=0
+T37A,lmer_RS,singular,1,0,0,,NO,03 §7,Diagnostic depends on optimizer/package; investigate change,1,DOCUMENTARY,Not an automated historical numeric check
+T37B,lmer_RI,parameters,4,0,0,,YES,03 §7,,4,PASS,absolute error=0; limit=0
+T37B,lmer_RI,logLik,-1157.8326605,0.001,0,,YES,03 §7,,-1157.83266046053,PASS,absolute error=3.94700236939e-08; limit=0.001
+T37B,lmer_RI,n,640,0,0,,YES,03 §7,,640,PASS,absolute error=0; limit=0
+T37B,lmer_RI,participants,80,0,0,,YES,03 §7,,80,PASS,absolute error=0; limit=0
+T37B,lmer_RI,BIC_n,640,0,0,,YES,03 §7,,640,PASS,absolute error=0; limit=0
+T37B,lmer_DIAG,parameters,5,0,0,,YES,03 §7,,5,PASS,absolute error=0; limit=0
+T37B,lmer_DIAG,logLik,-1107.1969355,0.001,0,,YES,03 §7,,-1107.19693547122,PASS,absolute error=2.87800503429e-08; limit=0.001
+T37B,lmer_DIAG,n,640,0,0,,YES,03 §7,,640,PASS,absolute error=0; limit=0
+T37B,lmer_DIAG,participants,80,0,0,,YES,03 §7,,80,PASS,absolute error=0; limit=0
+T37B,lmer_DIAG,BIC_n,640,0,0,,YES,03 §7,,640,PASS,absolute error=0; limit=0
+T37B,lmer_RS,parameters,6,0,0,,YES,03 §7,,6,PASS,absolute error=0; limit=0
+T37B,lmer_RS,logLik,-967.1579071,0.001,0,,YES,03 §7,,-967.157907096592,PASS,absolute error=3.40799033438e-09; limit=0.001
+T37B,lmer_RS,n,640,0,0,,YES,03 §7,,640,PASS,absolute error=0; limit=0
+T37B,lmer_RS,participants,80,0,0,,YES,03 §7,,80,PASS,absolute error=0; limit=0
+T37B,lmer_RS,BIC_n,640,0,0,,YES,03 §7,,640,PASS,absolute error=0; limit=0
+T37B,lmer_RS,singular,1,0,0,,NO,03 §7,Diagnostic depends on optimizer/package; investigate change,1,DOCUMENTARY,Not an automated historical numeric check
+T37A,lmer_RS,R2_direct_m,0.2143814,0.001,0,,YES,03 §7,Direct Gaussian variance decomposition,0.214381425397479,PASS,absolute error=2.53974790088e-08; limit=0.001
+T37A,lmer_RS,R2_direct_c,0.8156715,0.001,0,,YES,03 §7,Direct Gaussian variance decomposition,0.815671523853384,PASS,absolute error=2.38533840458e-08; limit=0.001
+T37B,lmer_RS,R2_direct_m,0.4333396,0.001,0,,YES,03 §7,Direct Gaussian variance decomposition,0.433339618260985,PASS,absolute error=1.82609850019e-08; limit=0.001
+T37B,lmer_RS,R2_direct_c,0.7748137,0.001,0,,YES,03 §7,Direct Gaussian variance decomposition,0.774813710543381,PASS,absolute error=1.05433809461e-08; limit=0.001
+T37A,lmer_DIAG,ID.var_TIME,0,0.00015,0,,NO,03 §7,Near-boundary optimizer-dependent; verify scaled diagnostics,0,DOCUMENTARY,Not an automated historical numeric check
+T37A,lmer_RS,ID.var_TIME,8.838e-06,0.00015,0,,NO,03 §7,Near-boundary optimizer-dependent; verify scaled diagnostics,8.83800001787508e-06,DOCUMENTARY,Not an automated historical numeric check
+T37A,DIAG_AR1,ID.var_TIME,9.43409e-10,0.00015,0,,NO,03 §7,Near-boundary optimizer-dependent; verify scaled diagnostics,9.43408963194051e-10,DOCUMENTARY,Not an automated historical numeric check
+T37A,RS_AR1,ID.var_TIME,7.69875e-10,0.00015,0,,NO,03 §7,Near-boundary optimizer-dependent; verify scaled diagnostics,7.69874786588173e-10,DOCUMENTARY,Not an automated historical numeric check
+T37B,RI_AR1,parameters,5,0,0,,NO,37B/37C optimizer-specific historical reference,,5,DOCUMENTARY,Not an automated historical numeric check
+T37B,RI_AR1,logLik,-1073.795117,0.001,0,,NO,37B/37C optimizer-specific historical reference,,-1073.79511667549,DOCUMENTARY,Not an automated historical numeric check
+T37B,RI_AR1,n,640,0,0,,NO,37B/37C optimizer-specific historical reference,,640,DOCUMENTARY,Not an automated historical numeric check
+T37B,RI_AR1,participants,80,0,0,,NO,37B/37C optimizer-specific historical reference,,80,DOCUMENTARY,Not an automated historical numeric check
+T37B,RI_AR1,BIC_n,638,0,0,,NO,37B/37C optimizer-specific historical reference,,638,DOCUMENTARY,Not an automated historical numeric check
+T37B,DIAG_AR1,parameters,6,0,0,,NO,37B/37C optimizer-specific historical reference,,6,DOCUMENTARY,Not an automated historical numeric check
+T37B,DIAG_AR1,logLik,-1105.779453,0.001,0,,NO,37B/37C optimizer-specific historical reference,,-1105.77945310569,DOCUMENTARY,Not an automated historical numeric check
+T37B,DIAG_AR1,n,640,0,0,,NO,37B/37C optimizer-specific historical reference,,640,DOCUMENTARY,Not an automated historical numeric check
+T37B,DIAG_AR1,participants,80,0,0,,NO,37B/37C optimizer-specific historical reference,,80,DOCUMENTARY,Not an automated historical numeric check
+T37B,DIAG_AR1,BIC_n,638,0,0,,NO,37B/37C optimizer-specific historical reference,,638,DOCUMENTARY,Not an automated historical numeric check
+T37B,RS_AR1,parameters,7,0,0,,NO,37B/37C optimizer-specific historical reference,,7,DOCUMENTARY,Not an automated historical numeric check
+T37B,RS_AR1,logLik,-967.697216,0.001,0,,NO,37B/37C optimizer-specific historical reference,,-967.697215942449,DOCUMENTARY,Not an automated historical numeric check
+T37B,RS_AR1,n,640,0,0,,NO,37B/37C optimizer-specific historical reference,,640,DOCUMENTARY,Not an automated historical numeric check
+T37B,RS_AR1,participants,80,0,0,,NO,37B/37C optimizer-specific historical reference,,80,DOCUMENTARY,Not an automated historical numeric check
+T37B,RS_AR1,BIC_n,638,0,0,,NO,37B/37C optimizer-specific historical reference,,638,DOCUMENTARY,Not an automated historical numeric check
+T37B,RI_to_DIAG_AR1,LR_raw,-63.968673,0.001,0,,NO,03 §7,"Material negative independent reference; mandatory injected guard, not confirmed app inference defect.",-63.9686728604038,DOCUMENTARY,Not an automated historical numeric check
+T37B,lmer_RS,ID.var_(Intercept),4.219081368,0.00015,0,,NO,03 §7,Near-boundary solution; investigate optimizer differences,4.21908137067971,DOCUMENTARY,Not an automated historical numeric check
+T37B,lmer_RS,ID.var_TIME,0.21163753,0.00015,0,,NO,03 §7,Near-boundary solution; investigate optimizer differences,0.211637530141899,DOCUMENTARY,Not an automated historical numeric check
+T37B,lmer_RS,ID.cov_intercept_TIME,-0.944942305,0.00015,0,,NO,03 §7,Near-boundary solution; investigate optimizer differences,-0.94494230551836,DOCUMENTARY,Not an automated historical numeric check
+T37B,lmer_RS,ID.corr_intercept_TIME,-1,0.00015,0,,NO,03 §7,Near-boundary solution; investigate optimizer differences,-1,DOCUMENTARY,Not an automated historical numeric check
+T37B,lmer_RS,Residual.variance,0.8626588,0.00015,0,,NO,03 §7,Near-boundary solution; investigate optimizer differences,0.862658842550704,DOCUMENTARY,Not an automated historical numeric check
+T37A_Discovery,RI,parameters,5,0,0,,YES,03 §7,,5,PASS,absolute error=0; limit=0
+T37A_Discovery,RI,logLik,-1054.806699,0.001,0,,YES,03 §7,,-1054.80669929595,PASS,absolute error=2.95950030704e-07; limit=0.001
+T37A_Discovery,RI,n,640,0,0,,YES,03 §7,,640,PASS,absolute error=0; limit=0
+T37A_Discovery,RI,participants,80,0,0,,YES,03 §7,,80,PASS,absolute error=0; limit=0
+T37A_Discovery,DIAG,parameters,6,0,0,,YES,03 §7,,6,PASS,absolute error=0; limit=0
+T37A_Discovery,DIAG,logLik,-1054.806699,0.001,0,,YES,03 §7,,-1054.80669929642,PASS,absolute error=2.96420012091e-07; limit=0.001
+T37A_Discovery,DIAG,n,640,0,0,,YES,03 §7,,640,PASS,absolute error=0; limit=0
+T37A_Discovery,DIAG,participants,80,0,0,,YES,03 §7,,80,PASS,absolute error=0; limit=0
+T37A_Discovery,RS,parameters,7,0,0,,YES,03 §7,,7,PASS,absolute error=0; limit=0
+T37A_Discovery,RS,logLik,-1054.784005,0.001,0,,YES,03 §7,,-1054.78400462882,PASS,absolute error=3.7118002183e-07; limit=0.001
+T37A_Discovery,RS,n,640,0,0,,YES,03 §7,,640,PASS,absolute error=0; limit=0
+T37A_Discovery,RS,participants,80,0,0,,YES,03 §7,,80,PASS,absolute error=0; limit=0
+T37D_3702,RI,parameters,5,0,0,,YES,03 §7,,5,PASS,absolute error=0; limit=0
+T37D_3702,RI,logLik,-1223.948017673669,0.001,0,,YES,03 §7,,-1223.94801767367,PASS,absolute error=9.09494701773e-13; limit=0.001
+T37D_3702,RI,AIC,2457.896035347338,0.001,0,,YES,03 §7,,2457.89603534734,PASS,absolute error=1.81898940355e-12; limit=0.001
+T37D_3702,RI,BIC,2480.203376229106,0.001,0,,YES,03 §7,,2480.20337622911,PASS,absolute error=3.63797880709e-12; limit=0.001
+T37D_3702,RI,n,640,0,0,,YES,03 §7,,640,PASS,absolute error=0; limit=0
+T37D_3702,RI,participants,80,0,0,,YES,03 §7,,80,PASS,absolute error=0; limit=0
+T37D_3702,RI,BIC_n,640,0,0,,YES,03 §7,,640,PASS,absolute error=0; limit=0
+T37D_3702,DIAG,parameters,6,0,0,,YES,03 §7,,6,PASS,absolute error=0; limit=0
+T37D_3702,DIAG,logLik,-1181.306000964265,0.001,0,,YES,03 §7,,-1181.30600096427,PASS,absolute error=5.00222085975e-12; limit=0.001
+T37D_3702,DIAG,AIC,2374.612001928531,0.001,0,,YES,03 §7,,2374.61200192853,PASS,absolute error=9.09494701773e-13; limit=0.001
+T37D_3702,DIAG,BIC,2401.380810986653,0.001,0,,YES,03 §7,,2401.38081098665,PASS,absolute error=3.18323145621e-12; limit=0.001
+T37D_3702,DIAG,n,640,0,0,,YES,03 §7,,640,PASS,absolute error=0; limit=0
+T37D_3702,DIAG,participants,80,0,0,,YES,03 §7,,80,PASS,absolute error=0; limit=0
+T37D_3702,DIAG,BIC_n,640,0,0,,YES,03 §7,,640,PASS,absolute error=0; limit=0
+T37D_3702,RS,parameters,7,0,0,,YES,03 §7,,7,PASS,absolute error=0; limit=0
+T37D_3702,RS,logLik,-1054.987575040055,0.001,0,,YES,03 §7,,-1054.98757504005,PASS,absolute error=5.00222085975e-12; limit=0.001
+T37D_3702,RS,AIC,2123.97515008011,0.001,0,,YES,03 §7,,2123.97515008011,PASS,absolute error=0; limit=0.001
+T37D_3702,RS,BIC,2155.205427314586,0.001,0,,YES,03 §7,,2155.20542731459,PASS,absolute error=4.09272615798e-12; limit=0.001
+T37D_3702,RS,n,640,0,0,,YES,03 §7,,640,PASS,absolute error=0; limit=0
+T37D_3702,RS,participants,80,0,0,,YES,03 §7,,80,PASS,absolute error=0; limit=0
+T37D_3702,RS,BIC_n,640,0,0,,YES,03 §7,,640,PASS,absolute error=0; limit=0
+T37D_3702,RS_TIME_first,parameters,7,0,0,,YES,03 §7,,7,PASS,absolute error=0; limit=0
+T37D_3702,RS_TIME_first,logLik,-1054.987573745314,0.001,0,,YES,03 §7,,-1054.98757374531,PASS,absolute error=3.86535248253e-12; limit=0.001
+T37D_3702,RS_TIME_first,AIC,2123.975147490628,0.001,0,,YES,03 §7,,2123.97514749063,PASS,absolute error=2.27373675443e-12; limit=0.001
+T37D_3702,RS_TIME_first,BIC,2155.205424725104,0.001,0,,YES,03 §7,,2155.2054247251,PASS,absolute error=4.09272615798e-12; limit=0.001
+T37D_3702,RS_TIME_first,n,640,0,0,,YES,03 §7,,640,PASS,absolute error=0; limit=0
+T37D_3702,RS_TIME_first,participants,80,0,0,,YES,03 §7,,80,PASS,absolute error=0; limit=0
+T37D_3702,RS_TIME_first,BIC_n,640,0,0,,YES,03 §7,,640,PASS,absolute error=0; limit=0
+T37D_3702,RS_bobyqa,logLik,-1054.987573560655,0.001,0,,YES,03 §7,,-1054.98757356065,PASS,absolute error=5.00222085975e-12; limit=0.001
+T37D_3702,RI_to_RS,LR_raw,337.9208852672,0.001,0,,YES,03 §7,,337.920885267228,PASS,absolute error=2.80238054984e-11; limit=0.001
+T37D_3702,RI_to_RS,p_boundary,2.1816331494e-74,0,0,0.006,YES,03 §7,Nominal calculation; warn/qualify if flagged.,2.18163314943997e-74,PASS,absolute log error=1.83320025826e-11; limit=0.006
+T37D_3702,RI_to_RS,BH_adjusted_p,6.5448994483e-74,0.00015,0,,NO,03 §7,Historical Discovery family; check app multiplicity separately.,,DOCUMENTARY,Not an automated historical numeric check
+T37D_3702,DIAG_to_RS,LR_raw,252.6368518484,0.001,0,,YES,03 §7,,252.636851848421,PASS,absolute error=2.10036432691e-11; limit=0.001
+T37D_3702,DIAG_to_RS,p_ordinary,6.9118453269e-57,0,0,0.006,YES,03 §7,Nominal calculation; warn/qualify if flagged.,6.91184532694175e-57,PASS,absolute log error=6.02540239925e-12; limit=0.006
+T37D_3702,DIAG_to_RS,BH_adjusted_p,1.036776799e-56,0.00015,0,,NO,03 §7,Historical Discovery family; check app multiplicity separately.,,DOCUMENTARY,Not an automated historical numeric check
+T37D_3702,RI_to_DIAG,LR_raw,85.2840334188,0.001,0,,YES,03 §7,,85.2840334188068,PASS,absolute error=6.79278855387e-12; limit=0.001
+T37D_3702,RI_to_DIAG,p_boundary,1.2922085521e-20,0,0,0.006,YES,03 §7,Nominal calculation; warn/qualify if flagged.,1.29220855205753e-20,PASS,absolute log error=3.28697069563e-11; limit=0.006
+T37D_3702,RI_to_DIAG,BH_adjusted_p,1.2922085521e-20,0.00015,0,,NO,03 §7,Historical Discovery family; check app multiplicity separately.,,DOCUMENTARY,Not an automated historical numeric check
+T38,2L_RI_Independent,parameters,5,0,0,,YES,03 §7,,5,PASS,absolute error=0; limit=0
+T38,2L_RI_Independent,logLik,-1847.132011,0.001,0,,YES,03 §7,,-1847.13201060168,PASS,absolute error=3.98320025852e-07; limit=0.001
+T38,2L_RI_Independent,AIC,3704.264021,0.001,0,,YES,03 §7,,3704.26402120335,PASS,absolute error=2.03349827643e-07; limit=0.001
+T38,2L_RI_Independent,BIC,3728.598688,0.001,0,,YES,03 §7,,3728.59868762566,PASS,absolute error=3.74339833797e-07; limit=0.001
+T38,2L_RI_Independent,n,960,0,0,,YES,03 §7,,960,PASS,absolute error=0; limit=0
+T38,2L_RI_Independent,participants,160,0,0,,YES,03 §7,,160,PASS,absolute error=0; limit=0
+T38,2L_RI_Independent,BIC_n,960,0,0,,YES,03 §7,,960,PASS,absolute error=0; limit=0
+T38,2L_RI_Independent,modeled_clusters,0,0,0,,YES,03 §7,,0,PASS,absolute error=0; limit=0
+T38,2L_RI_Independent,R2_package_m,0.086,0.001,0,,NO,03 §7,Historical package-specific output; validate estimand and denominator separately.,0.0862309702820907,DOCUMENTARY,Not an automated historical numeric check
+T38,2L_RI_Independent,R2_package_c,0.895,0.001,0,,NO,03 §7,Historical package-specific output; validate estimand and denominator separately.,0.894792313809404,DOCUMENTARY,Not an automated historical numeric check
+T38,2L_RS_Independent,parameters,7,0,0,,YES,03 §7,,7,PASS,absolute error=0; limit=0
+T38,2L_RS_Independent,logLik,-1739.520219,0.001,0,,YES,03 §7,,-1739.52021864231,PASS,absolute error=3.57689941666e-07; limit=0.001
+T38,2L_RS_Independent,AIC,3493.040437,0.001,0,,YES,03 §7,,3493.04043728462,PASS,absolute error=2.84620000457e-07; limit=0.001
+T38,2L_RS_Independent,BIC,3527.10897,0.001,0,,YES,03 §7,,3527.10897027586,PASS,absolute error=2.75859747489e-07; limit=0.001
+T38,2L_RS_Independent,n,960,0,0,,YES,03 §7,,960,PASS,absolute error=0; limit=0
+T38,2L_RS_Independent,participants,160,0,0,,YES,03 §7,,160,PASS,absolute error=0; limit=0
+T38,2L_RS_Independent,BIC_n,960,0,0,,YES,03 §7,,960,PASS,absolute error=0; limit=0
+T38,2L_RS_Independent,modeled_clusters,0,0,0,,YES,03 §7,,0,PASS,absolute error=0; limit=0
+T38,2L_RS_Independent,R2_package_m,0.072,0.001,0,,NO,03 §7,Historical package-specific output; validate estimand and denominator separately.,0.0724539505485566,DOCUMENTARY,Not an automated historical numeric check
+T38,2L_RS_Independent,R2_package_c,0.938,0.001,0,,NO,03 §7,Historical package-specific output; validate estimand and denominator separately.,0.938251545901886,DOCUMENTARY,Not an automated historical numeric check
+T38,3L_RI_Independent,parameters,6,0,0,,YES,03 §7,,6,PASS,absolute error=0; limit=0
+T38,3L_RI_Independent,logLik,-1791.132419,0.001,0,,YES,03 §7,,-1791.13241949334,PASS,absolute error=4.93339939567e-07; limit=0.001
+T38,3L_RI_Independent,AIC,3594.264839,0.001,0,,YES,03 §7,,3594.26483898668,PASS,absolute error=1.33200046548e-08; limit=0.001
+T38,3L_RI_Independent,BIC,3623.466439,0.001,0,,YES,03 §7,,3623.46643869346,PASS,absolute error=3.06539732264e-07; limit=0.001
+T38,3L_RI_Independent,n,960,0,0,,YES,03 §7,,960,PASS,absolute error=0; limit=0
+T38,3L_RI_Independent,participants,160,0,0,,YES,03 §7,,160,PASS,absolute error=0; limit=0
+T38,3L_RI_Independent,BIC_n,960,0,0,,YES,03 §7,,960,PASS,absolute error=0; limit=0
+T38,3L_RI_Independent,modeled_clusters,20,0,0,,YES,03 §7,,20,PASS,absolute error=0; limit=0
+T38,3L_RI_Independent,R2_package_m,0.084,0.001,0,,NO,03 §7,Historical package-specific output; validate estimand and denominator separately.,0.0844460615714638,DOCUMENTARY,Not an automated historical numeric check
+T38,3L_RI_Independent,R2_package_c,0.897,0.001,0,,NO,03 §7,Historical package-specific output; validate estimand and denominator separately.,0.896970020646932,DOCUMENTARY,Not an automated historical numeric check
+T38,3L_RS_Independent,parameters,8,0,0,,YES,03 §7,,8,PASS,absolute error=0; limit=0
+T38,3L_RS_Independent,logLik,-1674.262195,0.001,0,,YES,03 §7,,-1674.26219498964,PASS,absolute error=1.03600541479e-08; limit=0.001
+T38,3L_RS_Independent,AIC,3364.52439,0.001,0,,YES,03 §7,,3364.52438997927,PASS,absolute error=2.07301127375e-08; limit=0.001
+T38,3L_RS_Independent,BIC,3403.459856,0.001,0,,YES,03 §7,,3403.45985625497,PASS,absolute error=2.54970018432e-07; limit=0.001
+T38,3L_RS_Independent,n,960,0,0,,YES,03 §7,,960,PASS,absolute error=0; limit=0
+T38,3L_RS_Independent,participants,160,0,0,,YES,03 §7,,160,PASS,absolute error=0; limit=0
+T38,3L_RS_Independent,BIC_n,960,0,0,,YES,03 §7,,960,PASS,absolute error=0; limit=0
+T38,3L_RS_Independent,modeled_clusters,20,0,0,,YES,03 §7,,20,PASS,absolute error=0; limit=0
+T38,3L_RS_Independent,R2_package_m,0.075,0.001,0,,NO,03 §7,Historical package-specific output; validate estimand and denominator separately.,0.0753707929100943,DOCUMENTARY,Not an automated historical numeric check
+T38,3L_RS_Independent,R2_package_c,0.938,0.001,0,,NO,03 §7,Historical package-specific output; validate estimand and denominator separately.,0.937640143407732,DOCUMENTARY,Not an automated historical numeric check
+T38,3L_RI_AR1,parameters,7,0,0,,YES,03 §7,,7,PASS,absolute error=0; limit=0
+T38,3L_RI_AR1,logLik,-1677.86,0.001,0,,YES,03 §7,,-1677.85963126349,PASS,absolute error=0.000368736509927; limit=0.001
+T38,3L_RI_AR1,AIC,3369.719,0.001,0,,YES,03 §7,,3369.71926252697,PASS,absolute error=0.000262526969891; limit=0.001
+T38,3L_RI_AR1,BIC,3403.766,0.001,0,,YES,03 §7,,3403.76588626714,PASS,absolute error=0.000113732859973; limit=0.001
+T38,3L_RI_AR1,n,960,0,0,,YES,03 §7,,960,PASS,absolute error=0; limit=0
+T38,3L_RI_AR1,participants,160,0,0,,YES,03 §7,,160,PASS,absolute error=0; limit=0
+T38,3L_RI_AR1,BIC_n,957,0,0,,YES,03 §7,,957,PASS,absolute error=0; limit=0
+T38,3L_RI_AR1,modeled_clusters,20,0,0,,YES,03 §7,,20,PASS,absolute error=0; limit=0
+T38,3L_RI_AR1,R2_package_m,0.082,0.001,0,,NO,03 §7,Historical package-specific output; validate estimand and denominator separately.,0.0816750566486026,DOCUMENTARY,Not an automated historical numeric check
+T38,3L_RI_AR1,R2_package_c,0.772,0.001,0,,NO,03 §7,Historical package-specific output; validate estimand and denominator separately.,0.771536336236962,DOCUMENTARY,Not an automated historical numeric check
+T38,3L_RI_CAR1,parameters,7,0,0,,YES,03 §7,,7,PASS,absolute error=0; limit=0
+T38,3L_RI_CAR1,logLik,-1677.86,0.001,0,,YES,03 §7,,-1677.85963125818,PASS,absolute error=0.000368741820012; limit=0.001
+T38,3L_RI_CAR1,AIC,3369.719,0.001,0,,YES,03 §7,,3369.71926251636,PASS,absolute error=0.000262516359726; limit=0.001
+T38,3L_RI_CAR1,BIC,3403.766,0.001,0,,YES,03 §7,,3403.76588625653,PASS,absolute error=0.000113743470138; limit=0.001
+T38,3L_RI_CAR1,n,960,0,0,,YES,03 §7,,960,PASS,absolute error=0; limit=0
+T38,3L_RI_CAR1,participants,160,0,0,,YES,03 §7,,160,PASS,absolute error=0; limit=0
+T38,3L_RI_CAR1,BIC_n,957,0,0,,YES,03 §7,,957,PASS,absolute error=0; limit=0
+T38,3L_RI_CAR1,modeled_clusters,20,0,0,,YES,03 §7,,20,PASS,absolute error=0; limit=0
+T38,3L_RI_CAR1,R2_package_m,0.082,0.001,0,,NO,03 §7,Historical package-specific output; validate estimand and denominator separately.,0.0816746610324781,DOCUMENTARY,Not an automated historical numeric check
+T38,3L_RI_CAR1,R2_package_c,0.772,0.001,0,,NO,03 §7,Historical package-specific output; validate estimand and denominator separately.,0.771541502778749,DOCUMENTARY,Not an automated historical numeric check
+T38,3L_RI_CAR1,phi,0.754,0.0006,0,,YES,03 §7,,0.753642802505292,PASS,absolute error=0.000357197494708; limit=0.0006
+T38,3L_DIAG_AR1,parameters,8,0,0,,YES,03 §7,,8,PASS,absolute error=0; limit=0
+T38,3L_DIAG_AR1,logLik,-1655.784,0.001,0,,YES,03 §7,,-1655.7844700998,PASS,absolute error=0.000470099799941; limit=0.001
+T38,3L_DIAG_AR1,AIC,3327.569,0.001,0,,YES,03 §7,,3327.56894019961,PASS,absolute error=5.98003898631e-05; limit=0.001
+T38,3L_DIAG_AR1,BIC,3366.479,0.001,0,,YES,03 §7,,3366.47936733123,PASS,absolute error=0.000367331230336; limit=0.001
+T38,3L_DIAG_AR1,n,960,0,0,,YES,03 §7,,960,PASS,absolute error=0; limit=0
+T38,3L_DIAG_AR1,participants,160,0,0,,YES,03 §7,,160,PASS,absolute error=0; limit=0
+T38,3L_DIAG_AR1,BIC_n,957,0,0,,YES,03 §7,,957,PASS,absolute error=0; limit=0
+T38,3L_DIAG_AR1,modeled_clusters,20,0,0,,YES,03 §7,,20,PASS,absolute error=0; limit=0
+T38,3L_DIAG_AR1,R2_package_m,0.079,0.001,0,,NO,03 §7,Historical package-specific output; validate estimand and denominator separately.,0.0792666349526105,DOCUMENTARY,Not an automated historical numeric check
+T38,3L_DIAG_AR1,R2_package_c,0.908,0.001,0,,NO,03 §7,Historical package-specific output; validate estimand and denominator separately.,0.907955035801788,DOCUMENTARY,Not an automated historical numeric check
+T38,3L_DIAG_CAR1,parameters,8,0,0,,YES,03 §7,,8,PASS,absolute error=0; limit=0
+T38,3L_DIAG_CAR1,logLik,-1655.784,0.001,0,,YES,03 §7,,-1655.78447008119,PASS,absolute error=0.00047008118986; limit=0.001
+T38,3L_DIAG_CAR1,AIC,3327.569,0.001,0,,YES,03 §7,,3327.56894016238,PASS,absolute error=5.98376200287e-05; limit=0.001
+T38,3L_DIAG_CAR1,BIC,3366.479,0.001,0,,YES,03 §7,,3366.479367294,PASS,absolute error=0.000367294000171; limit=0.001
+T38,3L_DIAG_CAR1,n,960,0,0,,YES,03 §7,,960,PASS,absolute error=0; limit=0
+T38,3L_DIAG_CAR1,participants,160,0,0,,YES,03 §7,,160,PASS,absolute error=0; limit=0
+T38,3L_DIAG_CAR1,BIC_n,957,0,0,,YES,03 §7,,957,PASS,absolute error=0; limit=0
+T38,3L_DIAG_CAR1,modeled_clusters,20,0,0,,YES,03 §7,,20,PASS,absolute error=0; limit=0
+T38,3L_DIAG_CAR1,R2_package_m,0.079,0.001,0,,NO,03 §7,Historical package-specific output; validate estimand and denominator separately.,0.0792664741608601,DOCUMENTARY,Not an automated historical numeric check
+T38,3L_DIAG_CAR1,R2_package_c,0.908,0.001,0,,NO,03 §7,Historical package-specific output; validate estimand and denominator separately.,0.907954782548616,DOCUMENTARY,Not an automated historical numeric check
+T38,3L_DIAG_CAR1,phi,0.399,0.0006,0,,YES,03 §7,,0.398599364144899,PASS,absolute error=0.000400635855101; limit=0.0006
+T38,3L_RS_AR1,parameters,9,0,0,,YES,03 §7,,9,PASS,absolute error=0; limit=0
+T38,3L_RS_AR1,logLik,-1652.159,0.001,0,,YES,03 §7,,-1652.15882606566,PASS,absolute error=0.000173934340182; limit=0.001
+T38,3L_RS_AR1,AIC,3322.318,0.001,0,,YES,03 §7,,3322.31765213131,PASS,absolute error=0.000347868690369; limit=0.001
+T38,3L_RS_AR1,BIC,3366.092,0.001,0,,YES,03 §7,,3366.09188265439,PASS,absolute error=0.000117345610306; limit=0.001
+T38,3L_RS_AR1,n,960,0,0,,YES,03 §7,,960,PASS,absolute error=0; limit=0
+T38,3L_RS_AR1,participants,160,0,0,,YES,03 §7,,160,PASS,absolute error=0; limit=0
+T38,3L_RS_AR1,BIC_n,957,0,0,,YES,03 §7,,957,PASS,absolute error=0; limit=0
+T38,3L_RS_AR1,modeled_clusters,20,0,0,,YES,03 §7,,20,PASS,absolute error=0; limit=0
+T38,3L_RS_AR1,R2_package_m,0.073,0.001,0,,NO,03 §7,Historical package-specific output; validate estimand and denominator separately.,0.0734080142597871,DOCUMENTARY,Not an automated historical numeric check
+T38,3L_RS_AR1,R2_package_c,0.89,0.001,0,,NO,03 §7,Historical package-specific output; validate estimand and denominator separately.,0.890310821902764,DOCUMENTARY,Not an automated historical numeric check
+T38,3L_RS_CAR1,parameters,9,0,0,,YES,03 §7,,9,PASS,absolute error=0; limit=0
+T38,3L_RS_CAR1,logLik,-1652.159,0.001,0,,YES,03 §7,,-1652.15882606589,PASS,absolute error=0.00017393411008; limit=0.001
+T38,3L_RS_CAR1,AIC,3322.318,0.001,0,,YES,03 §7,,3322.31765213179,PASS,absolute error=0.000347868210156; limit=0.001
+T38,3L_RS_CAR1,BIC,3366.092,0.001,0,,YES,03 §7,,3366.09188265487,PASS,absolute error=0.000117345130093; limit=0.001
+T38,3L_RS_CAR1,n,960,0,0,,YES,03 §7,,960,PASS,absolute error=0; limit=0
+T38,3L_RS_CAR1,participants,160,0,0,,YES,03 §7,,160,PASS,absolute error=0; limit=0
+T38,3L_RS_CAR1,BIC_n,957,0,0,,YES,03 §7,,957,PASS,absolute error=0; limit=0
+T38,3L_RS_CAR1,modeled_clusters,20,0,0,,YES,03 §7,,20,PASS,absolute error=0; limit=0
+T38,3L_RS_CAR1,R2_package_m,0.073,0.001,0,,NO,03 §7,Historical package-specific output; validate estimand and denominator separately.,0.0734076801484458,DOCUMENTARY,Not an automated historical numeric check
+T38,3L_RS_CAR1,R2_package_c,0.89,0.001,0,,NO,03 §7,Historical package-specific output; validate estimand and denominator separately.,0.890311984118881,DOCUMENTARY,Not an automated historical numeric check
+T38,3L_RS_CAR1,phi,0.491,0.0006,0,,YES,03 §7,,0.491195839698761,PASS,absolute error=0.000195839698761; limit=0.0006
+T38,2L_RS_AR1,parameters,8,0,0,,YES,03 §7,,8,PASS,absolute error=0; limit=0
+T38,2L_RS_AR1,logLik,-1717.605,0.001,0,,YES,03 §7,,-1717.60499156419,PASS,absolute error=8.43581005938e-06; limit=0.001
+T38,2L_RS_AR1,AIC,3451.21,0.001,0,,YES,03 §7,,3451.20998312839,PASS,absolute error=1.68716101143e-05; limit=0.001
+T38,2L_RS_AR1,BIC,3490.12,0.001,0,,YES,03 §7,,3490.12041026001,PASS,absolute error=0.000410260010085; limit=0.001
+T38,2L_RS_AR1,n,960,0,0,,YES,03 §7,,960,PASS,absolute error=0; limit=0
+T38,2L_RS_AR1,participants,160,0,0,,YES,03 §7,,160,PASS,absolute error=0; limit=0
+T38,2L_RS_AR1,BIC_n,957,0,0,,YES,03 §7,,957,PASS,absolute error=0; limit=0
+T38,2L_RS_AR1,modeled_clusters,0,0,0,,YES,03 §7,,0,PASS,absolute error=0; limit=0
+T38,2L_RS_AR1,R2_package_m,0.069,0.001,0,,NO,03 §7,Historical package-specific output; validate estimand and denominator separately.,0.0689937146339689,DOCUMENTARY,Not an automated historical numeric check
+T38,2L_RS_AR1,R2_package_c,0.889,0.001,0,,NO,03 §7,Historical package-specific output; validate estimand and denominator separately.,0.88926508391178,DOCUMENTARY,Not an automated historical numeric check
+T38,2L_RS_AR1,phi,0.505,0.0006,0,,YES,03 §7,,0.505080230260634,PASS,absolute error=8.0230260634e-05; limit=0.0006
+T38,2L_RS_CAR1,parameters,8,0,0,,YES,03 §7,,8,PASS,absolute error=0; limit=0
+T38,2L_RS_CAR1,logLik,-1717.605,0.001,0,,YES,03 §7,,-1717.60499156427,PASS,absolute error=8.43573002385e-06; limit=0.001
+T38,2L_RS_CAR1,AIC,3451.21,0.001,0,,YES,03 §7,,3451.20998312854,PASS,absolute error=1.68714600477e-05; limit=0.001
+T38,2L_RS_CAR1,BIC,3490.12,0.001,0,,YES,03 §7,,3490.12041026017,PASS,absolute error=0.000410260170156; limit=0.001
+T38,2L_RS_CAR1,n,960,0,0,,YES,03 §7,,960,PASS,absolute error=0; limit=0
+T38,2L_RS_CAR1,participants,160,0,0,,YES,03 §7,,160,PASS,absolute error=0; limit=0
+T38,2L_RS_CAR1,BIC_n,957,0,0,,YES,03 §7,,957,PASS,absolute error=0; limit=0
+T38,2L_RS_CAR1,modeled_clusters,0,0,0,,YES,03 §7,,0,PASS,absolute error=0; limit=0
+T38,2L_RS_CAR1,R2_package_m,0.069,0.001,0,,NO,03 §7,Historical package-specific output; validate estimand and denominator separately.,0.0689936971672634,DOCUMENTARY,Not an automated historical numeric check
+T38,2L_RS_CAR1,R2_package_c,0.889,0.001,0,,NO,03 §7,Historical package-specific output; validate estimand and denominator separately.,0.889265290614796,DOCUMENTARY,Not an automated historical numeric check
+T38,2L_RS_CAR1,phi,0.505,0.0006,0,,YES,03 §7,,0.50507964953583,PASS,absolute error=7.964953583e-05; limit=0.0006
+T38,3L_RS_nlme_Independent,parameters,8,0,0,,YES,03 §7,,8,PASS,absolute error=0; limit=0
+T38,3L_RS_nlme_Independent,logLik,-1674.262,0.001,0,,YES,03 §7,,-1674.26219490245,PASS,absolute error=0.000194902449948; limit=0.001
+T38,3L_RS_nlme_Independent,AIC,3364.524,0.001,0,,YES,03 §7,,3364.52438980491,PASS,absolute error=0.000389804909901; limit=0.001
+T38,3L_RS_nlme_Independent,BIC,3403.435,0.001,0,,YES,03 §7,,3403.43481693653,PASS,absolute error=0.000183063470104; limit=0.001
+T38,3L_RS_nlme_Independent,n,960,0,0,,YES,03 §7,,960,PASS,absolute error=0; limit=0
+T38,3L_RS_nlme_Independent,participants,160,0,0,,YES,03 §7,,160,PASS,absolute error=0; limit=0
+T38,3L_RS_nlme_Independent,BIC_n,957,0,0,,YES,03 §7,,957,PASS,absolute error=0; limit=0
+T38,3L_RS_nlme_Independent,modeled_clusters,20,0,0,,YES,03 §7,,20,PASS,absolute error=0; limit=0
+T38,3L_RS_nlme_Independent,R2_package_m,0.075,0.001,0,,NO,03 §7,Historical package-specific output; validate estimand and denominator separately.,0.0753730776640112,DOCUMENTARY,Not an automated historical numeric check
+T38,3L_RS_nlme_Independent,R2_package_c,0.938,0.001,0,,NO,03 §7,Historical package-specific output; validate estimand and denominator separately.,0.93763813084265,DOCUMENTARY,Not an automated historical numeric check
+T38,3L_RI_AR1,SCHOOL.var_(Intercept),7.687355,0.00015,0,,YES,03 §7,,7.68735475582296,PASS,absolute error=2.44177040365e-07; limit=0.00015
+T38,3L_RI_AR1,ID.var_(Intercept),2.080875,0.00015,0,,YES,03 §7,,2.08087537685316,PASS,absolute error=3.76853160233e-07; limit=0.00015
+T38,3L_RI_AR1,Residual.variance,3.234977,0.00015,0,,YES,03 §7,,3.23497739418465,PASS,absolute error=3.9418464981e-07; limit=0.00015
+T38,3L_RI_AR1,phi,0.753647,0.00015,0,,YES,03 §7,,0.753647485051634,PASS,absolute error=4.8505163408e-07; limit=0.00015
+T38,3L_DIAG_AR1,SCHOOL.var_(Intercept),7.207612,0.00015,0,,YES,03 §7,,7.20761209219594,PASS,absolute error=9.21959397715e-08; limit=0.00015
+T38,3L_DIAG_AR1,ID.var_(Intercept),2.291953,0.00015,0,,YES,03 §7,,2.29195295199518,PASS,absolute error=4.8004820119e-08; limit=0.00015
+T38,3L_DIAG_AR1,ID.var_TIME,0.146268,0.00015,0,,YES,03 §7,,0.14626824687282,PASS,absolute error=2.46872819992e-07; limit=0.00015
+T38,3L_DIAG_AR1,ID.cov_intercept_TIME,0,0.00015,0,,YES,03 §7,,0,PASS,absolute error=0; limit=0.00015
+T38,3L_DIAG_AR1,ID.corr_intercept_TIME,0,0.00015,0,,YES,03 §7,,0,PASS,absolute error=0; limit=0.00015
+T38,3L_DIAG_AR1,Residual.variance,1.204072,0.00015,0,,YES,03 §7,,1.20407175871392,PASS,absolute error=2.41286080005e-07; limit=0.00015
+T38,3L_DIAG_AR1,phi,0.398594,0.00015,0,,YES,03 §7,,0.398593582096686,PASS,absolute error=4.17903314009e-07; limit=0.00015
+T38,3L_RS_AR1,SCHOOL.var_(Intercept),6.999456,0.00015,0,,YES,03 §7,,6.99945610809618,PASS,absolute error=1.08096180007e-07; limit=0.00015
+T38,3L_RS_AR1,ID.var_(Intercept),1.704083,0.00015,0,,YES,03 §7,,1.7040833245676,PASS,absolute error=3.24567599908e-07; limit=0.00015
+T38,3L_RS_AR1,ID.var_TIME,0.106513,0.00015,0,,YES,03 §7,,0.106513497921228,PASS,absolute error=4.97921227999e-07; limit=0.00015
+T38,3L_RS_AR1,ID.cov_intercept_TIME,0.230233,0.00015,0,,YES,03 §7,,0.230232731230086,PASS,absolute error=2.68769913991e-07; limit=0.00015
+T38,3L_RS_AR1,ID.corr_intercept_TIME,0.540405,0.00015,0,,YES,03 §7,,0.540404962654866,PASS,absolute error=3.73451339852e-08; limit=0.00015
+T38,3L_RS_AR1,Residual.variance,1.454221,0.00015,0,,YES,03 §7,,1.45422108995038,PASS,absolute error=8.99503800333e-08; limit=0.00015
+T38,3L_RS_AR1,phi,0.491198,0.00015,0,,YES,03 §7,,0.491198170325458,PASS,absolute error=1.7032545796e-07; limit=0.00015
+T38,3L_RI_Independent,SCHOOL.var_(Intercept),7.622052,0.00015,0,,YES,03 §7,,7.6220518356012,PASS,absolute error=1.64398800351e-07; limit=0.00015
+T38,3L_RI_Independent,ID.var_(Intercept),3.739743,0.00015,0,,YES,03 §7,,3.73974311372484,PASS,absolute error=1.13724840212e-07; limit=0.00015
+T38,3L_RI_Independent,Residual.variance,1.440703,0.00015,0,,YES,03 §7,,1.44070274601482,PASS,absolute error=2.53985179999e-07; limit=0.00015
+T38,3L_RS_Independent,SCHOOL.var_(Intercept),7.094963,0.00015,0,,YES,03 §7,,7.09496289654183,PASS,absolute error=1.03458170031e-07; limit=0.00015
+T38,3L_RS_Independent,ID.var_(Intercept),2.560652,0.00015,0,,YES,03 §7,,2.56065176218628,PASS,absolute error=2.37813720272e-07; limit=0.00015
+T38,3L_RS_Independent,ID.var_TIME,0.174089,0.00015,0,,YES,03 §7,,0.174088522052925,PASS,absolute error=4.77947075e-07; limit=0.00015
+T38,3L_RS_Independent,ID.cov_intercept_TIME,0.057333,0.00015,0,,YES,03 §7,,0.057332753695134,PASS,absolute error=2.46304866003e-07; limit=0.00015
+T38,3L_RS_Independent,ID.corr_intercept_TIME,0.08587,0.00015,0,,YES,03 §7,,0.0858701995576391,PASS,absolute error=1.99557639094e-07; limit=0.00015
+T38,3L_RS_Independent,Residual.variance,0.834442,0.00015,0,,YES,03 §7,,0.834441847909887,PASS,absolute error=1.52090113059e-07; limit=0.00015
+T38,3L_RI_to_RS_Independent,LR_raw,233.740449,0.001,0,,YES,03 §7,,233.740449007414,PASS,absolute error=7.41400185689e-09; limit=0.001
+T38,3L_RI_to_RS_Independent,df,2,0,0,,YES,03 §7,,2,PASS,absolute error=0; limit=0
+T38,3L_RI_to_RS_Independent,p_ordinary,1.7535e-51,0,0,0.006,YES,03 §7,,1.75350253975618e-51,PASS,absolute log error=1.44839141569e-06; limit=0.006
+T38,3L_RI_to_RS_Independent,p_boundary,9.22314e-52,0,0,0.006,YES,03 §7,Nominal reference; diagnostic qualification required.,9.22314129495423e-52,PASS,absolute log error=1.40402747206e-07; limit=0.006
+T38,3L_RI_to_DIAG_AR1,LR_raw,44.150322,0.001,0,,YES,03 §7,,44.150322327363,PASS,absolute error=3.27362997155e-07; limit=0.001
+T38,3L_RI_to_DIAG_AR1,df,1,0,0,,YES,03 §7,,1,PASS,absolute error=0; limit=0
+T38,3L_RI_to_RS_AR1,LR_raw,51.40161,0.001,0,,YES,03 §7,,51.4016103956574,PASS,absolute error=3.95657401953e-07; limit=0.001
+T38,3L_RI_to_RS_AR1,df,2,0,0,,YES,03 §7,,2,PASS,absolute error=0; limit=0
+T38,3L_RI_to_RS_AR1,p_ordinary,6.89e-12,0,0,0.006,YES,03 §7,,6.89099797214984e-12,PASS,absolute log error=0.000144833074295; limit=0.006
+T38,3L_RI_to_RS_AR1,p_boundary,3.82e-12,0,0,0.006,YES,03 §7,Nominal reference; diagnostic qualification required.,3.82188280946804e-12,PASS,absolute log error=0.000492760633232; limit=0.006
+T38,3L_DIAG_to_RS_AR1,LR_raw,7.251288,0.001,0,,YES,03 §7,,7.25128806829434,PASS,absolute error=6.8294339961e-08; limit=0.001
+T38,3L_DIAG_to_RS_AR1,df,1,0,0,,YES,03 §7,,1,PASS,absolute error=0; limit=0
+T38,3L_DIAG_to_RS_AR1,p_ordinary,0.007085,0,0,0.006,YES,03 §7,,0.00708501724974571,PASS,absolute log error=2.43468238725e-06; limit=0.006
+T38,3L_RS_Independent_to_AR1,LR_raw,44.206738,0.001,0,,YES,03 §7,,44.2067376735949,PASS,absolute error=3.26405100282e-07; limit=0.001
+T38,3L_RS_Independent_to_AR1,df,1,0,0,,YES,03 §7,,1,PASS,absolute error=0; limit=0
+T38,3L_RS_Independent_to_CAR1,LR_raw,44.206738,0.001,0,,YES,03 §7,,44.2067376731202,PASS,absolute error=3.26879799672e-07; limit=0.001
+T38,3L_RS_Independent_to_CAR1,df,1,0,0,,YES,03 §7,,1,PASS,absolute error=0; limit=0
+T38,3L_RI_AR1,F_p.TIME,1.18e-39,0,0,0.02,YES,03 §7,,1.17651395160327e-39,PASS,absolute log error=0.00295865079629; limit=0.02
+T38,3L_RI_AR1,F_p.(Intercept),1.54e-126,0,0,0.02,YES,03 §7,,1.53656781732816e-126,PASS,absolute log error=0.00223117727251; limit=0.02
+HRS_T29A,RI_Independent,n,15791,0,0,,NO,03 §7.1,Local-only historical HRS evidence. No raw dataset supplied in package.,,DOCUMENTARY,Not an automated historical numeric check
+HRS_T29A,RI_Independent,logLik,-37879.324,0.001,0,,NO,03 §7.1,Local-only historical HRS evidence. No raw dataset supplied in package.,,DOCUMENTARY,Not an automated historical numeric check
+HRS_T29A,RI_AR1,n,15791,0,0,,NO,03 §7.1,Local-only historical HRS evidence. No raw dataset supplied in package.,,DOCUMENTARY,Not an automated historical numeric check
+HRS_T29A,RI_AR1,logLik,-34314.289,0.001,0,,NO,03 §7.1,Local-only historical HRS evidence. No raw dataset supplied in package.,,DOCUMENTARY,Not an automated historical numeric check
+HRS_T29C,RI_AR1_global,n,3901,0,0,,NO,03 §7.1,Local-only historical HRS evidence. No raw dataset supplied in package.,,DOCUMENTARY,Not an automated historical numeric check
+HRS_T29C,RI_AR1_global,participants,983,0,0,,NO,03 §7.1,Local-only historical HRS evidence. No raw dataset supplied in package.,,DOCUMENTARY,Not an automated historical numeric check
+HRS_T29C,RI_AR1_global,AIC,20512.79,0.001,0,,NO,03 §7.1,Local-only historical HRS evidence. No raw dataset supplied in package.,,DOCUMENTARY,Not an automated historical numeric check
+HRS_T29C,RI_AR1_global,phi,0.5207128,0.00015,0,,NO,03 §7.1,Local-only historical HRS evidence. No raw dataset supplied in package.,,DOCUMENTARY,Not an automated historical numeric check
+HRS_T29C,RI_AR1_person,AIC,20558.8,0.001,0,,NO,03 §7.1,Local-only historical HRS evidence. No raw dataset supplied in package.,,DOCUMENTARY,Not an automated historical numeric check
+HRS_T29C,RI_AR1_person,phi,0.2863006,0.00015,0,,NO,03 §7.1,Local-only historical HRS evidence. No raw dataset supplied in package.,,DOCUMENTARY,Not an automated historical numeric check
+HRS_T29C,RI_CAR1,AIC,20540.11,0.001,0,,NO,03 §7.1,Local-only historical HRS evidence. No raw dataset supplied in package.,,DOCUMENTARY,Not an automated historical numeric check
+HRS_T29C,RI_CAR1,phi,0.5677059,0.00015,0,,NO,03 §7.1,Local-only historical HRS evidence. No raw dataset supplied in package.,,DOCUMENTARY,Not an automated historical numeric check
+HRS_T28A,GEE_independence,n,3901,0,0,,NO,03 §7.1,Local-only historical HRS evidence. No raw dataset supplied in package.,,DOCUMENTARY,Not an automated historical numeric check
+HRS_T28A,GEE_independence,QIC,133108.911,0.00015,0,,NO,03 §7.1,Local-only historical HRS evidence. No raw dataset supplied in package.,,DOCUMENTARY,Not an automated historical numeric check
+HRS_T28A,GEE_exchangeable,QIC,133474.421,0.00015,0,,NO,03 §7.1,Local-only historical HRS evidence. No raw dataset supplied in package.,,DOCUMENTARY,Not an automated historical numeric check
+HRS_T28A,GEE_ar1,QIC,133156.622,0.00015,0,,NO,03 §7.1,Local-only historical HRS evidence. No raw dataset supplied in package.,,DOCUMENTARY,Not an automated historical numeric check
+HRS_T28C,GLMM_RI,n,14836,0,0,,NO,03 §7.1,Local-only historical HRS evidence. No raw dataset supplied in package.,,DOCUMENTARY,Not an automated historical numeric check
+HRS_T28C,GLMM_RI,participants,1000,0,0,,NO,03 §7.1,Local-only historical HRS evidence. No raw dataset supplied in package.,,DOCUMENTARY,Not an automated historical numeric check
+HRS_T28C,GLMM_RI,events,1586,0.00015,0,,NO,03 §7.1,Local-only historical HRS evidence. No raw dataset supplied in package.,,DOCUMENTARY,Not an automated historical numeric check
+HRS_T28C,GLMM_RI,ID.var_(Intercept),2.609,0.00015,0,,NO,03 §7.1,Local-only historical HRS evidence. No raw dataset supplied in package.,,DOCUMENTARY,Not an automated historical numeric check
+HRS_T28C,GLMM_RI,OR_gender,1.865,0.00015,0,,NO,03 §7.1,Local-only historical HRS evidence. No raw dataset supplied in package.,,DOCUMENTARY,Not an automated historical numeric check
+HRS_T28C,GLMM_RI,OR_wave,0.969,0.00015,0,,NO,03 §7.1,Local-only historical HRS evidence. No raw dataset supplied in package.,,DOCUMENTARY,Not an automated historical numeric check
+HRS_T28D,CLMM_reduced,n,3979,0,0,,NO,03 §7.1,Local-only historical HRS evidence. No raw dataset supplied in package.,,DOCUMENTARY,Not an automated historical numeric check
+HRS_T28D,CLMM_reduced,participants,250,0,0,,NO,03 §7.1,Local-only historical HRS evidence. No raw dataset supplied in package.,,DOCUMENTARY,Not an automated historical numeric check
+HRS_T28D,CLMM_reduced,logLik,-4344.211,0.001,0,,NO,03 §7.1,Local-only historical HRS evidence. No raw dataset supplied in package.,,DOCUMENTARY,Not an automated historical numeric check
+HRS_T28E,multinomial,n,942,0,0,,NO,03 §7.1,Local-only historical HRS evidence. No raw dataset supplied in package.,,DOCUMENTARY,Not an automated historical numeric check
+HRS_T28E,multinomial,logLik,-986.503,0.001,0,,NO,03 §7.1,Local-only historical HRS evidence. No raw dataset supplied in package.,,DOCUMENTARY,Not an automated historical numeric check
+HRS_T28E,multinomial,LR_raw,114.496,0.001,0,,NO,03 §7.1,Local-only historical HRS evidence. No raw dataset supplied in package.,,DOCUMENTARY,Not an automated historical numeric check
+HRS_T28E,multinomial,df,6,0,0,,NO,03 §7.1,Local-only historical HRS evidence. No raw dataset supplied in package.,,DOCUMENTARY,Not an automated historical numeric check
+HRS_T30A,CAR1_ML_quadratic,n,3901,0,0,,NO,03 §7.1,Local-only historical HRS evidence. No raw dataset supplied in package.,,DOCUMENTARY,Not an automated historical numeric check
+HRS_T30A,CAR1_ML_quadratic,logLik,-10225.18,0.001,0,,NO,03 §7.1,Local-only historical HRS evidence. No raw dataset supplied in package.,,DOCUMENTARY,Not an automated historical numeric check
+HRS_T35A,ordinal,n,913,0,0,,NO,03 §7.1,Local-only historical HRS evidence. No raw dataset supplied in package.,,DOCUMENTARY,Not an automated historical numeric check
+HRS_T35A,ordinal,logLik,-1380.576,0.001,0,,NO,03 §7.1,Local-only historical HRS evidence. No raw dataset supplied in package.,,DOCUMENTARY,Not an automated historical numeric check
+HRS_T35A,ordinal,AIC,2771.151,0.001,0,,NO,03 §7.1,Local-only historical HRS evidence. No raw dataset supplied in package.,,DOCUMENTARY,Not an automated historical numeric check
+HRS_T35A,ordinal,BIC,2795.235,0.001,0,,NO,03 §7.1,Local-only historical HRS evidence. No raw dataset supplied in package.,,DOCUMENTARY,Not an automated historical numeric check
+HRS_T35B,historical,n,3901,0,0,,NO,03 §7.1,Local-only historical HRS evidence. No raw dataset supplied in package.,,DOCUMENTARY,Not an automated historical numeric check
+HRS_T35B,historical,participants,983,0,0,,NO,03 §7.1,Local-only historical HRS evidence. No raw dataset supplied in package.,,DOCUMENTARY,Not an automated historical numeric check
+HRS_T35B,historical,logLik,-10260.06,0.001,0,,NO,03 §7.1,Local-only historical HRS evidence. No raw dataset supplied in package.,,DOCUMENTARY,Not an automated historical numeric check
+HRS_T35B,historical,AIC,20532.121,0.001,0,,NO,03 §7.1,Local-only historical HRS evidence. No raw dataset supplied in package.,,DOCUMENTARY,Not an automated historical numeric check
+HRS_T35B,historical,BIC,20569.735,0.001,0,,NO,03 §7.1,Local-only historical HRS evidence. No raw dataset supplied in package.,,DOCUMENTARY,Not an automated historical numeric check
+HRS_T35B,historical,phi,0.567,0.00015,0,,NO,03 §7.1,Local-only historical HRS evidence. No raw dataset supplied in package.,,DOCUMENTARY,Not an automated historical numeric check
+HRS_T35B,filtered,n,3413,0,0,,NO,03 §7.1,Local-only historical HRS evidence. No raw dataset supplied in package.,,DOCUMENTARY,Not an automated historical numeric check
+HRS_T35B,filtered,logLik,-9069.674,0.001,0,,NO,03 §7.1,Local-only historical HRS evidence. No raw dataset supplied in package.,,DOCUMENTARY,Not an automated historical numeric check
+HRS_T35B,filtered,phi,0.359,0.00015,0,,NO,03 §7.1,Local-only historical HRS evidence. No raw dataset supplied in package.,,DOCUMENTARY,Not an automated historical numeric check

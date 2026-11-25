@@ -74,8 +74,9 @@ def test_E_search_never_changes_selection_and_count_includes_hidden(selector):
 
 
 def test_E_check_order_and_level_filter(selector):
-    selector.list.item(3).setCheckState(Qt.Checked)      # R_BMI first
-    selector.list.item(0).setCheckState(Qt.Checked)      # then R_SHLT
+    # v1.3.2 (UI-31): multi-select lists group selections under header rows; items() skips the headers
+    selector.items()[3].setCheckState(Qt.Checked)        # R_BMI first
+    selector.items()[0].setCheckState(Qt.Checked)        # then R_SHLT
     assert selector.selected() == ["R_BMI", "R_SHLT"]
     selector.level.setCurrentIndex(selector.level.findData("continuous"))
     assert visible(selector) == ["R_BMI"]

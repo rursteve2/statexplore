@@ -1,0 +1,34 @@
+Rscript: E:\statexplore_build\dist\StatExplore\R\bin\x64\Rscript.exe
+R library: E:\statexplore_build\dist\StatExplore\rlib
+engine: R version 4.6.2 (2026-10-29 ucrt); packages: {'jsonlite': '2.0.0', 'psych': '2.6.9'}; mean(x) = 3
+  ok  proportional-odds check: ok 
+  ok  linear regression: ok 
+  ok  logistic regression: ok 
+  ok  factorial ANOVA: ok 
+  ok  mediation: ok 
+  ok  Teaching Studio: ok 
+  ok  comparison: ok 
+  ok  mixed (lme4): ok 
+  ok  mixed (nlme AR1): ok 
+  ok  mixed (mmrm): ok 
+  ok  cross-validation: ok 
+  ok  2x2 association: ok 
+  ok  ordinal regression: ok 
+  ok  multinomial regression: ok 
+  ok  continuous treatment: ok 
+  ok  binary mixed (glmer): ok 
+  ok  ordinal mixed (clmm): ok 
+  ok  GEE (geepack): ok 
+  ok  survey (svymean): ok 
+  ok  discovery: complete
+  ok  discovery (combinations): complete
+  ok  discovery (longitudinal nlme AR1): complete
+  ok  discovery (GEE): complete
+  ok  discovery (structure comparison): complete
+  ok  mixed (clustered RS + AR1): ok
+  ok  discovery (clustered workflow B): complete
+  ok  transfer identity (fingerprints): verified
+  ok  exports: 68 files
+  ok  project save/reopen
+  ok  R console (separate process, plot captured)
+OK

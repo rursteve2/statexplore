@@ -13,7 +13,8 @@ from typing import Any
 from ..core.dataset import Dataset
 from ..core.schema import AnalysisResult, Status
 from ..core.variables import Measure, Storage
-from ..rbridge.codegen import alias, level_labels, r_num, r_str, r_vec
+from ..rbridge.codegen import factor_label, alias, level_labels, r_num, r_str, r_vec
+from .covstruct import MIXED_R_HELPERS, MIXED_RANDOM
 from .session import RSession
 
 TIME_TYPES = {"continuous": "Continuous (linear)", "quadratic": "Continuous (quadratic)",
@@ -45,10 +46,41 @@ class MixedInputError(ValueError):
     pass
 
 
+ID_POLICIES = {"global": "Participant IDs are unique across clusters (each ID belongs to one cluster)",
+               "local": "Participant IDs are numbered within each cluster (the same ID in two clusters = two people)"}
+
+
+def nesting_problem(ds: Dataset, pid: str, cluster: str, policy: str, model_vars: list[str]) -> str:
+    """Why participants cannot be nested in clusters on the analysed rows ('' = fine). Rows with a missing cluster are
+    excluded (never a group of their own). Global policy: an ID seen in two clusters is ambiguous (a mover or reused
+    numbering) and is refused; local policy: (cluster, ID) is the participant."""
+    if cluster == pid:
+        return "The higher-level cluster cannot also be the participant ID."
+    cols = list(dict.fromkeys([pid, cluster] + [v for v in model_vars if v]))
+    f = ds.analysis_frame(cols).dropna()
+    if f.empty:
+        return "No rows are complete on the model variables, participant ID and cluster."
+    if policy == "global":
+        k = f.groupby(pid)[cluster].nunique()
+        bad = k[k > 1]
+        if len(bad):
+            ex = ", ".join(str(x) for x in bad.index[:5])
+            return (f"{len(bad)} participant ID(s) occur in more than one {ds.var(cluster).display_name} (e.g. {ex}). "
+                    "Either the IDs are numbered within each cluster — choose 'IDs are numbered within each cluster' "
+                    "so (cluster, ID) identifies a participant — or participants move between clusters (crossed / "
+                    "multiple membership), which this release does not support.")
+    if f[cluster].nunique() < 2:
+        return f"{ds.var(cluster).display_name} has fewer than 2 observed clusters on the analysed rows."
+    return ""
+
+
 STRUCTURE_SPECS = {   # discovery structure -> Mixed workspace settings (None: not available here)
     "ri": dict(random="intercept"), "rs": dict(random="slope"), "rs_uncorr": dict(random="slope_uncorrelated"),
     "nlme_ri": dict(random="intercept", force_nlme=True), "nlme_rs": dict(random="slope", force_nlme=True),
     "ar1": dict(random="intercept", residual="ar1"), "car1": dict(random="intercept", residual="car1"),
+    "nlme_diag": dict(random="slope_uncorrelated", force_nlme=True),
+    "diag_ar1": dict(random="slope_uncorrelated", residual="ar1"), "rs_ar1": dict(random="slope", residual="ar1"),
+    "diag_car1": dict(random="slope_uncorrelated", residual="car1"), "rs_car1": dict(random="slope", residual="car1"),
     "mmrm_us": dict(random="none", residual="unstructured"), "mmrm_cs": None, "mmrm_ar1": None,
     "glmer_ri": dict(random="intercept"), "glmer_rs": dict(random="slope"),
     "clmm_ri": dict(random="intercept"), "clmm_rs": dict(random="slope"),
@@ -85,17 +117,25 @@ def spec_from_discovery(run: Any, row: dict[str, Any]) -> "MixedSpec":
     preds = list(dict.fromkeys(v for t in terms for v in t if v != s.time))
     fam = s.family or "gaussian"
     method = "REML" if d.estimation == "REML" else "ML"
+    est_text = d.estimation if fam_is_gee(d) else method      # STAT-27: GEE is not an ML fit
+    cluster = getattr(s, "cluster", None)
     spec = MixedSpec(outcome=s.outcome, id=s.participant, time=s.time, time_type=s.time_type, predictors=preds,
+                     cluster=cluster, id_policy=getattr(s, "id_policy", "global"),
+                     cluster_random=bool(cluster) and d.clustered,
                      interactions="none", method=method, family=fam, event=s.event, reference=s.reference,
                      treatments=[dict(t) for t in s.treatments], terms=terms,
                      max_fixed=max(6, len(preds) + (1 if s.time else 0)),
-                     sample_vars=[v for v in d.sample_vars if v not in [s.outcome, s.participant, s.time] + preds],
+                     sample_vars=[v for v in d.sample_vars if v not in [s.outcome, s.participant, s.time, cluster] + preds],
                      descriptor=d.to_dict(),
-                     source=f"{d.source} (refitted here with the same formula, structure {label}, {method} "
+                     source=f"{d.source} (refitted here with the same formula, structure {label}, {est_text} "
                             "estimation, coding and rows)", **extra)
     # inference the model's engine supports (P1-01): term LR tests on ML lme4 fits; nlme / mmrm report their own df
     spec.inference = "lrt" if spec.engine == "lme4" and method == "ML" and fam == "gaussian" else "satterthwaite"
     return spec
+
+
+def fam_is_gee(d: Any) -> bool:
+    return getattr(d, "family", "") == "gee" or str(getattr(d, "estimation", "")).startswith("GEE")
 
 
 @dataclass
@@ -130,6 +170,10 @@ class MixedSpec:
     # ---- v1.3: identity of a transferred model ----
     sample_vars: list[str] = field(default_factory=list)   # extra variables defining a shared complete-case sample
     descriptor: dict[str, Any] | None = None               # origin ModelDescriptor (refit is verified against it)
+    # ---- v1.3.2: participant identity within a higher-level cluster (04) ----
+    id_policy: str = "global"           # global: IDs unique across clusters | local: IDs numbered within each cluster
+    cluster_random: bool = True         # False: keep composite (cluster, ID) participants but no cluster variance
+                                        # (an exploratory workflow-B candidate fitted without the cluster)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -262,8 +306,54 @@ def validate(ds: Dataset, s: MixedSpec) -> None:
         raise MixedInputError("Random-effects models need at least a random intercept "
                               "(choose unstructured covariance for a marginal model).")
     if s.method not in ("REML", "ML") or s.time_type not in TIME_TYPES or s.random not in RANDOM \
-            or s.residual not in RESIDUAL or s.interactions not in INTERACTIONS:
+            or s.residual not in RESIDUAL or s.interactions not in INTERACTIONS or s.id_policy not in ID_POLICIES:
         raise MixedInputError("Invalid option.")
+    if s.cluster:
+        why = nesting_problem(ds, s.id, s.cluster, s.id_policy, [s.outcome] + ([s.time] if s.time else [])
+                              + s.predictors + list(s.sample_vars))
+        if why:
+            raise MixedInputError(why)
+
+
+def fixed_terms(s: MixedSpec) -> list[list[str]]:
+    """The fixed-effect terms as variable-name tuples (time quadratic = '<time>^2')."""
+    if s.terms:
+        return [list(t) for t in s.terms]
+    base: list[list[str]] = []
+    if s.time:
+        base.append([s.time])
+        if s.time_type == "quadratic":
+            base.append([f"{s.time}^2"])
+    preds = [[p] for p in s.predictors]
+    out = base + preds
+    if s.interactions == "time" and s.time:
+        out += [[t[0], p] for t in base for p in s.predictors]
+    elif s.interactions == "all":
+        mains = [t[0] for t in base] + s.predictors
+        out += [[a, b] for i, a in enumerate(mains) for b in mains[i + 1:]]
+    return out
+
+
+def canonical_spec(ds: Dataset, s: MixedSpec) -> dict[str, Any]:
+    """Structured, ordered description of the requested model (part of its identity; H4). Terms are compared as
+    sets of variables; labels never enter."""
+    fam = s.family
+    est = ("GEE" if s.estimator == "gee" else s.method if fam == "gaussian" else
+           "ML (Laplace)" if s.engine in ("glmer", "clmm") and s.nagq == 1 else
+           f"ML (AGQ {s.nagq})" if s.engine in ("glmer", "clmm") else "PQL")
+    out = {"schema": 2, "outcome": s.outcome, "family": fam, "engine": s.engine, "estimation": est,
+           "fixed_terms": sorted("*".join(sorted(t)) for t in fixed_terms(s)),
+           "participant": s.id, "time": s.time, "time_type": s.time_type if s.time else "",
+           "random": MIXED_RANDOM.get(s.random, s.random), "residual": s.residual,
+           "cluster": s.cluster, "id_policy": s.id_policy if s.cluster else "",
+           "gee_corstr": s.gee_corstr if s.estimator == "gee" else "",
+           "time_index": {"ar1": "global observed-occasion index", "car1": "actual time"}.get(s.residual, ""),
+           "event": None if s.event is None else str(s.event),
+           "reference": None if s.reference is None else str(s.reference),
+           "sample_vars": sorted(s.sample_vars), "treatments": s.treatments}
+    if fam == "ordinal":
+        out["ordering"] = [str(c) for c in ds.levels(s.outcome)]
+    return out
 
 
 def _fixed_rhs(ds: Dataset, s: MixedSpec) -> str:
@@ -286,26 +376,26 @@ def _fixed_rhs(ds: Dataset, s: MixedSpec) -> str:
     return " + ".join(terms) if terms else "1"
 
 
-def build(ds: Dataset, s: MixedSpec, plot_paths: list[str]) -> str:
+def build(ds: Dataset, s: MixedSpec, plot_paths: list[str], helpers: bool = True) -> str:
     ds = view(ds, s)
     validate(ds, s)
     if s.family != "gaussian" or s.estimator == "gee":
-        return _build_generalized(ds, s, plot_paths)
+        return _build_generalized(ds, s, plot_paths, helpers)
     a = lambda n: alias(ds.var(n).alias)  # noqa: E731
     y = a(s.outcome)
     conf = r_num(s.conf)
     reml = "TRUE" if s.method == "REML" else "FALSE"
-    L = _prep(ds, s) + [f"sx_fixed <- {y} ~ {_fixed_rhs(ds, s)}"]
+    L = _prep(ds, s, helpers) + ["sx_dg <- NULL; sx_run <- NULL", f"sx_fixed <- {y} ~ {_fixed_rhs(ds, s)}"]
     return _build_gaussian(ds, s, plot_paths, L, y, conf, reml)
 
 
-def _prep(ds: Dataset, s: MixedSpec) -> list[str]:
+def _prep(ds: Dataset, s: MixedSpec, helpers: bool = True) -> list[str]:
     """Shared data preparation: complete cases, participant / cluster factors, time coding, ordering."""
     a = lambda n: alias(ds.var(n).alias)  # noqa: E731
     y, idv = a(s.outcome), a(s.id)
     used = [y, idv] + ([a(s.time)] if s.time else []) + ([a(s.cluster)] if s.cluster else []) + [a(p) for p in s.predictors]
     used += [a(v) for v in s.sample_vars if a(v) not in used]   # shared sample of the search this model came from
-    L = [f"sx_used <- {r_vec(used)}"]
+    L = ([MIXED_R_HELPERS + PLOT_SAFE] if helpers else []) + [f"sx_used <- {r_vec(used)}"]
     if s.time:
         L += [
             "# outcome availability by time point (all rows; unobserved occasions stay missing, never zero-filled)",
@@ -315,12 +405,18 @@ def _prep(ds: Dataset, s: MixedSpec) -> list[str]:
             "sx_av$observed[is.na(sx_av$observed)] <- 0",
             "sx_av$missing <- sx_av$records - sx_av$observed; sx_av$percent_missing <- 100 * sx_av$missing / sx_av$records",
         ]
-    L += [
-        "sx_d <- sx_complete(dat, sx_used)",
-        f"sx_d$sx_id <- factor(sx_d${idv})",
-    ]
+    L += ["sx_d <- sx_complete(dat, sx_used)"]
     if s.cluster:
-        L.append(f"sx_d$sx_cluster <- factor(sx_d${a(s.cluster)})")
+        cl = a(s.cluster)
+        L += [f"sx_d$sx_cluster <- factor(sx_d${cl})  # higher-level cluster (rows with a missing cluster are excluded)"]
+        if s.id_policy == "global":
+            L += [f"sx_moves <- tapply(as.character(sx_d${cl}), as.character(sx_d${idv}), function(z) length(unique(z)))",
+                  "if (any(sx_moves > 1)) stop(\"Participant IDs occur in more than one cluster: declare IDs as numbered "
+                  "within each cluster, or the design is crossed (not supported).\")"]
+        L += [f"sx_d$sx_id <- sx_nested_id(sx_d$sx_cluster, sx_d${idv})  # participant = (cluster, ID) "
+              + ("(IDs numbered within clusters)" if s.id_policy == "local" else "(globally unique IDs)")]
+    else:
+        L.append(f"sx_d$sx_id <- factor(sx_d${idv})")
     if s.time:
         t = a(s.time)
         tv = ds.var(s.time)
@@ -357,52 +453,43 @@ def _prep(ds: Dataset, s: MixedSpec) -> list[str]:
 def _build_gaussian(ds: Dataset, s: MixedSpec, plot_paths: list[str], L: list[str], y: str, conf: str,
                     reml: str) -> str:
     tslope = "sx_time" if s.time_type == "continuous" else "sx_tnum"
-    grp = "sx_cluster/sx_id" if s.cluster else "sx_id"
+    rtype = MIXED_RANDOM.get(s.random, "ri")
+    clus = "TRUE" if s.cluster and s.cluster_random else "FALSE"
     if s.engine == "lme4":
-        re = {"intercept": f"(1 | {grp})", "slope": f"(1 + {tslope} | {grp})",
-              "slope_uncorrelated": f"(1 + {tslope} || {grp})"}[s.random]
-        if s.cluster and s.random != "intercept":
-            re = "(1 | sx_cluster) + " + re.replace(grp, "sx_id")
         L += [
-            f"sx_fit <- lmerTest::lmer(stats::update(sx_fixed, . ~ . + {re}), data = sx_d, REML = {reml})",
+            "# random part from the shared structure builder (participants nested in the cluster when one is set)",
+            f"sx_ff <- stats::update(sx_fixed, stats::as.formula(paste(\". ~ . +\", sx_re_lme4({r_str(rtype)}, {clus}, "
+            f"{r_str(tslope)}))))",
+            f"sx_run <- sx_fit_attempts(function(opt) lmerTest::lmer(sx_ff, data = sx_d, REML = {reml}), \"default\")",
+            "if (is.null(sx_run$fit)) stop(sx_run$error)",
+            "sx_fit <- sx_run$fit",
             *_lme4_inference(s),
             "sx_vc <- as.data.frame(lme4::VarCorr(sx_fit))",
             "sx_vc_tab <- data.frame(group = sx_vc$grp, term = ifelse(is.na(sx_vc$var1), \"(residual)\", sx_vc$var1),",
             "  with = ifelse(is.na(sx_vc$var2), \"\", sx_vc$var2), variance_or_cov = sx_vc$vcov, sd_or_corr = sx_vc$sdcor)",
-            "sx_singular <- lme4::isSingular(sx_fit)",
-            "sx_conv <- unlist(sx_fit@optinfo$conv$lme4$messages)",
-            "sx_conv <- sx_conv[!grepl(\"singular\", sx_conv)]  # reported by the singular-fit check",
             "sx_beta <- lme4::fixef(sx_fit); sx_V <- as.matrix(stats::vcov(sx_fit))",
             f"sx_df_note <- {r_str(INFERENCE_NOTES[s.inference])}",
             "sx_fitted <- stats::fitted(sx_fit); sx_resid <- stats::residuals(sx_fit)",
         ]
     elif s.engine == "nlme":
-        rnd = {"intercept": f"~ 1 | {grp}",
-               "slope": f"~ 1 + {tslope} | sx_id",
-               "slope_uncorrelated": f"list(sx_id = nlme::pdDiag(~ 1 + {tslope}))"}[s.random]
-        cor = {"ar1": "nlme::corAR1(form = ~ sx_tidx | sx_id)", "car1": "nlme::corCAR1(form = ~ sx_tnum | sx_id)",
-               "independent": "NULL"}[s.residual]
-        if s.cluster:
-            cor = cor.replace("| sx_id)", "| sx_cluster/sx_id)")
         L += [
-            "# nlminb (nlme default) first; optim as a fallback if it fails to converge",
-            f"sx_lme <- function(opt) nlme::lme(sx_fixed, random = {rnd}, correlation = {cor}, data = sx_d,",
-            f"  method = {r_str(s.method)}, control = nlme::lmeControl(opt = opt, msMaxIter = 200))",
-            "sx_opt <- \"nlminb\"",
-            "sx_fit <- tryCatch(sx_lme(\"nlminb\"), error = function(e) { sx_opt <<- \"optim\"; sx_lme(\"optim\") })",
+            "# shared structure builders; nlminb (nlme default) first, optim only if nlminb fails with an optimizer error",
+            f"sx_run <- sx_fit_attempts(function(opt) nlme::lme(sx_fixed, random = sx_re_nlme({r_str(rtype)}, {clus}, "
+            f"{r_str(tslope)}),",
+            f"  correlation = sx_cor_nlme({r_str(s.residual)}, {clus}), data = sx_d, method = {r_str(s.method)},",
+            "  control = nlme::lmeControl(opt = opt, msMaxIter = 200)), c(\"nlminb\", \"optim\"))",
+            "if (is.null(sx_run$fit)) stop(sx_run$error)",
+            "sx_fit <- sx_run$fit",
             "sx_tt <- as.data.frame(summary(sx_fit)$tTable)",
             "sx_fx <- data.frame(term = rownames(sx_tt), estimate = sx_tt$Value, se = sx_tt$Std.Error, df = sx_tt$DF,",
             "  t = sx_tt[[\"t-value\"]], p = sx_tt[[\"p-value\"]])",
             "sx_at <- as.data.frame(stats::anova(sx_fit, type = \"marginal\"))",
+            "# upper-tail F probabilities recomputed from the full-precision F (anova.lme rounds tiny p-values away)",
             "sx_terms <- data.frame(term = rownames(sx_at), F = sx_at[[\"F-value\"]], df1 = sx_at$numDF, df2 = sx_at$denDF,",
-            "  p = sx_at[[\"p-value\"]])",
-            "sx_vcm <- nlme::VarCorr(sx_fit)",
-            "sx_vc_tab <- data.frame(term = rownames(sx_vcm), variance = suppressWarnings(as.numeric(sx_vcm[, 1])),",
-            "  sd = suppressWarnings(as.numeric(sx_vcm[, 2])))",
+            "  sx_pf(sx_at[[\"F-value\"]], sx_at$numDF, sx_at$denDF))",
+            "sx_vc_tab <- sx_vc_nlme(sx_fit)",
             "sx_phi <- if (is.null(sx_fit$modelStruct$corStruct)) NA_real_ else",
             "  unname(stats::coef(sx_fit$modelStruct$corStruct, unconstrained = FALSE))",
-            "sx_singular <- FALSE",
-            "sx_conv <- if (sx_opt != \"nlminb\") \"nlminb failed; estimated with optim (check the results)\" else character()",
             "sx_beta <- nlme::fixef(sx_fit); sx_V <- as.matrix(stats::vcov(sx_fit))",
             "sx_df_note <- \"nlme containment degrees of freedom; marginal (Type III) F-tests.\"",
             "sx_fitted <- stats::fitted(sx_fit); sx_resid <- stats::residuals(sx_fit, type = \"normalized\")",
@@ -418,7 +505,7 @@ def _build_gaussian(ds: Dataset, s: MixedSpec, plot_paths: list[str], L: list[st
             "  error = function(e) NULL)",
             "sx_cov <- mmrm::VarCorr(sx_fit)",
             "sx_vc_tab <- data.frame(occasion = rownames(sx_cov), as.data.frame(unclass(sx_cov), check.names = FALSE), check.names = FALSE)",
-            "sx_singular <- FALSE; sx_conv <- character()",
+            "sx_run <- NULL",
             "sx_beta <- stats::coef(sx_fit); sx_V <- as.matrix(stats::vcov(sx_fit))",
             "sx_df_note <- \"Satterthwaite degrees of freedom (mmrm); Type III F-tests.\"",
             "sx_fitted <- stats::fitted(sx_fit); sx_resid <- stats::residuals(sx_fit, type = \"normalized\")",
@@ -444,24 +531,43 @@ def _build_gaussian(ds: Dataset, s: MixedSpec, plot_paths: list[str], L: list[st
                  "autocorrelation are different things.\")")
     # model fit + R2
     L += [
-        "sx_r2 <- if (" + ("FALSE" if s.engine == "mmrm" else "TRUE") + ") tryCatch(suppressWarnings(performance::r2_nakagawa(sx_fit)),",
-        "  error = function(e) NULL) else NULL",
+        "sx_dg <- sx_diag(sx_fit, sx_run)",
+        "sx_singular <- isTRUE(sx_dg$singular)",
+        "sx_r2 <- " + ("list(m = NA_real_, c = NA_real_, reason = \"not defined for a marginal model without random "
+                       "effects\")" if s.engine == "mmrm" else "sx_r2_direct(sx_fit, sx_d)"),
         "sx_fit_tab <- data.frame(observations = nrow(sx_d), participants = nlevels(sx_d$sx_id),",
+        "  clusters = " + ("nlevels(droplevels(sx_d$sx_cluster))" if s.cluster else "NA_real_") + ",",
         "  obs_per_participant_min = min(sx_counts[sx_counts > 0]), obs_per_participant_max = max(sx_counts),",
         f"  method = {r_str(s.method)}, logLik = as.numeric(stats::logLik(sx_fit)), parameters = sx_ic(sx_fit)$k,",
         "  AIC = sx_ic(sx_fit)$aic, BIC = sx_ic(sx_fit)$bic, BIC_n = sx_ic(sx_fit)$n_bic,",
-        "  R2_marginal = if (is.null(sx_r2)) NA_real_ else as.numeric(sx_r2$R2_marginal),",
-        "  R2_conditional = if (is.null(sx_r2)) NA_real_ else as.numeric(sx_r2$R2_conditional),",
-        "  singular = sx_singular)",
+        "  R2_marginal = sx_r2$m, R2_conditional = sx_r2$c,",
+        "  singular = sx_singular, diagnostics = sx_dg$status, optimizer = sx_dg$optimizer, apVar = sx_dg$apvar)",
         "sx_tabs[[length(sx_tabs) + 1]] <- sx_table(\"Model fit\", sx_fit_tab, notes = paste0(\"Marginal R2: variance explained \",",
-        "  \"by fixed effects; conditional R2: by fixed + random effects (Nakagawa). AIC/BIC from \", "
+        "  \"by the fixed effects; conditional R2: by fixed + random effects. Both by direct decomposition: var(X beta) / \",",
+        "  \"(var(X beta) + mean diag(Z G Z') summed over every grouping level + residual variance); with residual \",",
+        "  \"autocorrelation the residual variance is the marginal residual variance sigma^2. \",",
+        "  if (nzchar(sx_r2$reason)) paste0(\"R2 unavailable: \", sx_r2$reason, \". \") else \"\", \"AIC/BIC from \", "
         + r_str(s.method) + ", \" fits; compare fixed effects only with ML fits. parameters = every likelihood \",",
         "  \"parameter (fixed + covariance); BIC = -2 logLik + log(BIC_n) x parameters, BIC_n = observations (n - p for \",",
-        "  \"REML nlme, as R's BIC()). AIC/BIC basis: \", sx_ic(sx_fit)$basis, \".\"))",
+        "  \"REML nlme, as R's BIC()). AIC/BIC basis: \", sx_ic(sx_fit)$basis, \". diagnostics: clean / warned / \",",
+        "  \"near_boundary / singular (see Checks).\"))",
+        "sx_gc <- sx_group_counts(sx_fit)",
+        "if (!is.null(sx_gc)) sx_tabs[[length(sx_tabs) + 1]] <- sx_table(\"Grouping levels\", sx_gc, notes = paste0(",
+        "  \"Groups and group sizes (rows per group) at each level of the fitted model.\"" + (
+            ", \" Participants are (cluster, ID) pairs: \", " + r_str("IDs numbered within each cluster; the same ID in "
+                                                                       "two clusters is two participants."
+                                                                       if s.id_policy == "local" else
+                                                                       "IDs are unique across clusters.")
+            if s.cluster else "") + "))",
         "sx_checks <- character()",
-        "if (isTRUE(sx_singular)) sx_checks <- c(sx_checks, paste0(\"Singular fit: a random-effect variance is (near) \",",
-        "  \"zero or a correlation is +/-1. Simplify the random-effects structure.\"))",
-        "if (length(sx_conv)) sx_checks <- c(sx_checks, paste(\"Convergence:\", sx_conv))",
+        "for (sx_f in sx_dg$flags) sx_checks <- c(sx_checks, sx_f)",
+        "if (nzchar(sx_r2$reason) && !inherits(sx_fit, \"mmrm\")) sx_checks <- c(sx_checks, paste(\"R2 unavailable:\", sx_r2$reason))",
+        "sx_tabs[[length(sx_tabs) + 1]] <- sx_table(\"Optimizer attempts\", if (is.null(sx_run)) data.frame(optimizer = "
+        "\"mmrm default\", status = \"fitted\", error = \"\", warnings = \"\") else sx_run$attempts,",
+        "  notes = paste0(\"Every attempt is listed: only an optimizer failure is retried (same model, another optimizer); \",",
+        "  \"a structural error is never retried and the requested model is never changed.\"))",
+        f"sx_ident <- sx_identity(sx_d, sx_fixed, {r_str(y)}, c(\"sx_id\""
+        + (", \"sx_cluster\"" if s.cluster and s.cluster_random else "") + "))",
         "# residual autocorrelation within participants (lags 1-3)",
         "sx_rd <- data.frame(id = sx_d$sx_id, r = as.numeric(sx_resid))",
         "sx_oidx <- if (is.null(sx_d$sx_tidx)) NULL else sx_d$sx_tidx",
@@ -484,22 +590,47 @@ def _build_gaussian(ds: Dataset, s: MixedSpec, plot_paths: list[str], L: list[st
         "  \"index (rank of the time values in the analysed rows; the index discrete AR(1) uses). Neither is in actual time \",",
         "  \"units. Residuals: \", if (inherits(sx_fit, c(\"lme\", \"mmrm\"))) \"normalized (the fitted correlation \" else \"\",",
         "  if (inherits(sx_fit, c(\"lme\", \"mmrm\"))) \"structure is already removed), \" else \"\",",
-        "  \"within-participant. These empirical correlations are not the model's phi: they are computed after the fitted \",",
-        "  \"random effects and correlation are taken out, and centring each person's residuals pulls them towards \",",
-        "  \"-1/(m - 1) for m occasions, so values near zero or negative can coexist with a positive phi. A negative value \",",
-        "  \"is not by itself a model failure; a large positive value suggests remaining autocorrelation.\"))",
+        "  \"conditional residuals. Each r is the Pearson correlation of within-participant residual pairs pooled over \",",
+        "  \"participants; residuals are NOT re-centred per participant. It is an empirical diagnostic, not the model's \",",
+        "  \"phi: the predicted random effects absorb part of each person's level (and, for normalized residuals, the \",",
+        "  \"fitted correlation is removed), so the pooled r is usually below phi and can be negative when phi is positive. \",",
+        "  \"A large positive value suggests remaining autocorrelation.\"))",
     ]
     if s.time:
         L.append("sx_tabs[[length(sx_tabs) + 1]] <- sx_table(\"Outcome availability by time point\", sx_av, notes = "
                  "\"Observed = non-missing outcome. Time points with 0 observed values are structurally unobserved and "
                  "are not part of the analysis range.\")")
-    L += _trajectory(ds, s, plot_paths[:3] if s.time else [])
-    L += _extra_plots(s, plot_paths[3:])
+    L += _safe_block("Trajectory plots and population-level trajectory table",
+                     _trajectory(ds, s, plot_paths[:3] if s.time else []))
+    L += _safe_block("Random-effect and residual-autocorrelation plots", _extra_plots(s, plot_paths[3:]))
     L.append("sx_result <- list(tables = sx_tabs, checks = sx_checks, n_used = nrow(sx_d), n_excluded = nrow(dat) - nrow(sx_d),")
-    L.append("  notes = c(\"Mixed and marginal models use every available observation: participants with missing \",")
-    L += ["    \"occasions still contribute (no imputation). This is valid when missingness is ignorable given the model \",",
-          "    \"(MAR given the modelled outcomes and covariates, correct model); MAR is an assumption, not a guarantee.\"))"]
+    L.append("  identity = sx_ident, diagnostics = sx_dg[c(\"status\", \"flags\", \"optimizer\", \"apvar\")], plot_issues = I(sx_plot_issues),")
+    L += ["  notes = paste0(\"Mixed and marginal models use every available observation: participants with missing \",",
+          "    \"occasions still contribute (no imputation). Likelihood-based estimates are consistent when the \",",
+          "    \"missingness is ignorable given the model (missing at random given the modelled outcomes and covariates) \",",
+          "    \"and the model is correctly specified; MAR is an assumption that the data cannot verify, and it does not \",",
+          "    \"guarantee unbiased estimates in a finite sample.\"))"]
     return "\n".join(L) + "\n"
+
+
+PLOT_SAFE = r"""# Optional plots and display tables never invalidate the fitted model: an error or warning here is recorded as a
+# plot-specific note and the statistical tables above are kept.
+sx_plot_issues <- character()
+sx_plot_safe <- function(label, expr) {
+  withCallingHandlers(tryCatch(expr, error = function(e) {
+    sx_plot_issues <<- c(sx_plot_issues, paste0(label, " unavailable: ", conditionMessage(e))); NULL }),
+    warning = function(w) { sx_plot_issues <<- c(sx_plot_issues, paste0(label, ": ", conditionMessage(w)))
+      invokeRestart("muffleWarning") })
+  invisible(NULL)
+}
+"""
+
+
+def _safe_block(label: str, lines: list[str]) -> list[str]:
+    """Wrap optional plot / display code so a failure there cannot fail the fit (STAT-38, N-09)."""
+    if not lines:
+        return []
+    return [f"sx_plot_safe({r_str(label)}, {{"] + ["  " + ln for ln in lines] + ["})"]
 
 
 # ---- generalized outcomes: GLMM (glmer / clmm / mblogit) and GEE (geepack) — v1.1 §11.4-11.7 -------
@@ -542,7 +673,7 @@ def _outcome_lines(ds: Dataset, s: MixedSpec, y: str) -> list[str]:
             observed = [v.reference_level] + [c for c in observed if c != v.reference_level]
         event = s.event if s.event is not None else observed[1]
         ref = next(c for c in observed if c != event)
-        ev, rf = ds.level_label(s.outcome, event), ds.level_label(s.outcome, ref)
+        ev, rf = factor_label(ds, s.outcome, event), factor_label(ds, s.outcome, ref)
         cmp = f"as.character(sx_d${y}) == {r_str(ev)}" if v.is_categorical else f"sx_d${y} == {r_num(event)}"
         return [f"sx_d$sx_y <- as.integer({cmp})",
                 f"sx_event <- {r_str(ev)}; sx_nonevent <- {r_str(rf)}  # modelled event vs reference"]
@@ -552,17 +683,17 @@ def _outcome_lines(ds: Dataset, s: MixedSpec, y: str) -> list[str]:
                 "if (nlevels(sx_d$sx_y) < 3) stop(\"Fewer than three outcome categories are observed.\")"]
     ref = s.reference if s.reference is not None else ds.levels(s.outcome)[0]
     return [f"sx_d$sx_y <- droplevels(factor(as.character(sx_d${y}), levels = {r_vec(labels)}))",
-            f"sx_ref <- {r_str(ds.level_label(s.outcome, ref))}",
+            f"sx_ref <- {r_str(factor_label(ds, s.outcome, ref))}",
             "if (!(sx_ref %in% levels(sx_d$sx_y))) stop(\"The reference category is not observed in the analysed rows.\")",
             "sx_d$sx_y <- stats::relevel(sx_d$sx_y, ref = sx_ref)",
             "if (nlevels(sx_d$sx_y) < 3) stop(\"Fewer than three outcome categories are observed.\")"]
 
 
-def _build_generalized(ds: Dataset, s: MixedSpec, plot_paths: list[str]) -> str:
+def _build_generalized(ds: Dataset, s: MixedSpec, plot_paths: list[str], helpers: bool = True) -> str:
     a = lambda n: alias(ds.var(n).alias)  # noqa: E731
     y = a(s.outcome)
     conf = r_num(s.conf)
-    L = _prep(ds, s) + [GLMM_HELPERS] + _outcome_lines(ds, s, y) + [
+    L = _prep(ds, s, helpers) + ["sx_dg <- NULL; sx_run <- NULL", GLMM_HELPERS] + _outcome_lines(ds, s, y) + [
         f"sx_fixed <- sx_y ~ {_fixed_rhs(ds, s)}",
         f"sx_z <- stats::qnorm(1 - (1 - {conf}) / 2)",
         "sx_checks <- character()",
@@ -628,18 +759,23 @@ def _build_generalized(ds: Dataset, s: MixedSpec, plot_paths: list[str]) -> str:
             "if (length(sx_conv)) sx_checks <- c(sx_checks, paste(\"Convergence:\", sx_conv))",
             "sx_beta <- lme4::fixef(sx_fit); sx_V <- as.matrix(stats::vcov(sx_fit))",
             "sx_events <- sum(sx_d$sx_y); sx_ne <- nrow(sx_d) - sx_events",
+            f"sx_tinv <- Filter(function(v) all(tapply(as.character(sx_d[[v]]), sx_d$sx_id, function(z) length(unique(z))) <= 1), "
+            f"{r_vec([a(p) for p in s.predictors]) if s.predictors else 'character(0)'})  # constant within participants",
             "sx_tabs <- list(",
             "  sx_table(\"Fixed effects (log-odds and odds ratios)\", sx_fx, notes = paste0(\"Modelled event: \", sx_event,",
-            "    \" (vs \", sx_nonevent, \"). Odds ratios are conditional (subject-specific): they compare observations of the \",",
-            "    \"same participant, holding the random effects fixed. They are not population-average odds ratios and not \",",
-            "    \"risk ratios. Wald z tests and CIs; estimation: \", " + r_str("Laplace approximation" if s.nagq == 1 else f"adaptive Gauss-Hermite quadrature ({s.nagq} points)") + ", \".\")),",
+            "    \" (vs \", sx_nonevent, \"). Odds ratios are conditional (subject-specific): they hold the random effects \",",
+            "    \"fixed. For a predictor that changes within participants they compare occasions of the same participant; \",",
+            "    \"for a predictor that is constant within participants\", if (length(sx_tinv)) paste0(\" (here: \",",
+            "    paste(sx_names[sx_tinv], collapse = \", \"), \")\") else \"\", \" they compare different participants with \",",
+            "    \"the same random-effect value, NOT a within-person change. Neither is a population-average odds ratio, a \",",
+            "    \"risk ratio or a causal effect. Wald z tests and CIs; estimation: \", " + r_str("Laplace approximation" if s.nagq == 1 else f"adaptive Gauss-Hermite quadrature ({s.nagq} points)") + ", \".\")),",
             "  sx_table(\"Term tests (likelihood-ratio)\", sx_terms, notes = \"Each term dropped in turn (marginality respected) and the model refitted.\"),",
             "  sx_table(\"Random effects (variance components, logit scale)\", sx_vc_tab),",
             "  sx_table(\"Model fit\", data.frame(observations = nrow(sx_d), participants = nlevels(droplevels(sx_d$sx_id)),",
             "    events = sx_events, non_events = sx_ne, logLik = as.numeric(stats::logLik(sx_fit)), AIC = stats::AIC(sx_fit),",
             "    BIC = stats::BIC(sx_fit), singular = sx_singular, converged = !length(sx_conv))))",
         ]
-        L += _glmm_probabilities(ds, s, plot_paths[:1])
+        L += _safe_block("Predicted probabilities (table and plot)", _glmm_probabilities(ds, s, plot_paths[:1]))
         inference = "Wald z tests (Laplace/AGQ likelihood); likelihood-ratio term tests. No denominator-df procedure (lmerTest does not apply to GLMMs)."
     elif eng == "clmm":
         L += [
@@ -667,7 +803,9 @@ def _build_generalized(ds: Dataset, s: MixedSpec, plot_paths: list[str]) -> str:
             "  sx_table(\"Fixed effects (cumulative logit)\", sx_fx, notes = paste0(\"Category order: \", paste(levels(sx_d$sx_y), collapse = \" < \"),",
             "    \". A positive coefficient (OR > 1) shifts responses towards higher categories, for the same participant \",",
             "    \"(conditional on the random effects). Proportional-odds model: one OR for every cut-point; the assumption is \",",
-            "    \"not tested inside the mixed model (check it with Ordinal logistic regression, which runs a nominal test).\""
+            "    \"NOT tested for this conditional (mixed) model. The nominal test of single-level ordinal regression is only a \",",
+            "    \"marginal, auxiliary check: it ignores the participant dependence and is not direct evidence about the \",",
+            "    \"conditional proportional-odds assumption of this model.\""
             + (", " + r_str(" Coding direction: " + ds.var(s.outcome).coding_direction + ".") if ds.var(s.outcome).coding_direction else "") + ")),",
             "  sx_table(\"Thresholds (cut-points)\", data.frame(cut = rownames(sx_th), estimate = sx_th[[1]], se = sx_th[[2]])),",
             "  sx_table(\"Term tests (joint Wald)\", sx_terms, notes = \"Joint Wald chi-square of each term's coefficients.\"),",
@@ -712,14 +850,26 @@ def _build_generalized(ds: Dataset, s: MixedSpec, plot_paths: list[str]) -> str:
         L.append("sx_tabs[[length(sx_tabs) + 1]] <- sx_table(\"Outcome availability by time point\", sx_av, notes = "
                  "\"Observed = non-missing outcome. Time points with 0 observed values are structurally unobserved and "
                  "are not part of the analysis range.\")")
+    miss = ("GEE uses every available observation without weighting: ordinary (unweighted) GEE is consistent when "
+            "missingness does not depend on the outcomes (MCAR, or missingness explained by the covariates in the "
+            "model); under MAR that depends on observed outcomes it can be biased, and weighted GEE or multiple "
+            "imputation (not done here) would need further assumptions."
+            if eng == "geepack" else
+            "Every available observation is used (participants with missing occasions still contribute). The "
+            "likelihood-based estimates are consistent when missingness is ignorable given the model (MAR given the "
+            "modelled outcomes and covariates) and the model is correct; MAR cannot be verified from the data."
+            + (" PQL is an approximation, so even this holds only approximately." if eng == "mblogit" else ""))
     L += [
+        f"sx_ident <- sx_identity(sx_d, sx_fixed, \"sx_y\", c(\"sx_id\"" + (", \"sx_cluster\"" if s.cluster else "")
+        + "))",
+        "sx_dg <- sx_diag(sx_fit, NULL)",
         f"sx_inference <- {r_str(inference)}",
         "sx_result <- list(tables = sx_tabs, checks = sx_checks, n_used = nrow(sx_d), n_excluded = nrow(dat) - nrow(sx_d),",
-        "  notes = c(sx_inference, \" Every available observation is used (participants with missing occasions still \",",
-        "    \"contribute); estimates assume data are missing at random given the model.\"))",
+        "  identity = sx_ident, plot_issues = I(sx_plot_issues), diagnostics = sx_dg[c(\"status\", \"flags\", \"optimizer\", \"apvar\")],",
+        f"  notes = paste0(sx_inference, \" \", {r_str(miss)}))",
     ]
     if eng == "glmer":
-        L += _extra_plots(s, plot_paths[1:2])
+        L += _safe_block("Random-effect plot", _extra_plots(s, plot_paths[1:2]))
     return "\n".join(L) + "\n"
 
 
@@ -818,19 +968,29 @@ def _extra_plots(s: MixedSpec, paths: list[str]) -> list[str]:
     L: list[str] = []
     if len(paths) >= 1 and s.engine != "mmrm":
         L += [
-            "# random intercepts with approximate 95% intervals (lme4: conditional SDs)",
+            "# participant random intercepts; approximate 95% intervals from lme4 conditional variances where available",
+            "sx_post_sd <- function(r) {",
+            "  pv <- attr(r, \"condVar\"); if (is.null(pv)) pv <- attr(r, \"postVar\")",
+            "  if (is.list(pv)) pv <- pv[[1]]   # uncorrelated (||) terms: one array per term; the first is the intercept",
+            "  if (is.null(pv) || length(dim(pv)) != 3 || dim(pv)[3] != nrow(r)) return(rep(NA_real_, nrow(r)))",
+            "  sqrt(pv[1, 1, ])",
+            "}",
             "sx_re <- if (inherits(sx_fit, \"merMod\")) {",
-            "  r <- lme4::ranef(sx_fit, condVar = TRUE)$sx_id; sdv <- sqrt(attr(r, \"postVar\")[1, 1, ])",
-            "  data.frame(id = rownames(r), value = r[[1]], lo = r[[1]] - 1.96 * sdv, hi = r[[1]] + 1.96 * sdv)",
+            "  r <- lme4::ranef(sx_fit, condVar = TRUE)$sx_id; sdv <- sx_post_sd(r)",
+            "  data.frame(id = rownames(r), value = r[[\"(Intercept)\"]], lo = r[[\"(Intercept)\"]] - 1.96 * sdv,",
+            "             hi = r[[\"(Intercept)\"]] + 1.96 * sdv)",
             "} else { r <- nlme::ranef(sx_fit); r <- if (is.list(r) && !is.data.frame(r)) r[[length(r)]] else r",
             "  data.frame(id = rownames(r), value = r[[1]], lo = NA_real_, hi = NA_real_) }",
             "sx_re <- sx_re[order(sx_re$value), ]; sx_re$rank <- seq_len(nrow(sx_re))",
+            "sx_has_ci <- !all(is.na(sx_re$lo))",
             "sx_p4 <- ggplot2::ggplot(sx_re, ggplot2::aes(x = rank, y = value)) +",
             "  ggplot2::geom_hline(yintercept = 0, linetype = 2) +",
-            "  (if (all(is.na(sx_re$lo))) NULL else ggplot2::geom_errorbar(ggplot2::aes(ymin = lo, ymax = hi), colour = \"grey70\", width = 0)) +",
+            "  (if (!sx_has_ci) NULL else ggplot2::geom_errorbar(ggplot2::aes(ymin = lo, ymax = hi), colour = \"grey70\", width = 0)) +",
             "  ggplot2::geom_point(size = 0.8, colour = \"#2166ac\") +",
             "  ggplot2::labs(title = \"Random intercepts (participant deviations from the average)\",",
-            "    subtitle = \"Sorted; bars = approximate 95% intervals\", x = \"Participants (sorted)\", y = \"Deviation\") +",
+            "    subtitle = if (sx_has_ci) \"Sorted; bars = approximate 95% intervals (lme4 conditional variances)\" else",
+            "      \"Sorted point predictions only: interval estimates are not available for this engine\",",
+            "    x = \"Participants (sorted)\", y = \"Deviation\") +",
             "  ggplot2::theme_minimal()",
             f"ggplot2::ggsave({r_str(paths[0])}, sx_p4, width = 7, height = 4.5, dpi = 120)",
         ]
@@ -966,7 +1126,11 @@ def run(session: RSession, ds: Dataset, s: MixedSpec) -> tuple[AnalysisResult, d
     title = ENGINE_TITLES[s.engine]
     result, raw = session.run(ds, kind="mixed_model", title=title, body=body, packages=pk + ["ggplot2"],
                               inputs={"spec": s.to_dict(), "filters": [f.describe() for f in ds.filters]})
-    result.missing_data = "All available observations (complete on the model variables within each row); MAR assumed."
+    result.missing_data = ("All available observations (complete on the model variables within each row). "
+                           + ("Unweighted GEE: valid under MCAR or covariate-dependent missingness, not in general "
+                              "under outcome-dependent MAR." if s.estimator == "gee" else
+                              "Likelihood-based: valid if missingness is ignorable given the model (MAR, correct "
+                              "model); an assumption, not verifiable from the data."))
     result.seed = s.seed
     if s.source:
         result.messages.append(f"Refit: {s.source}.")
@@ -1002,6 +1166,19 @@ def run(session: RSession, ds: Dataset, s: MixedSpec) -> tuple[AnalysisResult, d
     result.values["inference"] = (INFERENCE_NOTES[s.inference] if s.engine == "lme4" else
                                   result.values["notes"][0] if s.family != "gaussian" or s.estimator == "gee" else
                                   "nlme containment df" if s.engine == "nlme" else "mmrm Satterthwaite df")
+    for note in _as_list(raw.get("plot_issues")):
+        result.messages.append(f"Plot note: {note}")   # optional visual only: the fit and its tables stand
+    if isinstance(raw.get("identity"), dict):
+        from .descriptor import parse_identity
+
+        result.values["identity"] = parse_identity(raw["identity"])
+    dg = raw.get("diagnostics")
+    if isinstance(dg, dict):
+        result.values["diagnostics"] = {"status": str(_as_list(dg.get("status"))[0] if dg.get("status") else ""),
+                                        "flags": [str(f) for f in _as_list(dg.get("flags"))],
+                                        "optimizer": str(_as_list(dg.get("optimizer"))[0] if dg.get("optimizer") else ""),
+                                        "apvar": str(_as_list(dg.get("apvar"))[0] if dg.get("apvar") else "")}
+    result.values["model_spec"] = canonical_spec(ds, s)
     checks = [str(c) for c in _as_list(raw.get("checks"))]
     # an R warning that a check already reports (e.g. lme4 convergence) is shown once
     result.messages = [m for m in result.messages if not any(m.removeprefix("R warning: ") in c for c in checks)]
@@ -1021,38 +1198,84 @@ def run(session: RSession, ds: Dataset, s: MixedSpec) -> tuple[AnalysisResult, d
     return result, artifacts
 
 
-# ---- specification comparisons (§15.3, §14) -------------------------------------------------
+# ---- specification comparisons (§15.3, §14; v1.3.2 family-aware, STAT-17/19/23/33/34, UI-54) -----------------
 
 COMPARISONS = {
-    "time": "Time specifications (linear / quadratic / categorical) — ML fits",
-    "random": "Random effects (intercept vs intercept + slope) — REML fits",
+    "time": "Time specifications (linear / quadratic / categorical)",
+    "random": "Random effects (intercept / uncorrelated slope / correlated slope)",
     "residual": "Residual structure (independent / AR(1) / CAR(1)) — REML fits in nlme",
 }
+
+
+def comparison_capability(base: MixedSpec, which: str) -> str:
+    """'' when this comparison is valid for the model's family and estimator, else the reason it is not offered
+    (capability matrix, H9). Inherently invalid comparisons are refused with the supported alternative."""
+    if base.estimator == "gee":
+        if which == "random":
+            return ("GEE has no random effects (it is a population-average model with a working correlation): there is "
+                    "no random-effects comparison. Compare working correlations with 'Residual structure' (QIC/CIC).")
+        return ""
+    if base.family == "multinomial":
+        return ("The multinomial mixed model is fitted by penalized quasi-likelihood (PQL): there is no likelihood, so "
+                "likelihood-ratio tests and AIC/BIC comparisons are not available. Use the joint Wald term tests.")
+    if base.residual == "unstructured":
+        return {"time": "Unstructured models need categorical time; time specifications cannot be compared.",
+                "random": "The unstructured marginal model has no random effects.",
+                "residual": "The unstructured marginal model has no separate residual-correlation choice."}[which]
+    if which == "residual" and base.family != "gaussian":
+        return (f"{FAMILIES[base.family]} mixed models have no residual-correlation structure (it belongs to Gaussian "
+                "models); compare random-effects structures, or use GEE with an AR(1) working correlation.")
+    if which == "residual" and base.random == "none":
+        return "Choose a random-effects model to compare residual structures."
+    return ""
 
 
 def comparison_variants(base: MixedSpec, which: str) -> list[tuple[str, MixedSpec]]:
     from dataclasses import replace
 
+    why = comparison_capability(base, which)
+    if why:
+        raise MixedInputError(why)
+    gauss = base.family == "gaussian" and base.estimator != "gee"
     if which == "time":
-        if base.residual == "unstructured":
-            raise MixedInputError("Unstructured models need categorical time; time specifications cannot be compared.")
-        return [(TIME_TYPES[t], replace(base, time_type=t, method="ML"))
-                for t in ("continuous", "quadratic", "categorical")]
+        return [(TIME_TYPES[t], replace(base, time_type=t, method="ML")) for t in ("continuous", "quadratic", "categorical")]
     if which == "random":
-        if base.residual == "unstructured":
-            raise MixedInputError("The unstructured marginal model has no random effects.")
-        return [(RANDOM[r], replace(base, random=r, method="REML")) for r in ("intercept", "slope")]
-    if which == "residual":
-        if base.random == "none":
-            raise MixedInputError("Choose a random-effects model to compare residual structures.")
-        return [(RESIDUAL[r], replace(base, residual=r, method="REML", force_nlme=True))
-                for r in ("independent", "ar1", "car1")]
-    raise MixedInputError(which)
+        kinds = ("intercept", "slope_uncorrelated", "slope") if gauss or base.family == "binomial" else ("intercept", "slope")
+        return [(RANDOM[r], replace(base, random=r, method="REML" if gauss else base.method)) for r in kinds]
+    if base.estimator == "gee":
+        return [(f"GEE {GEE_CORSTR[c]}", replace(base, gee_corstr=c)) for c in ("independence", "exchangeable", "ar1")]
+    return [(RESIDUAL[r], replace(base, residual=r, method="REML", force_nlme=True))
+            for r in ("independent", "ar1", "car1")]
 
 
-# (smaller, larger, boundary) nested pairs by position in comparison_variants
-NESTED = {"time": [(0, 1, False), (0, 2, False), (1, 2, False)], "random": [(0, 1, True)],
-          "residual": [(0, 1, False), (0, 2, False)]}
+def comparison_pairs(base: MixedSpec, which: str, variants: list[tuple[str, MixedSpec]]) -> list[dict[str, Any]]:
+    """Nested pairs with the hypothesis-specific reference distribution, or the reason a pair is not tested."""
+    from .covstruct import Structure, contrast
+
+    out = []
+    if base.estimator == "gee":
+        if which == "time":   # mean structures: robust Wald test of the quadratic term (linear nested in quadratic)
+            out.append({"a": 0, "b": 1, "kind": "wald", "null": "quadratic time coefficient = 0",
+                        "reference": "robust (sandwich) Wald chi-square", "needs_interior": False})
+        return out
+    if which == "time":
+        for a, b in ((0, 1), (0, 2), (1, 2)):
+            out.append({"a": a, "b": b, "kind": "lr", "reference": "chisq", "needs_interior": False,
+                        "null": f"{variants[a][0]} describes the time trend (the extra time parameters are 0)"})
+        return out
+    st = lambda v: Structure(MIXED_RANDOM.get(v.random, "ri"), v.residual, bool(v.cluster))  # noqa: E731
+    for a in range(len(variants)):
+        for b in range(len(variants)):
+            if a == b:
+                continue
+            c = contrast(st(variants[a][1]), st(variants[b][1]))
+            if c.nested:
+                out.append({"a": a, "b": b, "kind": "lr", "reference": c.reference, "null": c.null,
+                            "needs_interior": c.needs_interior, "df": c.df, "assumptions": c.assumptions})
+            elif a < b and c.reason and which == "residual":
+                out.append({"a": a, "b": b, "kind": "none", "reason": c.reason, "reference": "", "null": "",
+                            "needs_interior": False})
+    return out
 
 
 def compare_specs(session: RSession, ds: Dataset, base: MixedSpec, which: str) -> tuple[AnalysisResult, dict]:
@@ -1063,47 +1286,104 @@ def compare_specs(session: RSession, ds: Dataset, base: MixedSpec, which: str) -
     variants = comparison_variants(base, which)
     for _, v in variants:
         validate(ds, v)
-    L = ["sx_cmp <- list()"]
+    gee = base.estimator == "gee"
+    L = [MIXED_R_HELPERS + PLOT_SAFE, "sx_cmp <- list()"]
     for k, (label, v) in enumerate(variants, start=1):
         L.append(f"# ---- variant {k}: {label} ----")
         L.append("sx_cmp[[" + str(k) + "]] <- tryCatch({")
-        L.append(build(ds, v, []).replace("sx_result <- list(", "sx_unused <- list("))
-        L.append(f"  list(label = {r_str(label)}, engine = {r_str(v.engine)}, method = {r_str(v.method)},")
-        L.append("    logLik = as.numeric(stats::logLik(sx_fit)), df = sx_ic(sx_fit)$k,")
-        L.append("    AIC = sx_ic(sx_fit)$aic, BIC = sx_ic(sx_fit)$bic, n = nrow(sx_d), singular = isTRUE(sx_singular))")
+        L.append(build(ds, v, [], helpers=False).replace("sx_result <- list(", "sx_unused <- list("))
+        L.append("  sx_dgv <- if (!is.null(sx_dg)) sx_dg else sx_diag(sx_fit, sx_run)")
+        if gee:
+            L.append(f"  list(label = {r_str(label)}, engine = {r_str(v.engine)}, method = \"GEE (robust SE)\",")
+            L.append("    n = nrow(sx_d), rows = sx_ident$rows, fit = sx_fit, clean = sx_dgv$clean,")
+            L.append("    flags = paste(sx_dgv$flags, collapse = \"; \"), status = sx_dgv$status,")
+            L.append("    QIC = if (is.null(sx_qic)) NA_real_ else unname(sx_qic[[\"QIC\"]]),")
+            L.append("    QICu = if (is.null(sx_qic)) NA_real_ else unname(sx_qic[[\"QICu\"]]),")
+            L.append("    CIC = if (is.null(sx_qic)) NA_real_ else unname(sx_qic[[\"CIC\"]]))")
+        else:
+            L.append(f"  list(label = {r_str(label)}, engine = {r_str(v.engine)}, method = {r_str(_estimation(v))},")
+            L.append("    logLik = as.numeric(stats::logLik(sx_fit)), df = sx_ic(sx_fit)$k, AIC = sx_ic(sx_fit)$aic,")
+            L.append("    BIC = sx_ic(sx_fit)$bic, BIC_n = sx_ic(sx_fit)$n_bic, n = nrow(sx_d), rows = sx_ident$rows,")
+            L.append("    clean = sx_dgv$clean, status = sx_dgv$status, flags = paste(sx_dgv$flags, collapse = \"; \"),")
+            L.append("    boundary = isTRUE(sx_dgv$singular) || isTRUE(sx_dgv$near_boundary))")
         L.append(f"}}, error = function(e) list(label = {r_str(label)}, error = conditionMessage(e)))")
-    pairs = [(a, b, bd) for a, b, bd in NESTED[which] if a < len(variants) and b < len(variants)]
+    pairs = comparison_pairs(base, which, variants)
     L += [
         "sx_ok <- vapply(sx_cmp, function(x) is.null(x$error), TRUE)",
-        "sx_tab <- do.call(rbind, lapply(sx_cmp[sx_ok], function(x) data.frame(model = x$label, engine = x$engine,",
-        "  estimation = x$method, parameters = x$df, logLik = x$logLik, AIC = x$AIC, BIC = x$BIC, n = x$n, singular = x$singular)))",
-        "sx_tab$delta_AIC <- sx_tab$AIC - min(sx_tab$AIC)",
-        "sx_tabs <- list(sx_table(\"Specification comparison\", sx_tab, notes = " + r_str(COMPARISONS[which]) + "))",
+        "sx_fitrow <- function(x) if (is.null(x$error)) data.frame(model = x$label, engine = x$engine, estimation = x$method,",
+        "  status = \"fitted\", diagnostics = x$status, " + (
+            "n = x$n, QIC = x$QIC, QICu = x$QICu, CIC = x$CIC" if gee else
+            "n = x$n, parameters = x$df, logLik = x$logLik, AIC = x$AIC, BIC = x$BIC, BIC_n = x$BIC_n")
+        + ", reason = x$flags) else",
+        "  data.frame(model = x$label, engine = NA_character_, estimation = NA_character_, status = \"failed\",",
+        "    diagnostics = \"failed\", " + ("n = NA_real_, QIC = NA_real_, QICu = NA_real_, CIC = NA_real_" if gee else
+                                          "n = NA_real_, parameters = NA_real_, logLik = NA_real_, AIC = NA_real_, "
+                                          "BIC = NA_real_, BIC_n = NA_real_") + ", reason = x$error)",
+        "sx_tab <- do.call(rbind, lapply(sx_cmp, sx_fitrow))",
+        "sx_rows_same <- length(unique(vapply(sx_cmp[sx_ok], function(x) x$rows, \"\"))) <= 1",
+        "sx_crit <- " + ("\"QIC\"" if gee else "\"AIC\""),
+        "if (sum(sx_ok) >= 2 && sx_rows_same) {",
+        "  sx_tab[[paste0(\"delta_\", sx_crit)]] <- sx_tab[[sx_crit]] - min(sx_tab[[sx_crit]], na.rm = TRUE)",
+        "" if gee else ("  if (length(unique(stats::na.omit(sx_tab$BIC_n))) == 1) sx_tab$delta_BIC <- sx_tab$BIC - "
+                        "min(sx_tab$BIC, na.rm = TRUE)"),
+        "}",
+        "sx_state <- if (!any(sx_ok)) \"failed: no variant could be fitted, so nothing is compared\" else if (sum(sx_ok) == 1)",
+        "  \"incomplete: only one variant was fitted, so there is no comparison and no winner\" else if (!sx_rows_same)",
+        "  \"invalid: the fitted variants used different rows, so their criteria and tests are not comparable\" else if (!all(sx_ok))",
+        "  \"incomplete: some variants failed; the remaining ones are compared\" else \"complete\"",
+        f"sx_tabs <- list(sx_table(\"Specification comparison\", sx_tab, notes = paste0({r_str(COMPARISONS[which])}, \". \",",
+        "  " + r_str(_comparison_note(base, which)) + ", \" Comparison status: \", sx_state, \".\")))",
         "sx_lrt <- list()",
     ]
-    for a, b, boundary in pairs:
+    for pr in pairs:
+        a, b = pr["a"] + 1, pr["b"] + 1
+        la, lb = variants[pr["a"]][0], variants[pr["b"]][0]
+        if pr["kind"] == "none":
+            L.append(f"sx_lrt[[length(sx_lrt) + 1]] <- data.frame(smaller = {r_str(la)}, larger = {r_str(lb)}, null_hypothesis = \"\",")
+            L.append("  reference = \"none (not nested)\", LR_raw = NA_real_, LR = NA_real_, df = NA_real_, p = NA_real_,")
+            L.append(f"  status = \"not tested\", reason = {r_str(pr['reason'])})")
+            continue
+        L += [f"if (sx_ok[{a}] && sx_ok[{b}]) {{", f"  sx_A <- sx_cmp[[{a}]]; sx_B <- sx_cmp[[{b}]]"]
+        if pr["kind"] == "wald":
+            L += ["  sx_w <- tryCatch(as.data.frame(stats::anova(sx_B$fit, sx_A$fit)), error = function(e) NULL)",
+                  "  sx_t <- if (is.null(sx_w) || !nrow(sx_w)) list(LR_raw = NA_real_, LR = NA_real_, df = NA_real_, p = NA_real_,",
+                  "    status = \"withheld\", reason = \"the robust Wald comparison could not be computed\") else",
+                  "    list(LR_raw = sx_w$X2[1], LR = sx_w$X2[1], df = sx_w$Df[1], p = sx_w[[\"P(>|Chi|)\"]][1], status = \"tested\", reason = \"\")"]
+        else:
+            L += [f"  sx_t <- sx_lr_test(sx_A$logLik, sx_B$logLik, sx_B$df - sx_A$df, {r_str(pr['reference'])})"]
         L += [
-            f"if (sx_ok[{a + 1}] && sx_ok[{b + 1}] && sx_cmp[[{a + 1}]]$n == sx_cmp[[{b + 1}]]$n && sx_cmp[[{b + 1}]]$df > sx_cmp[[{a + 1}]]$df) {{",
-            f"  sx_chi <- 2 * (sx_cmp[[{b + 1}]]$logLik - sx_cmp[[{a + 1}]]$logLik); sx_df <- sx_cmp[[{b + 1}]]$df - sx_cmp[[{a + 1}]]$df",
-            "  sx_p <- stats::pchisq(sx_chi, sx_df, lower.tail = FALSE)",
-            "  sx_lrt[[length(sx_lrt) + 1]] <- data.frame(smaller = sx_cmp[[" + str(a + 1) + "]]$label, larger = sx_cmp[[" + str(b + 1) + "]]$label,",
-            "    chi2 = sx_chi, df = sx_df, p = sx_p, p_boundary_corrected = "
-            + ("0.5 * sx_p + 0.5 * stats::pchisq(sx_chi, sx_df - 1, lower.tail = FALSE)" if boundary else "NA_real_") + ")",
+            "  if (!identical(sx_A$rows, sx_B$rows)) sx_t <- modifyList(sx_t, list(p = NA_real_, status = \"withheld\",",
+            "    reason = \"the two fits used different rows\"))",
+        ]
+        if pr.get("needs_interior"):
+            L += ["  if (identical(sx_t$status, \"tested\") && (isTRUE(sx_A$boundary) || isTRUE(sx_B$boundary))) sx_t <- modifyList(sx_t,",
+                  "    list(p = NA_real_, status = \"withheld\", reason = paste0(\"a variance is at or near zero, so the covariance \",",
+                  "    \"test has no regular reference distribution (compare by AIC/BIC)\")))"]
+        L += [
+            "  if (identical(sx_t$status, \"tested\") && !(isTRUE(sx_A$clean) && isTRUE(sx_B$clean))) sx_t$status <- \"provisional\"",
+            "  if (identical(sx_t$status, \"provisional\")) sx_t$reason <- paste(c(if (nzchar(sx_t$reason)) sx_t$reason,",
+            "    \"at least one fit is flagged (see diagnostics): the p-value is provisional, not clean evidence\"), collapse = \"; \")",
+            f"  sx_lrt[[length(sx_lrt) + 1]] <- data.frame(smaller = {r_str(la)}, larger = {r_str(lb)}, null_hypothesis = {r_str(pr['null'])},",
+            f"    reference = {r_str(_reference_label(pr))}, LR_raw = sx_t$LR_raw, LR = sx_t$LR, df = sx_t$df, p = sx_t$p,",
+            "    status = sx_t$status, reason = sx_t$reason)",
+            "} else {",
+            f"  sx_lrt[[length(sx_lrt) + 1]] <- data.frame(smaller = {r_str(la)}, larger = {r_str(lb)}, null_hypothesis = {r_str(pr['null'])},",
+            f"    reference = {r_str(_reference_label(pr))}, LR_raw = NA_real_, LR = NA_real_, df = NA_real_, p = NA_real_,",
+            "    status = \"not tested\", reason = \"at least one of the two models could not be fitted\")",
             "}",
         ]
-    note = ("Likelihood-ratio tests for nested pairs on the same rows. " +
-            ("Variance tests sit on the boundary of the parameter space: the naive p is conservative; "
-             "p_boundary_corrected uses the 50:50 chi-square mixture." if which == "random" else
-             "Fixed-effect comparisons use ML fits (REML likelihoods are not comparable across fixed effects)."
-             if which == "time" else "AR(1) and CAR(1) are not nested in each other: compare them by AIC."))
+    test_name = "Robust Wald tests" if gee else "Likelihood-ratio tests"
     L += [
-        "if (length(sx_lrt)) sx_tabs[[2]] <- sx_table(\"Likelihood-ratio tests\", do.call(rbind, sx_lrt), notes = " + r_str(note) + ")",
+        f"if (length(sx_lrt)) sx_tabs[[2]] <- sx_table({r_str(test_name)}, do.call(rbind, sx_lrt), notes = "
+        + r_str(_tests_note(base, which)) + ")",
         "sx_errors <- vapply(sx_cmp[!sx_ok], function(x) paste0(x$label, \": \", x$error), \"\")",
-        "sx_result <- list(tables = sx_tabs, checks = sx_errors, n_used = max(sx_tab$n), n_excluded = nrow(dat) - max(sx_tab$n))",
+        "sx_n <- if (any(sx_ok)) max(vapply(sx_cmp[sx_ok], function(x) x$n, 0)) else 0",
+        "sx_result <- list(tables = sx_tabs, checks = sx_errors, n_used = sx_n, n_excluded = nrow(dat) - sx_n, state = sx_state)",
     ]
     body = "\n".join(L) + "\n"
+    pk = ["lme4", "lmerTest", "nlme", "mmrm"] + (["geepack"] if gee else ["ordinal"] if base.family == "ordinal" else [])
     result, raw = session.run(ds, kind="mixed_comparison", title=f"Compare {which} specifications", body=body,
-                              packages=["lme4", "lmerTest", "nlme", "mmrm"], inputs={"base": base.to_dict(), "which": which})
+                              packages=pk, inputs={"base": base.to_dict(), "which": which})
     record(result, ds)
     if raw is None:
         return result, {}
@@ -1111,7 +1391,54 @@ def compare_specs(session: RSession, ds: Dataset, base: MixedSpec, which: str) -
     for t in _as_list(raw.get("tables")):
         result.tables.append(_parse_table(t, names, _internal_names(ds, base)))
     result.n_used = raw.get("n_used")
+    state = str(_as_list(raw.get("state"))[0]) if raw.get("state") else ""
+    result.values["comparison_state"] = state
+    if state and state != "complete":
+        result.messages.insert(0, f"Check: comparison {state}.")
+        result.status = Status.FAILED if state.startswith("failed") else Status.WARNING
     for c in _as_list(raw.get("checks")):
         result.messages.append(f"Check: could not fit {c}")
-        result.status = Status.WARNING
+        if result.status is Status.OK:
+            result.status = Status.WARNING
     return result, {}
+
+
+def _estimation(v: MixedSpec) -> str:
+    if v.family == "gaussian":
+        return v.method
+    return "ML (Laplace)" if v.nagq == 1 else f"ML (adaptive Gauss-Hermite, {v.nagq} points)"
+
+
+def _reference_label(pr: dict[str, Any]) -> str:
+    if pr["kind"] == "wald":
+        return pr["reference"]
+    if pr["reference"] == "mixture":
+        df = int(pr.get("df") or 1)
+        return f"50:50 mixture of {'a point mass at 0' if df == 1 else f'chi-square({df - 1})'} and chi-square({df}) (boundary null)"
+    return "chi-square(df)"
+
+
+def _comparison_note(base: MixedSpec, which: str) -> str:
+    if base.estimator == "gee":
+        return ("GEE has no likelihood: no AIC/BIC or likelihood-ratio test. QIC compares working correlations of the "
+                "same mean model; QICu compares mean models; CIC is the trace penalty. Smaller is better; they are not "
+                "p-values.")
+    if base.family != "gaussian":
+        return ("ML fits (" + ("Laplace approximation" if base.nagq == 1 else f"adaptive Gauss-Hermite, {base.nagq} points")
+                + ") of the same likelihood family; never REML, which is a Gaussian-model method.")
+    if which == "time":
+        return "Fixed-effect comparisons use ML fits (REML likelihoods are not comparable across fixed effects)."
+    return ("REML fits with an identical fixed part and rows, so their likelihoods compare covariance structures. "
+            "BIC basis: n - p for nlme REML, n for lme4 REML; delta_BIC is shown only on a common basis.")
+
+
+def _tests_note(base: MixedSpec, which: str) -> str:
+    if base.estimator == "gee":
+        return ("Robust (sandwich) Wald test of the mean-structure difference (geepack anova). Working correlations are "
+                "compared by QIC only: GEE has no likelihood-ratio test.")
+    return ("Nested pairs on identical rows. The reference distribution follows the tested null: a variance tested at 0 "
+            "lies on the boundary (50:50 chi-square mixture); a covariance or a signed AR(1) phi is interior (chi-square); "
+            "a CAR(1) phi lies in [0, 1), so phi = 0 is a boundary. AR(1) and CAR(1) are not nested: compare them by "
+            "AIC. LR_raw is the unclamped statistic; a negligible negative value (> -1e-6) is set to 0, a material "
+            "negative value withholds the p-value. 'provisional' = at least one fit is flagged (boundary, singular, "
+            "convergence or optimizer fallback); the p-value is then not clean evidence.")

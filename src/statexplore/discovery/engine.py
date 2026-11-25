@@ -80,6 +80,7 @@ class DiscoveryRun:
     fit_id: str = ""                                           # v1.2: fit identity hash (F6)
     n_times: int | None = None                                 # v1.2 longitudinal: distinct time points
     executions: list[dict[str, Any]] = field(default_factory=list)  # v1.3: budget + range of each execution
+    data_snapshot: dict[str, Any] = field(default_factory=dict)     # v1.3.2: the data view used (STAT-39)
 
     @property
     def is_complete(self) -> bool:
@@ -106,7 +107,7 @@ class DiscoveryRun:
         return {k: getattr(self, k) for k in ("id", "family", "total", "signature", "created_at", "status",
                                                "stop_reason", "n_done", "stop_index", "elapsed_s",
                                                "n_sample", "engine", "warnings", "coding", "fit_id", "n_times",
-                                               "executions")} | {
+                                               "executions", "data_snapshot")} | {
             "settings": self.settings.to_dict(), "validation": {str(k): v for k, v in self.validation.items()}}
 
     @classmethod
@@ -122,6 +123,7 @@ class DiscoveryRun:
         run.fit_id = str(meta.get("fit_id") or "")
         run.n_times = meta.get("n_times")
         run.executions = list(meta.get("executions") or [])
+        run.data_snapshot = dict(meta.get("data_snapshot") or {})
         run.validation = {int(k): v for k, v in (meta.get("validation") or {}).items()}
         run.rows = rows
         return run
@@ -160,10 +162,14 @@ def default_workers(s: SearchSettings) -> int:
 def create_run(ds: Dataset, s: SearchSettings) -> DiscoveryRun:
     family = validate_settings(ds, s)
     fit_id = fit_identity(ds, s, family)
+    base = ds
     ds = view(ds, s)
     run = DiscoveryRun(settings=s, family=family, total=count_candidates(s), signature=data_signature(ds))
     run.coding = coding(ds, s, family)
     run.fit_id = fit_id
+    from .history import snapshot
+
+    run.data_snapshot = snapshot(base)
     if s.participant and s.time:
         run.n_times = int(ds.analysis_frame([s.time])[s.time].nunique())
     dep = dependence_warning(ds, s)
@@ -193,6 +199,9 @@ def fit_identity(ds: Dataset, s: SearchSettings, family: str) -> str:
         "data": data_signature(v), "family": family, "outcome": s.outcome, "coding": coding_id,
         "participant": s.participant, "time": getattr(s, "time", None), "time_type": getattr(s, "time_type", None),
         "structure": getattr(s, "structure", None), "gee_corstr": getattr(s, "gee_corstr", None),
+        # v1.3.2: nesting changes the model (composite participants, cluster variance); identity schema 2
+        "cluster": getattr(s, "cluster", None), "id_policy": getattr(s, "id_policy", "global") if getattr(s, "cluster", None) else None,
+        "identity_schema": 2, "optimizer": "lme4 default; nlme nlminb then optim on optimizer errors, msMaxIter 200",
         "sample": s.sample, "pool": sorted(s.candidates + s.required) if s.sample == "shared" else None,
         "required": sorted(s.required), "max_params": s.max_params, "conf": s.conf,
         "min_obs": getattr(s, "min_obs", 0),
@@ -205,7 +214,7 @@ ENGINE_PACKAGES = ["detectseparation", "lme4", "ordinal", "nnet", "stats", "nlme
 
 # Version of the rules that turn a fit into a row (bump when a stored statistic changes definition).
 # 2 = v1.3.1: AIC/BIC from the fitted object (STAT-16). Rows from older rules are refitted, never reused.
-FIT_RULES = 2
+FIT_RULES = 3   # 3 = v1.3.2: identity fingerprints, diagnostics, direct R2, shared structure builder, msMaxIter 200
 
 
 def _engine_id(engine: dict[str, Any]) -> tuple:
@@ -441,6 +450,8 @@ def _test_record(ds: Dataset, run: DiscoveryRun, c: Candidate, plan: dict[str, A
     has_ci = out["ci_low"] is not None and out["ci_high"] is not None
     out["ci_applicable"] = "same_estimand" if single and has_ci else (
         "joint" if (out["df1"] or 0) > 1 or len(plan["drop"]) > 1 or fam == "multinomial" else "unavailable")
+    if r.get("withheld"):          # STAT-41: materially negative LR or invalid df -> no p-value, reason kept
+        out["test_status"], out["test_reason"], out["p"] = "withheld", str(_scalar_text(r.get("withheld"))), None
     out["ci_scale"] = _ci_scale(run)
     out["ci_null"] = 0.0
     out["ci_level"] = run.settings.conf
@@ -461,6 +472,12 @@ def _test_record(ds: Dataset, run: DiscoveryRun, c: Candidate, plan: dict[str, A
                           "conditional slopes or contrasts (Teaching Studio) for interval estimates."
                           if out["ci_applicable"] == "joint" else "")
     return out
+
+
+def _scalar_text(x: Any) -> str:
+    if isinstance(x, list):
+        return "; ".join(str(v) for v in x)
+    return "" if x is None else str(x)
 
 
 def _row(ds: Dataset, run: DiscoveryRun, c: Candidate, r: dict[str, Any]) -> dict[str, Any]:
@@ -513,17 +530,33 @@ def _row(ds: Dataset, run: DiscoveryRun, c: Candidate, r: dict[str, Any]) -> dic
     # AIC/BIC come from the fitted object (sx_ic): native for every engine but mmrm (STAT-16: recomputing BIC with
     # log(n) here disagreed with nlme's REML log(n - p) by ~0.004)
     row["bic_n"] = _num(r.get("bic_n"))
+    row["n_lik_params"] = _num(r.get("n_lik_params"))       # every likelihood parameter, from the fitted object
     row["ic_basis"] = str(r.get("ic_basis") or "")
     row["rows_sig"] = str(r.get("rows_sig") or "")
     if r.get("qic") is not None:
         row["qic"] = _num(r.get("qic"))
+    from ..analysis.descriptor import parse_identity
+
+    row["identity"] = parse_identity(r.get("identity"))
+    dg = r.get("diagnostics")
+    if isinstance(dg, dict):
+        row["diagnostics"] = {k: (v[0] if isinstance(v, list) and len(v) == 1 else v) for k, v in dg.items()}
+    if run.settings.participant:
+        cl = r.get("clustered")
+        row["clustered"] = bool(cl[0] if isinstance(cl, list) else cl) if cl is not None else bool(
+            getattr(run.settings, "cluster", None))
+        row["observed_clusters"] = _num(r.get("observed_clusters"))
+        row["modeled_clusters"] = _num(r.get("modeled_clusters"))
+        row["participant_key_policy"] = (("local (cluster, ID)" if run.settings.id_policy == "local" else
+                                          "global ID (one cluster per ID)") if getattr(run.settings, "cluster", None)
+                                         else "participant ID")
     return row
 
 
 def _random_suffix(ds: Dataset, run: DiscoveryRun, c: Candidate) -> str:
     from .space import random_part
 
-    rp = random_part(ds, run.settings, c.structure or None)
+    rp = random_part(ds, run.settings, c.structure or None, c.clustered)
     return f" + {rp}" if rp.startswith("(") else (f"  [{rp}]" if rp else "")
 
 
@@ -537,7 +570,8 @@ def _re_params(run: DiscoveryRun, c: Candidate) -> int | None:
     st = c.structure or s.structure or "ri"
     if st.startswith("gee"):
         return {"gee_exch": 1, "gee_ar1": 1, "gee_ind": 0}[st]         # working-correlation parameters
-    rp = random_parameters(st, n_times=getattr(run, "n_times", None))
+    clustered = bool(getattr(s, "cluster", None)) and c.clustered is not False
+    rp = random_parameters(st, n_times=getattr(run, "n_times", None), clustered=clustered)
     return sum(rp.values())
 
 
@@ -631,38 +665,113 @@ def _mixture_p(lr: float, weights: dict[int, float]) -> float:
                      for k, w in weights.items()))
 
 
-def structure_tests(run: DiscoveryRun) -> dict[int, list[dict[str, Any]]]:
-    """Workflow B: likelihood-ratio tests between nested structures fitted in this run (same fixed part,
-    same rows, REML for Gaussian models). Attached to the larger structure's row; never a focal test."""
-    from scipy.stats import chi2
+def _same_rows(a: dict[str, Any], b: dict[str, Any]) -> bool:
+    ia, ib = a.get("identity") or {}, b.get("identity") or {}
+    if ia.get("rows") and ib.get("rows"):
+        return ia["rows"] == ib["rows"]
+    if a.get("rows_sig") and b.get("rows_sig"):
+        return a["rows_sig"] == b["rows_sig"]
+    return a.get("n") == b.get("n")
 
+
+def _boundary(row: dict[str, Any]) -> bool:
+    dg = row.get("diagnostics") or {}
+    if dg.get("status"):
+        return dg["status"] in ("singular", "near_boundary")
+    flags = str(row.get("flags") or "").lower()  # rows without the diagnostics record (older searches)
+    return "singular fit" in flags or "near-boundary" in flags
+
+
+def structure_tests(run: DiscoveryRun) -> dict[int, list[dict[str, Any]]]:
+    """Workflow B: tests between nested structures fitted in this run (same fixed part, same rows, REML for Gaussian
+    models). A pair is tested only when it differs in exactly one component (random part, residual correlation or
+    the cluster variance); the reference distribution follows the tested null (H6). Attached to the larger
+    structure's row; never a focal test."""
+    from ..analysis.covstruct import contrast, from_key
+    from ..analysis.lrtest import lr_test
     from .space import STRUCTURES
 
-    by = {r.get("structure"): r for r in run.rows if r.get("kind") == "structure" and r["status"] in ("ok", "warning")}
+    fitted = [r for r in run.rows if r.get("kind") == "structure" and r["status"] in ("ok", "warning")]
     out: dict[int, list[dict[str, Any]]] = {}
+    has_cluster = bool(getattr(getattr(run, "settings", None), "cluster", None))
+
+    def struct(r: dict[str, Any]):
+        cl = has_cluster and r.get("clustered") is not False
+        return from_key(str(r.get("structure") or ""), cl)
+
+    def label(r: dict[str, Any]) -> str:
+        base = STRUCTURES.get(r.get("structure"), (str(r.get("structure")),))[0].split(" — ")[0]
+        return base + (" without the cluster" if has_cluster and r.get("clustered") is False else "")
+
+    chosen: dict[tuple, tuple[dict, dict, Any]] = {}
+    for a in fitted:
+        for b in fitted:
+            if a is b:
+                continue
+            sa, sb = struct(a), struct(b)
+            if sa is None or sb is None:
+                continue
+            c = contrast(sa, sb)
+            if not c.nested:
+                continue
+            key = (sa.random, sa.residual, sa.clustered, sb.random, sb.residual, sb.clustered, b["idx"])
+            same_engine = sa.engine == sb.engine
+            prev = chosen.get(key)
+            if prev is None or (same_engine and prev[2][1] is False):
+                chosen[key] = (a, b, (c, same_engine))
+    for a, b, (c, _) in sorted(chosen.values(), key=lambda v: (v[1]["idx"], v[0]["idx"])):
+        t = lr_test(a.get("loglik"), b.get("loglik"), c.df, c.reference)
+        status, reason = t["status"], t["reason"]
+        if not _same_rows(a, b):
+            status, reason = "withheld", "the two structures were fitted to different rows"
+        elif status == "tested" and c.needs_interior and (_boundary(a) or _boundary(b)):
+            status, reason = "withheld", ("a variance is at or near zero, so the covariance test has no regular "
+                                          "reference distribution; compare by AIC/BIC")
+        if status == "tested" and (a["status"] != "ok" or b["status"] != "ok"):
+            status = "provisional"
+            reason = "; ".join(x for x in (reason, "at least one of the two fits is flagged (see its diagnostics): the "
+                                           "p-value is provisional, not clean evidence") if x)
+        weights = ({c.df - 1: 0.5, c.df: 0.5} if c.reference == "mixture" else {c.df: 1.0})
+        rec = {
+            "test_id": len(out.get(int(b["idx"]), [])), "type": "structure",
+            "label": f"{label(b)} vs {label(a)}: {c.what}",
+            "statistic": t["LR"] if t["LR"] is not None else None, "LR_raw": t["LR_raw"], "df1": float(c.df),
+            "p": t["p"] if status != "withheld" else None, "log_p": t["log_p"] if status != "withheld" else None,
+            "ci_applicable": "unavailable", "ci_method": "",
+            "structure_method": f"likelihood-ratio test; reference {c.reference_text}",
+            "reference_distribution": c.reference_text, "null": c.null, "assumptions": c.assumptions,
+            "reference_structure": a.get("structure"), "reference_clustered": a.get("clustered"),
+            "reference_model_id": a.get("model_id"), "reference_idx": int(a["idx"]),
+            "mixture": weights if c.reference == "mixture" else None, "reference_kind": c.reference,
+            "boundary": c.reference == "mixture", "test_status": status, "test_reason": reason}
+        out.setdefault(int(b["idx"]), []).append(rec)
+    # non-Gaussian / marginal structures keep their own nested pairs
+    by = {r.get("structure"): r for r in fitted if from_key(str(r.get("structure") or "")) is None}
     for (small, large), (what, weights) in NESTED_STRUCTURES.items():
         a, b = by.get(small), by.get(large)
-        if not a or not b or a.get("loglik") is None or b.get("loglik") is None or a.get("n") != b.get("n"):
+        if not a or not b or a.get("loglik") is None or b.get("loglik") is None or not _same_rows(a, b):
             continue
-        if a.get("rows_sig") and b.get("rows_sig") and a["rows_sig"] != b["rows_sig"]:
-            continue        # same count but different rows: not a valid nested comparison
-        lr = 2 * (b["loglik"] - a["loglik"])
         if weights is None:
             df = (b.get("n_re_params") or 0) - (a.get("n_re_params") or 0)
-            if df <= 0:
-                continue
-            p, method, dfv = float(chi2.sf(max(lr, 0), df)), f"likelihood-ratio test, chi-square({df})", df
+            ref, dfv = "chisq", df
         else:
-            p = _mixture_p(lr, weights)
             dfv = max(weights)
-            method = ("likelihood-ratio test, boundary-corrected 50:50 chi-square mixture"
-                      if len(weights) > 1 else f"likelihood-ratio test, chi-square({dfv})")
+            ref = "mixture" if len(weights) > 1 else "chisq"
+        t = lr_test(a["loglik"], b["loglik"], dfv, ref)
+        status, reason = t["status"], t["reason"]
+        if status == "tested" and (a["status"] != "ok" or b["status"] != "ok"):
+            status, reason = "provisional", "at least one of the two fits is flagged: the p-value is provisional"
         out.setdefault(int(b["idx"]), []).append({
             "test_id": len(out.get(int(b["idx"]), [])), "type": "structure",
             "label": f"{STRUCTURES[large][0].split(' — ')[0]} vs {STRUCTURES[small][0].split(' — ')[0]}: {what}",
-            "statistic": lr, "df1": float(dfv), "p": p, "ci_applicable": "unavailable", "ci_method": "",
-            "structure_method": method, "reference_structure": small, "mixture": weights,
-            "boundary": bool(weights and len(weights) > 1)})
+            "statistic": t["LR"], "LR_raw": t["LR_raw"], "df1": float(dfv or 0),
+            "p": t["p"] if status != "withheld" else None, "ci_applicable": "unavailable", "ci_method": "",
+            "structure_method": "likelihood-ratio test, " + ("boundary-corrected 50:50 chi-square mixture"
+                                                             if ref == "mixture" else f"chi-square({dfv})"),
+            "reference_distribution": "50:50 chi-square mixture" if ref == "mixture" else f"chi-square({dfv})",
+            "reference_structure": small, "reference_clustered": None, "reference_model_id": a.get("model_id"),
+            "reference_idx": int(a["idx"]), "mixture": weights if ref == "mixture" else None, "reference_kind": ref,
+            "boundary": ref == "mixture", "test_status": status, "test_reason": reason})
     return out
 
 
@@ -740,7 +849,11 @@ def tests_frame(run: DiscoveryRun, interpret: bool = True) -> pd.DataFrame:
     df["p_adj"] = df["p_bh"] if s.correction == "BH" else df["p_holm"]
     df["sig_raw"] = df["in_family"] & (df["p"] < s.alpha)
     df["sig_adj"] = df["in_family"] & (df["p_adj"] < s.alpha)
-    clean = df["status"] == "ok"
+    if "test_status" not in df:
+        df["test_status"] = ""
+    df["test_status"] = df["test_status"].fillna("")
+    # clean only when the model AND (for structure comparisons) both compared fits are unflagged
+    clean = (df["status"] == "ok") & ~df["test_status"].isin(["provisional", "withheld"])
     df["tier"] = np.select(
         [~df["in_family"], df["sig_adj"] & clean, df["sig_raw"] & clean, df["sig_raw"]],
         ["", "A", "B", "C"], default="D")
@@ -793,8 +906,9 @@ def results_frame(run: DiscoveryRun, tf: pd.DataFrame | None = None) -> pd.DataF
             df[c] = df["idx"].map(prim[c])
         elif c not in df:
             df[c] = np.nan
-    if "n_groups" in prim:
-        df["n_groups"] = df["idx"].map(prim["n_groups"])
+    if "n_groups" in prim:      # the model's own count wins; only fill gaps (STAT-46: RI rows had none mapped)
+        own = pd.to_numeric(df["n_groups"], errors="coerce") if "n_groups" in df else pd.Series(np.nan, index=df.index)
+        df["n_groups"] = own.fillna(df["idx"].map(prim["n_groups"]))
     for c in ("in_family", "sig_raw", "sig_adj"):
         df[c] = df[c].fillna(False).astype(bool)
     df["tier"] = df["tier"].fillna("")
@@ -880,9 +994,19 @@ def model_comparison(df: pd.DataFrame, run: DiscoveryRun) -> tuple[pd.DataFrame,
     rows (shared sample) and family; otherwise information criteria are not comparable (X §9)."""
     crit = "qic" if run.family == "gee" and "qic" in df else "aic"
     fitted = df[df["status"].isin(["ok", "warning"]) & df[crit].notna()].copy() if crit in df else df.iloc[0:0]
-    if fitted.empty:
-        return fitted, ("GEE has no likelihood: AIC/BIC are not defined. QIC is shown for comparing working "
-                        "correlations of the same mean model." if run.family == "gee" else "")
+    if fitted.empty:      # STAT-34: an explicit status, never an empty table with Inf deltas
+        n_att = int(df["status"].isin(["ok", "warning", "invalid", "failed"]).sum()) if "status" in df else 0
+        return fitted, ((f"No model could be compared: none of the {n_att:,} attempted models produced "
+                         + ("a QIC (GEE has no likelihood, so AIC/BIC are not defined; see each row's reason)."
+                            if run.family == "gee" else "an information criterion (see each row's status and reason)."))
+                        if n_att else "")
+    if len(fitted) == 1:
+        fitted["d_aic"] = 0.0 if crit == "aic" else np.nan
+        fitted["d_bic"] = np.nan
+        if crit == "qic":
+            fitted["aic"] = fitted["qic"]
+        return fitted, ("Only one model was fitted, so there is no comparison and no 'best' model: the ranking is "
+                        "incomplete.")
     if crit == "qic":
         fitted = fitted.sort_values(["qic", "idx"], kind="stable")
         fitted["d_aic"] = fitted["qic"] - fitted["qic"].min()
@@ -891,17 +1015,35 @@ def model_comparison(df: pd.DataFrame, run: DiscoveryRun) -> tuple[pd.DataFrame,
         return fitted, ("GEE (population-average): the AIC column holds QIC (quasi-likelihood under the "
                         "independence model criterion) and ΔAIC holds ΔQIC. QIC is only comparable between models "
                         "with the same rows and outcome family; it is not an AIC.")
-    shared = run.settings.sample == "shared" and fitted["n"].nunique() <= 1
+    same_rows = fitted["n"].nunique() <= 1
+    if same_rows and "identity" in fitted:
+        rows = {(i or {}).get("rows") for i in fitted["identity"] if isinstance(i, dict)}
+        same_rows = len(rows - {None}) <= 1
+    shared = run.settings.sample == "shared" and same_rows
     fitted = fitted.sort_values(["aic", "idx"], kind="stable")
     if shared:
         fitted["d_aic"] = fitted["aic"] - fitted["aic"].min()
-        fitted["d_bic"] = fitted["bic"] - fitted["bic"].min()
         reml = run.settings.participant and run.settings.workflow == "structure" and run.family == "lmm"
+        bic_n = pd.to_numeric(fitted.get("bic_n"), errors="coerce") if "bic_n" in fitted else pd.Series(dtype=float)
+        mixed_basis = bic_n.notna().any() and bic_n.nunique() > 1
+        if mixed_basis:
+            # STAT-24: native REML BIC uses n - p (nlme) or n (lme4): never rank them on their native values. A
+            # harmonized BIC on one stated basis (n - p, nlme's REML convention) is shown separately.
+            fitted["d_bic"] = np.nan
+            npar = pd.to_numeric(fitted.get("n_params"), errors="coerce")
+            k = pd.to_numeric(fitted.get("n_lik_params"), errors="coerce")
+            fitted["bic_harmonized"] = -2 * fitted["loglik"] + np.log(fitted["n"] - npar) * k
+            fitted["d_bic_harmonized"] = fitted["bic_harmonized"] - fitted["bic_harmonized"].min()
+        else:
+            fitted["d_bic"] = fitted["bic"] - fitted["bic"].min()
         note = (f"All {len(fitted):,} fitted models use the same {int(fitted['n'].iloc[0]):,} rows and the same "
                 "outcome family, so AIC/BIC are comparable"
                 + (" (REML fits with an identical fixed part: valid for comparing covariance structures)." if reml
                    else ".") + " Smaller is better; ΔAIC < 2 is usually not a meaningful "
-                "difference. Information criteria are not p-values, and a model chosen from many is optimistic.")
+                "difference. Information criteria are not p-values, and a model chosen from many is optimistic."
+                + (" Native BIC uses different sample sizes here (nlme REML: n − p; lme4 REML: n), so ΔBIC is not "
+                   "computed on native values; 'BIC (harmonized, n − p)' recomputes every model's BIC on the n − p "
+                   "basis for a like-for-like ranking." if mixed_basis else ""))
     else:
         fitted["d_aic"] = np.nan
         fitted["d_bic"] = np.nan
@@ -1099,8 +1241,9 @@ def headline(run: DiscoveryRun, families: list[dict[str, Any]] | None = None) ->
                        "structures by AIC/BIC in the Model comparison tab.")
         else:
             out.append(f"{adj(f):,} of {_n(f['tests'], FAMILY_NOUNS['structure'])} significant after {corr} "
-                       f"adjustment (α = {s.alpha:g}). These compare random-effect / residual-correlation structures "
-                       "with the fixed part locked; they are not findings about predictors or interactions.")
+                       f"adjustment (α = {s.alpha:g}){_clean_split(f)}. These compare random-effect / residual-"
+                       "correlation structures with the fixed part locked; they are not findings about predictors or "
+                       "interactions.")
     inter = [fams[t] for t in INTERACTION_TYPES if t in fams]
     if not (s.participant and s.workflow == "structure"):
         if not inter:
@@ -1114,16 +1257,24 @@ def headline(run: DiscoveryRun, families: list[dict[str, Any]] | None = None) ->
                            f"{s.alpha:g}.")
             else:
                 out.append("Interaction findings: " + ", ".join(
-                    f"{adj(f):,} of {_n(f['tests'], FAMILY_NOUNS[f['type']])}" for f in inter)
+                    f"{adj(f):,} of {_n(f['tests'], FAMILY_NOUNS[f['type']])}{_clean_split(f)}" for f in inter)
                     + f" significant after {corr} adjustment (α = {s.alpha:g}). Still exploratory.")
     other = [fams[t] for t in ("main_term", "overall") if t in fams]
     for f in other:
         noun = FAMILY_NOUNS[f["type"]]
-        out.append(f"{adj(f):,} of {_n(f['tests'], noun)} significant after {corr} adjustment"
+        out.append(f"{adj(f):,} of {_n(f['tests'], noun)} significant after {corr} adjustment{_clean_split(f)}"
                    + (" — a significant whole-model test says the predictors together explain the outcome; it is "
                       "not evidence of an interaction." if f["type"] == "overall" else
                       " — main effects of variables that are not in an interaction; not evidence of an interaction."))
     return out
+
+
+def _clean_split(f: dict[str, Any]) -> str:
+    """'(k with clean diagnostics, m provisional)' — a significant test of a flagged fit is not clean evidence."""
+    if "sig_adj_clean" not in f or not f.get("sig_adj"):
+        return ""
+    return (f": {f['sig_adj_clean']:,} with clean diagnostics, {f['sig_adj_flagged']:,} provisional (a compared fit is "
+            "flagged)")
 
 
 def _family_counts(run: DiscoveryRun) -> list[dict[str, Any]]:
@@ -1139,6 +1290,9 @@ def _family_counts(run: DiscoveryRun) -> list[dict[str, Any]]:
                     "sig_raw": int(g["sig_raw"].sum()), "sig_adj": int(g["sig_adj"].sum()),
                     "sig_bh": int((g["p_bh"] < run.settings.alpha).sum()),
                     "sig_holm": int((g["p_holm"] < run.settings.alpha).sum()),
+                    "sig_adj_clean": int((g["sig_adj"] & (g["tier"] == "A")).sum()),
+                    "sig_adj_flagged": int((g["sig_adj"] & (g["tier"] == "C")).sum()),
+                    "withheld": int((g.get("test_status", pd.Series("", index=g.index)) == "withheld").sum()),
                     "no_ci": int((g["ci_applicable"] != "same_estimand").sum()),
                     "expected_false_raw": len(g) * run.settings.alpha})
     return out

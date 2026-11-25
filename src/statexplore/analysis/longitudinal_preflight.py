@@ -41,6 +41,15 @@ class PreflightReport:
     n_usable_multi: int = 0           # ... with >= 2 such rows
     n_usable_one: int = 0
     n_intermittent: int = 0           # participants with a gap inside their own observed span (not global gaps)
+    # ---- v1.3.2 (STAT-20): the complete-model sample, separate from outcome availability; cluster structure ----
+    n_complete: int = 0               # rows complete on outcome, time, predictors, ID and cluster
+    complete_range: tuple[Any, Any] | None = None   # time range of those rows (what the model actually spans)
+    complete_times: list[Any] = field(default_factory=list)
+    cluster: str | None = None
+    n_clusters: int = 0               # clusters with complete model rows
+    cluster_sizes: tuple[int, int] | None = None    # participants per cluster (min, max) on complete rows
+    n_cluster_missing: int = 0        # rows excluded because the cluster is missing
+    n_crossing: int = 0               # IDs seen in more than one cluster (global-ID policy refuses them)
 
     def observed_text(self, ds: Dataset) -> str:
         if not self.time:
@@ -57,24 +66,32 @@ class PreflightReport:
                      "participants with 1 observation", "participants with 2+ observations",
                      "participants with no observation", "participants with usable rows",
                      "usable: 2+ rows", "usable: 1 row", "intermittent gaps", "duplicate participant-time rows",
-                     "analysis range (min to max)", "observed time points", "absent inside range"],
+                     "outcome range (min to max)", "observed time points", "absent inside range",
+                     "complete model rows", "complete-row time range", "clusters", "participants per cluster"],
             rows=[[ds.var(self.outcome).display_name, ds.var(self.id).display_name,
                    ds.var(self.time).display_name if self.time else "—", self.n_records, self.n_participants,
                    len(self.time_points), self.n_one_obs, self.n_multi_obs, self.n_no_obs, self.n_usable,
                    self.n_usable_multi, self.n_usable_one, self.n_intermittent, self.duplicates,
                    self._range_text(ds), self.observed_text(ds),
-                   ", ".join(ds.level_label(self.time, c) for c in self.interior_absent) if self.time else "—"]],
-            notes="Usable = complete on the outcome, time and predictors (the rows a model can use). Intermittent = "
+                   ", ".join(ds.level_label(self.time, c) for c in self.interior_absent) if self.time else "—",
+                   self.n_complete, self._range_text(ds, self.complete_range),
+                   self.n_clusters if self.cluster else "not applicable",
+                   (f"{self.cluster_sizes[0]}–{self.cluster_sizes[1]}" if self.cluster_sizes else "—")
+                   if self.cluster else "not applicable"]],
+            notes="Outcome range = where the outcome is observed; complete model rows = rows complete on the outcome, "
+                  "time, every predictor, the ID and the cluster (the rows the model uses) with their own time range. "
+                  "Usable = participants with complete model rows. Intermittent = "
                   "a participant missing an occasion inside their own observed span that others did observe; "
                   "occasions absent for everyone are listed separately.")
         return [summary, Table(name="Outcome availability by time point", columns=["time"] + list(t.columns),
                                rows=rows, notes="Observed = non-missing outcome. A time point with 0 observed "
                                                 "values is structurally unobserved for this outcome.")]
 
-    def _range_text(self, ds: Dataset) -> str:
-        if self.analysis_range is None:
+    def _range_text(self, ds: Dataset, rng: tuple[Any, Any] | None = ...) -> str:  # type: ignore[assignment]
+        rng = self.analysis_range if rng is ... else rng
+        if rng is None:
             return "—"
-        lo, hi = self.analysis_range
+        lo, hi = rng
         lab = (lambda c: ds.level_label(self.time, c)) if self.time else str
         return f"{lab(lo)} to {lab(hi)}"
 
@@ -84,14 +101,17 @@ def _label(ds: Dataset, name: str, code: Any) -> str:
 
 
 def preflight(ds: Dataset, outcome: str, id_var: str, time: str | None = None,
-              predictors: list[str] | None = None, spec: Any = None) -> PreflightReport:
-    """Availability, missingness and structure checks for (outcome, participant, time)."""
-    predictors = [p for p in (predictors or []) if p not in (outcome, id_var, time)]
-    cols = list(dict.fromkeys([outcome, id_var] + ([time] if time else []) + predictors))
+              predictors: list[str] | None = None, spec: Any = None, cluster: str | None = None) -> PreflightReport:
+    """Availability, missingness and structure checks for (outcome, participant, time[, cluster]). Outcome
+    availability and the complete-model rows (outcome, time, every predictor, ID and cluster) are reported separately:
+    the model uses only the latter (STAT-20)."""
+    cluster = cluster or (getattr(spec, "cluster", None) if spec is not None else None)
+    predictors = [p for p in (predictors or []) if p not in (outcome, id_var, time, cluster)]
+    cols = list(dict.fromkeys([outcome, id_var] + ([time] if time else []) + ([cluster] if cluster else []) + predictors))
     f = ds.analysis_frame(cols)
     f = f[f[id_var].notna()]
     obs = f[outcome].notna()
-    complete = f[[outcome] + predictors + ([time] if time else [])].notna().all(axis=1)
+    complete = f[[outcome] + predictors + ([time] if time else []) + ([cluster] if cluster else [])].notna().all(axis=1)
     per_id = obs.groupby(f[id_var]).sum()
     warnings: list[str] = []
     notes: list[str] = []
@@ -157,13 +177,43 @@ def preflight(ds: Dataset, outcome: str, id_var: str, time: str | None = None,
     if n_inter:
         notes.append(f"{n_inter} participants have intermittent gaps (an occasion missing inside their own observed "
                      "span); they are retained with their available rows.")
-    notes.append("Incomplete histories are retained (no complete-panel requirement, no imputation). Estimates are "
-                 "unbiased only if the missingness is ignorable given the model — missing at random given the "
-                 "observed outcomes and covariates in the model, with a correctly specified model; MAR itself cannot "
-                 "be verified from the data.")
-    return PreflightReport(outcome, id_var, time, len(f), int(f[id_var].nunique()), times, by, n_one, n_multi,
-                           n_none, dups, examples, unobserved, rng, warnings, notes, seen_times, interior,
-                           n_usable, n_usable_multi, n_usable - n_usable_multi, n_inter)
+    gee = getattr(spec, "estimator", "") == "gee"
+    notes.append("Incomplete histories are retained (no complete-panel requirement, no imputation). "
+                 + ("Unweighted GEE is consistent when missingness does not depend on the outcomes (MCAR, or "
+                    "missingness explained by the model's covariates); outcome-dependent MAR generally needs weighted "
+                    "GEE or multiple imputation under further assumptions (not done here)." if gee else
+                    "Likelihood-based mixed models give consistent estimates when the missingness is ignorable given "
+                    "the model (missing at random given the modelled outcomes and covariates) and the model is "
+                    "correct; MAR itself cannot be verified from the data, and nothing guarantees unbiased "
+                    "estimates in a given sample."))
+    rep = PreflightReport(outcome, id_var, time, len(f), int(f[id_var].nunique()), times, by, n_one, n_multi,
+                          n_none, dups, examples, unobserved, rng, warnings, notes, seen_times, interior,
+                          n_usable, n_usable_multi, n_usable - n_usable_multi, n_inter)
+    fc = f[complete]
+    rep.n_complete = int(len(fc))
+    if time and len(fc):
+        ct = sorted(fc[time].unique().tolist(), key=lambda x: (isinstance(x, str), x))
+        rep.complete_times, rep.complete_range = ct, (ct[0], ct[-1])
+        if rng is not None and rep.complete_range != rng:
+            lab = lambda c: _label(ds, time, c)  # noqa: E731
+            warnings.append(f"The outcome is observed from {lab(rng[0])} to {lab(rng[1])}, but rows complete on every "
+                            f"model variable span only {lab(ct[0])} to {lab(ct[-1])} (predictor or cluster values are "
+                            "missing elsewhere). The model's time range is the complete-row range.")
+    if cluster:
+        rep.cluster = cluster
+        rep.n_cluster_missing = int((f[cluster].isna() & f[[outcome] + predictors].notna().all(axis=1)).sum())
+        if len(fc):
+            rep.n_clusters = int(fc[cluster].nunique())
+            per = fc.groupby(cluster)[id_var].nunique()
+            rep.cluster_sizes = (int(per.min()), int(per.max()))
+        rep.n_crossing = int((f.dropna(subset=[cluster]).groupby(id_var)[cluster].nunique() > 1).sum())
+        if rep.n_cluster_missing:
+            notes.append(f"{rep.n_cluster_missing} otherwise usable rows have no {ds.var(cluster).display_name}: they "
+                         "are excluded (a missing cluster is never treated as a group of its own).")
+        if rep.n_clusters and rep.n_clusters < 10:
+            warnings.append(f"Only {rep.n_clusters} clusters have complete rows: the cluster variance is estimated from "
+                            "very few groups (imprecise, often near zero). This is a caution, not a fixed rule.")
+    return rep
 
 
 def _runs(codes: list[Any], lab) -> str:

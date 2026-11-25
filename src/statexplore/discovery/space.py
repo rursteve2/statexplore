@@ -78,6 +78,10 @@ class SearchSettings:
     workflow: str = "fixed"            # fixed (A: fixed-effect discovery) | structure (B: structure comparison)
     structures: list[str] = field(default_factory=list)   # workflow B: structures to compare
     time_interactions: bool = False    # workflow B: locked fixed part includes time x each candidate
+    # ---- v1.3.2: one optional higher-level cluster (participants nested in it; 04) ----
+    cluster: str | None = None         # e.g. school / hospital; random intercept, locked in every candidate
+    id_policy: str = "global"          # global: IDs unique across clusters | local: numbered within each cluster
+    cluster_compare: bool = False      # workflow B, exploratory opt-in: also fit every structure without the cluster
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -110,6 +114,15 @@ STRUCTURES: dict[str, tuple[str, tuple[str, ...], str]] = {
     "nlme_rs": ("Random intercept + time slope, independent residuals — nlme", ("gaussian",), "gaussian"),
     "ar1": ("Random intercept + AR(1) residuals over the observed-occasion index — nlme corAR1", ("gaussian",), "gaussian"),
     "car1": ("Random intercept + continuous-time AR(1) residuals (actual time differences) — nlme corCAR1", ("gaussian",), "gaussian"),
+    "nlme_diag": ("Random intercept + time slope, uncorrelated, independent residuals — nlme", ("gaussian",), "gaussian"),
+    "diag_ar1": ("Random intercept + uncorrelated time slope + AR(1) residuals (occasion index) — nlme", ("gaussian",),
+                 "gaussian"),
+    "rs_ar1": ("Random intercept + correlated time slope + AR(1) residuals (occasion index) — nlme", ("gaussian",),
+               "gaussian"),
+    "diag_car1": ("Random intercept + uncorrelated time slope + continuous-time AR(1) residuals — nlme", ("gaussian",),
+                  "gaussian"),
+    "rs_car1": ("Random intercept + correlated time slope + continuous-time AR(1) residuals — nlme", ("gaussian",),
+                "gaussian"),
     "mmrm_us": ("Marginal model, unstructured covariance — mmrm (no random effects)", ("gaussian",), "gaussian"),
     "mmrm_cs": ("Marginal model, compound-symmetry covariance — mmrm (no random effects)", ("gaussian",), "gaussian"),
     "mmrm_ar1": ("Marginal model, AR(1) covariance — mmrm (no random effects)", ("gaussian",), "gaussian"),
@@ -122,8 +135,13 @@ STRUCTURES: dict[str, tuple[str, tuple[str, ...], str]] = {
     "gee_ar1": ("GEE, AR(1) working correlation — geepack (population-average)", ("gaussian", "binomial"), "gee"),
     "gee_ind": ("GEE, independence working correlation — geepack (population-average)", ("gaussian", "binomial"), "gee"),
 }
-SLOPE_STRUCTURES = {"rs", "rs_uncorr", "nlme_rs", "glmer_rs", "clmm_rs"}
-ORDERED_TIME_STRUCTURES = {"ar1", "car1", "mmrm_us", "mmrm_cs", "mmrm_ar1", "gee_ar1"}
+SLOPE_STRUCTURES = {"rs", "rs_uncorr", "nlme_rs", "nlme_diag", "diag_ar1", "rs_ar1", "diag_car1", "rs_car1", "glmer_rs",
+                    "clmm_rs"}
+ORDERED_TIME_STRUCTURES = {"ar1", "car1", "diag_ar1", "rs_ar1", "diag_car1", "rs_car1", "mmrm_us", "mmrm_cs", "mmrm_ar1",
+                           "gee_ar1"}
+CAR1_STRUCTURES = {"car1", "diag_car1", "rs_car1"}
+# the default 3 x 3 Gaussian table for workflow B (random x residual; 12_Feature_Compatibility_Matrix)
+DEFAULT_GAUSSIAN_B = ["ri", "rs_uncorr", "rs", "ar1", "diag_ar1", "rs_ar1", "car1", "diag_car1", "rs_car1"]
 LONG_FAMILIES = {"lmm": "Gaussian longitudinal model", "glmm": "Binary logistic mixed model (lme4::glmer)",
                  "clmm": "Ordinal cumulative-logit mixed model (ordinal::clmm)",
                  "gee": "GEE (geepack::geeglm, population-average)"}
@@ -145,6 +163,7 @@ class Candidate:
     kind: str = "focal"             # focal | all_two_way | main | combo | factorial
     inter: tuple[tuple[str, ...], ...] = ()   # combo / factorial / structure: the interaction terms
     structure: str = ""                         # structure kind (workflow B): the structure compared
+    clustered: bool | None = None               # workflow B: with / without the cluster variance (None = search default)
 
     @property
     def order(self) -> int:
@@ -309,9 +328,13 @@ def validate_settings(ds: Dataset, s: SearchSettings) -> str:
                                    f"{MAX_PREDICTORS_LIMIT}).")
     structure_run = bool(s.participant) and s.workflow == "structure"     # strategy does not apply
     needs_pair = s.strategy in ("focal", "factorial") and not structure_run
-    if len(s.candidates) < (2 if needs_pair else 1):
-        raise SearchSpaceError("Choose at least two candidate predictors." if needs_pair else
-                               "Choose at least one candidate predictor.")
+    # workflow B compares covariance structures for ONE locked fixed part: it needs no candidate predictor (UI-56); the
+    # fixed part may be time only (time as a required covariate) or intercept only
+    if not structure_run and len(s.candidates) < (2 if needs_pair else 1):
+        raise SearchSpaceError(("Choose at least two candidate predictors (the focal / factorial strategies need a pair)."
+                                if needs_pair else "Choose at least one candidate predictor.")
+                               + (" Required covariates (including time) are not candidates: they are in every model."
+                                  if s.required else ""))
     if not (1 if s.strategy in ("main", "combinations", "time") or structure_run else 2) <= s.max_predictors \
             <= MAX_PREDICTORS_LIMIT:
         raise SearchSpaceError(f"Maximum predictors per model must be between 2 and {MAX_PREDICTORS_LIMIT}.")
@@ -321,10 +344,18 @@ def validate_settings(ds: Dataset, s: SearchSettings) -> str:
         raise SearchSpaceError("Required covariates leave no room for a two-way interaction "
                                "within the maximum number of predictors.")
     if len(s.required) >= s.max_predictors and s.strategy in ("main", "combinations", "time") and not structure_run:
-        raise SearchSpaceError("Required covariates leave no room for a candidate predictor "
-                               "within the maximum number of predictors.")
-    if not 1 <= s.min_predictors <= s.max_predictors:
-        raise SearchSpaceError("The minimum number of predictors must be between 1 and the maximum.")
+        raise SearchSpaceError(f"The {len(s.required)} required covariate(s) fill the maximum of {s.max_predictors} "
+                               "predictors per model (the maximum counts required + candidate predictors), leaving no "
+                               "room for a candidate predictor. Raise the maximum or require fewer covariates.")
+    if not structure_run and not 1 <= s.min_predictors <= s.max_predictors:
+        raise SearchSpaceError("The minimum number of CANDIDATE predictors per model must be between 1 and the maximum "
+                               "(required covariates such as time are added to every model and are not counted in the "
+                               "minimum).")
+    if not structure_run and s.min_predictors > min(len(s.candidates), _room(s)):
+        raise SearchSpaceError(f"No model can have {s.min_predictors} candidate predictors: there are "
+                               f"{len(s.candidates)} candidate(s) and room for {_room(s)} beside the "
+                               f"{len(s.required)} required covariate(s). Lower the minimum number of candidate "
+                               "predictors.")
     if s.covariate_mode not in ("focal", "subsets") or s.mode not in "ABCD" or s.sample not in ("shared", "per_model"):
         raise SearchSpaceError("Invalid search option.")
     if not 0 < s.alpha < 1:
@@ -338,7 +369,30 @@ def validate_settings(ds: Dataset, s: SearchSettings) -> str:
         why = variable_problem(ds, n)
         if why:
             raise SearchSpaceError(why)
+    if count_candidates(s) == 0:
+        raise SearchSpaceError(empty_reason(s))
     return family
+
+
+def empty_reason(s: SearchSettings) -> str:
+    """Why these settings define no candidate model, and what to change (UI-50: never an unexplained 'complete')."""
+    if s.participant and s.workflow == "structure":
+        return "No covariance structure is selected for workflow B: tick at least one structure."
+    room = _room(s)
+    bits = [f"strategy '{STRATEGIES.get(s.strategy, s.strategy).split(' (')[0]}'", f"{len(s.candidates)} candidate(s)",
+            f"maximum {s.max_predictors} predictors per model including {len(s.required)} required (room for {room} "
+            "candidate(s))", f"minimum {s.min_predictors} candidate predictor(s)",
+            f"interactions up to order {s.max_order}"]
+    fixes = []
+    if s.strategy in ("combinations", "factorial", "focal", "time") and room < 2:
+        fixes.append("raise the maximum predictors (interactions need room for two candidates)")
+    if s.strategy == "combinations" and not s.include_main:
+        fixes.append("tick 'include main-effects models'")
+    if s.min_predictors > min(room, len(s.candidates)):
+        fixes.append("lower the minimum number of candidate predictors")
+    fixes.append("add candidate predictors or choose 'Main effects only'")
+    return ("These settings define no candidate model, so nothing would be searched (" + "; ".join(bits)
+            + "). To search: " + ", or ".join(fixes) + ".")
 
 
 def _check_longitudinal(ds: Dataset, s: "SearchSettings") -> None:
@@ -355,8 +409,32 @@ def _check_longitudinal(ds: Dataset, s: "SearchSettings") -> None:
         raise SearchSpaceError("Time interactions need a time variable.")
     if structs & (SLOPE_STRUCTURES | ORDERED_TIME_STRUCTURES) and not t:
         raise SearchSpaceError("Random slopes and residual correlation structures need a time variable.")
-    if s.workflow not in ("fixed", "structure") or s.time_type not in ("continuous", "categorical"):
+    if s.workflow not in ("fixed", "structure") or s.time_type not in ("continuous", "categorical") \
+            or getattr(s, "id_policy", "global") not in ("global", "local"):
         raise SearchSpaceError("Invalid longitudinal option.")
+    cluster = getattr(s, "cluster", None)
+    if getattr(s, "cluster_compare", False) and not (cluster and s.workflow == "structure"):
+        raise SearchSpaceError("Comparing structures with and without the cluster is an exploratory option of workflow "
+                               "B with a higher-level cluster selected.")
+    if cluster:
+        from ..analysis.covstruct import GAUSSIAN_STRUCTURES
+        from ..analysis.mixed import nesting_problem
+
+        if cluster in [s.outcome, pid] + s.candidates + s.required + ([t] if t else []):
+            raise SearchSpaceError("The higher-level cluster is a grouping level, not a predictor: it cannot also be the "
+                                   "outcome, the participant ID, time or a predictor.")
+        bad = sorted(x for x in structs if x not in GAUSSIAN_STRUCTURES)
+        if bad:
+            raise SearchSpaceError("A higher-level cluster is supported for Gaussian random-intercept / random-slope "
+                                   "models with independent, AR(1) or CAR(1) residuals. Not available: "
+                                   + ", ".join(STRUCTURES[x][0] for x in bad if x in STRUCTURES)
+                                   + ". Clustered GEE, marginal (mmrm), binary and ordinal mixed models are not part of "
+                                     "this release; the cluster is never dropped silently, so remove it or choose a "
+                                     "Gaussian structure.")
+        why = nesting_problem(ds, pid, cluster, getattr(s, "id_policy", "global"),
+                              [s.outcome] + s.candidates + s.required + ([t] if t else []))
+        if why:
+            raise SearchSpaceError(why)
     cols = list(dict.fromkeys([pid] + ([t] if t else [])))
     f = ds.analysis_frame(cols)
     if f[pid].isna().all():
@@ -368,11 +446,14 @@ def _check_longitudinal(ds: Dataset, s: "SearchSettings") -> None:
     if t:
         if ds.var(t).storage is not Storage.NUMERIC:
             raise SearchSpaceError(f"{ds.var(t).display_name} is not numeric: time must have numeric codes.")
-        if structs & ORDERED_TIME_STRUCTURES and f.dropna().duplicated([pid, t]).any():
-            raise SearchSpaceError("Some participants have more than one row at the same time point; residual "
-                                   "correlation structures and marginal models need one row per participant per "
-                                   "occasion.")
-        if "car1" in structs and (f[t].dropna() < 0).any():
+        keys = [pid, t] + ([cluster] if cluster and getattr(s, "id_policy", "global") == "local" else [])
+        fk = ds.analysis_frame(list(dict.fromkeys(keys))).dropna()
+        if structs & ORDERED_TIME_STRUCTURES and fk.duplicated(keys).any():
+            ex = fk[fk.duplicated(keys, keep=False)].head(3).itertuples(index=False, name=None)
+            raise SearchSpaceError("Some participants have more than one row at the same time point (e.g. "
+                                   + "; ".join(", ".join(str(v) for v in e) for e in ex) + "); residual correlation "
+                                   "structures and marginal models need one row per participant per occasion.")
+        if structs & CAR1_STRUCTURES and (f[t].dropna() < 0).any():
             raise SearchSpaceError("Continuous-time AR(1) needs non-negative elapsed time values.")
 
 
@@ -381,7 +462,8 @@ def longitudinal_summary(ds: Dataset, s: "SearchSettings") -> dict[str, Any]:
     from ..analysis.longitudinal_preflight import preflight
 
     v = view(ds, s)
-    rep = preflight(v, s.outcome, s.participant, s.time, s.candidates + [r for r in s.required if r != s.time])
+    rep = preflight(v, s.outcome, s.participant, s.time, s.candidates + [r for r in s.required if r != s.time],
+                    cluster=getattr(s, "cluster", None))
     used = [s.outcome] + s.candidates + s.required + [s.participant] + ([s.time] if s.time else [])
     f = v.analysis_frame(list(dict.fromkeys(used))).dropna()
     per = f.groupby(s.participant).size() if len(f) else pd.Series(dtype=int)
@@ -411,7 +493,7 @@ def _block_counts(s: SearchSettings) -> list[tuple[str, int]]:
     p = len(s.candidates)
     blocks: list[tuple[str, int]] = []
     if s.participant and s.workflow == "structure":
-        return [("structures", len(s.structures))]
+        return [("structures", len(s.structures) * (2 if _cluster_compare(s) else 1))]
     if s.strategy in ("focal", "factorial", "time") and s.include_main or s.strategy == "main":
         blocks.append(("main", sum(comb(p, k) for k in _sizes(s))))
     if s.strategy == "combinations":
@@ -456,13 +538,21 @@ def _enum_time(s: SearchSettings, idx: int, start: int) -> Iterator[Candidate]:
                     idx += 1
 
 
+def _cluster_compare(s: SearchSettings) -> bool:
+    return bool(getattr(s, "cluster", None) and getattr(s, "cluster_compare", False))
+
+
 def _enum_structures(s: SearchSettings, idx: int, start: int) -> Iterator[Candidate]:
-    """Workflow B: one locked fixed part, one candidate per random-effect / covariance structure."""
+    """Workflow B: one locked fixed part, one candidate per random-effect / covariance structure. With the exploratory
+    cluster comparison, each structure is fitted with (first) and without the cluster variance on the same rows and
+    composite participants."""
     inter = tuple((s.time, x) for x in s.candidates) if s.time_interactions and s.time else ()
+    modes: tuple[bool | None, ...] = (True, False) if _cluster_compare(s) else (None,)
     for st in s.structures:
-        if idx >= start:
-            yield Candidate(idx, (), tuple(s.candidates), tuple(s.required), "structure", inter, st)
-        idx += 1
+        for cl in modes:
+            if idx >= start:
+                yield Candidate(idx, (), tuple(s.candidates), tuple(s.required), "structure", inter, st, cl)
+            idx += 1
 
 
 def count_candidates(s: SearchSettings) -> int:
@@ -645,7 +735,8 @@ def candidate_tests(c: Candidate) -> list[dict[str, Any]]:
 
 def model_type(c: Candidate) -> str:
     if c.kind == "structure":
-        return "Covariance structure: " + STRUCTURES[c.structure][0].split(" — ")[0]
+        return "Covariance structure: " + STRUCTURES[c.structure][0].split(" — ")[0] + (
+            " (without the cluster — exploratory)" if c.clustered is False else "")
     if c.kind == "focal":
         return MODEL_TYPES["focal_cov" if c.covariates else "focal"]
     if c.kind == "all_two_way":
@@ -660,7 +751,7 @@ def candidate_key(c: Candidate) -> str:
     if c.kind == "structure":
         from .modelspec import canonical_key
 
-        return f"structure:{c.structure}|{canonical_key(full_terms(c))}"
+        return f"structure:{c.structure}{'@nocluster' if c.clustered is False else ''}|{canonical_key(full_terms(c))}"
     if c.kind in ("main", "combo", "factorial"):
         from .modelspec import canonical_key
 
@@ -706,7 +797,7 @@ def test_label(ds: Dataset, c: Candidate, t: dict[str, Any]) -> str:
 
 def focal_label(ds: Dataset, c: Candidate) -> str:
     if c.kind == "structure":
-        return STRUCTURES[c.structure][0]
+        return STRUCTURES[c.structure][0] + (" — without the cluster (exploratory)" if c.clustered is False else "")
     if c.kind == "all_two_way":
         return "all two-way: " + ", ".join(ds.var(v).display_name for v in c.focal)
     if c.kind in ("main", "combo", "factorial"):
@@ -718,13 +809,28 @@ def focal_label(ds: Dataset, c: Candidate) -> str:
     return " × ".join(ds.var(v).display_name for v in c.focal)
 
 
-def random_part(ds: Dataset, s: SearchSettings, structure: str | None = None) -> str:
+def random_part(ds: Dataset, s: SearchSettings, structure: str | None = None, clustered: bool | None = None) -> str:
     """The grouping / covariance part of a longitudinal model, in R notation with display names."""
     if not s.participant:
         return ""
     g = ds.var(s.participant).display_name
     t = ds.var(s.time).display_name if s.time else "time"
     st = structure or s.structure or "ri"
+    cluster = getattr(s, "cluster", None)
+    from ..analysis.covstruct import GAUSSIAN_STRUCTURES
+
+    if st in GAUSSIAN_STRUCTURES:
+        rnd, res, eng = GAUSSIAN_STRUCTURES[st]
+        cl = ds.var(cluster).display_name if cluster and clustered is not False else None
+        if eng == "lme4" and res == "independent":
+            blk = {"ri": f"(1 | {g})", "diag": f"(1 + {t} || {g})", "rs": f"(1 + {t} | {g})"}[rnd]
+            return (f"(1 | {cl}) + " if cl else "") + blk
+        grp = f"{cl}/{g}" if cl else g
+        rr = {"ri": f"~1 | {grp}", "diag": (f"list({cl} = pdDiag(~1), {g} = pdDiag(~1 + {t}))" if cl else
+                                            f"list({g} = pdDiag(~1 + {t}))"),
+              "rs": (f"list({cl} = pdDiag(~1), {g} = pdSymm(~1 + {t}))" if cl else f"~1 + {t} | {g}")}[rnd]
+        cor = {"independent": "", "ar1": f", corAR1(~ occasion | {grp})", "car1": f", corCAR1(~ {t} | {grp})"}[res]
+        return f"random = {rr}{cor}"
     return {"ri": f"(1 | {g})", "rs": f"(1 + {t} | {g})", "rs_uncorr": f"(1 + {t} || {g})",
             "nlme_ri": f"random = ~1 | {g}", "nlme_rs": f"random = ~1 + {t} | {g}",
             "ar1": f"random = ~1 | {g}, corAR1(~ occasion | {g})", "car1": f"random = ~1 | {g}, corCAR1(~ {t} | {g})",
@@ -836,6 +942,12 @@ def coding(ds: Dataset, s: SearchSettings, family: str) -> dict[str, Any]:
         out["structure"] = (", ".join(STRUCTURES[x][0] for x in s.structures) if s.workflow == "structure"
                             else STRUCTURES[s.structure or "ri"][0])
         out["participant"] = ds.var(s.participant).display_name
+        if getattr(s, "cluster", None):
+            out["cluster"] = (f"{ds.var(s.cluster).display_name} (participants nested in it; random intercept; "
+                              + ("locked in every model" if not getattr(s, "cluster_compare", False) else
+                                 "exploratory: each structure also fitted without it") + ")")
+            out["participant_key"] = ("(cluster, ID): IDs numbered within each cluster" if s.id_policy == "local"
+                                      else "ID unique across clusters (checked: each ID in one cluster)")
         if s.time:
             out["time"] = f"{ds.var(s.time).display_name} ({s.time_type})"
         out["workflow"] = ("B: random-effect / covariance-structure comparison (fixed part locked; REML for Gaussian)"

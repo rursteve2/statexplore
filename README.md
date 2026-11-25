@@ -461,8 +461,20 @@ undoable setting.
   or by all available occasions in mixed models.
 - Resuming a search does not retry candidates that timed out; start a new search with a longer limit.
 - Exports replace numeric participant IDs by codes 1, 2, …; text IDs are kept as they are.
-- No participant × wave coverage chart yet (per-wave availability tables are shown instead), and no
-  autosave of settings.
+- No participant × wave coverage chart yet (per-wave availability tables are shown instead). Form settings are
+  saved with the project (not autosaved between saves).
+- Clustered (three-level) Discovery is Gaussian only; clustered GEE, marginal (mmrm), binary and ordinal mixed
+  models are refused in Discovery with a reason. Crossed or multiple-membership designs are not supported.
+- Results from before 1.3.2 carry no identity fingerprints: their refits are reported as unverifiable.
+
+**New in 1.3.2:** Automated Model Discovery handles participants nested in one higher-level cluster (school,
+hospital, …) in both workflows — fixed-effect discovery with the hierarchy locked, and the full random intercept /
+uncorrelated slope / correlated slope × independent / AR(1) / CAR(1) structure table, with or without the cluster —
+plus organization-, participant- and future-visit validation. Model identity is now checked with fingerprints of the
+rows, outcome coding and design (equal fit statistics never count as the same model); historical results are refitted
+on their own data view or run as clearly labelled new analyses; likelihood-ratio tests use the reference
+distribution of the tested hypothesis; diagnostics flag near-boundary and optimizer problems per model; R² is a
+direct variance decomposition. See `docs/RELEASE_NOTES_v1.3.2.md`.
 
 **New in 1.3.1:** the proportional-odds check reports a p-value or a specific reason for every term; BIC is
 R's native `BIC()` everywhere; exported scripts check their own results, data file and packages; and

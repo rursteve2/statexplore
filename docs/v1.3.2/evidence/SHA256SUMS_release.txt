@@ -1,0 +1,2 @@
+aed4912895d43cdff1536de8c62451f1f630e78490821cf6afbb58b5e7993c4c  StatExplore-1.3.2-Setup.exe
+476cd170ca0569ede742241376cee06fea64253393d1f343a0aa2c697b47b225  StatExplore-1.3.2-portable.zip

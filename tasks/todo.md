@@ -402,3 +402,48 @@ Work/evidence folder: `E:\sx_v131_work` (kept out of the repo: health data).
 - Not verified (configs not recorded): stage 6B, glmer n≈9874, clmm reduced panel AIC 8427.137, "cap 5 screens 16 of 20". Real-monitor DPI check: user.
 - Docs: RELEASE_NOTES_v1.3.1, spec-compliance-v1.3.1 (traceability, §5.1/5.2 tables, limitations, run/install/rollback), README §10.
 - Not committed / not published: awaiting the user.
+
+---
+
+# v1.3.2 (package `E:\Downloads\StatExplore_v1.3.2_Developer_Package`, master = 01; started 2026-11-25)
+
+Baseline: tag v1.3.1 = 9153b96dc50f6678083753de43e207e091ab5dce (= archive commit marker; source archive not supplied,
+so its SHA-256 cannot be checked). Clean worktree `E:\sx_v131_base` (r/library junction). Work/evidence: `E:\sx_v132_work`
+(package copy in `pkg\`, SHA256SUMS verified OK). Independent references: `pkg\reference_run_001` (R 4.6.2; 353/353
+selected historical targets PASS, 101 documentary; 1 reference fit fails in both optimizers: CD_Irregular 2L RS AR1).
+
+## Design decisions (v1.3.2)
+| # | Decision | Why |
+|---|----------|-----|
+| H1 | **One covariance-structure builder** (R helpers in the load-script header: `sx_re_lme4`, `sx_re_nlme`, `sx_cor_nlme`, fresh pd/cor objects per call) used by standalone Mixed, its comparisons, Discovery A/B and every export. Random type RI/DIAG/RS × residual Independent/AR1/CAR1 × optional cluster; clustered nlme = `list(sx_cluster = pdDiag(~1), sx_id = pd*(...))`, correlation grouping `~ t | sx_cluster/sx_id`. | STAT-21 root cause: three generators, slopes dropped the cluster. |
+| H2 | Discovery structure keys stay (`ri`, `rs`, `rs_uncorr`, `ar1`, `car1`, `nlme_*`, …) + new `diag_ar1`, `diag_car1`, `rs_ar1`, `rs_car1`, `nlme_diag`; a candidate also carries `clustered` (bool). Settings gain `cluster`, `id_policy` (global / local), `cluster_compare` (B only, exploratory, off). Old keys/IDs unchanged → old projects and candidate IDs stay valid. | Deterministic IDs; 18 required combinations. |
+| H3 | Participant key: clustered → composite `sx_id` = length-prefixed `(cluster, ID)` factor in (cluster, ID) order; global policy refuses an ID in 2+ clusters (crossing/migration) with the offending IDs; local policy declares nested labels. Missing cluster = excluded row (counted). Cluster-off exploratory fits keep the same composite IDs and rows. | 04 participant identity. |
+| H4 | **Model identity v2** (`sx_identity()` in R, SHA-256 via `tools::sha256sum`, schema version recorded): ordered row IDs (source row numbers), row set, response values+levels, fixed design matrix (canonical column names, %.17g), grouping codes, factor coding; plus a canonical spec record. Verification = semantic first (any fingerprint difference → `mismatch`, listing which), then numeric (logLik/AIC/BIC) separately; missing fingerprints → `unverifiable`; refit error → `refit failed`. n / IC equality is never enough. | STAT-22 P0. |
+| H5 | Historical runs snapshot the dataset view (variable metadata, derived, filters, holdout, treatments). A transfer whose current view differs is blocked with the differences named; the user may (a) rebuild the original view from the snapshot (same source bytes only) and refit, or (b) run an explicitly *new* analysis under current settings (labelled, never "verified"). | STAT-39 / CD-09. |
+| H6 | **One LR-test service** (Python `analysis/lrtest.py` + R twin `sx_lr_test` in helpers, cross-checked by tests): reference distribution chosen by the hypothesis (RI→DIAG 0:1 mixture; RI→RS 1:2 mixture; DIAG→RS χ²1 only with interior variances; indep→AR1 χ²1; indep→CAR1 0:1 mixture; cluster off→on 0:1; AR1 vs CAR1 and simultaneous changes: no LR, IC only); |LR| ≤ 1e-6 negative → 0 with raw kept; material negative / non-finite / df ≤ 0 → no p, reason; either fit flagged → provisional. | STAT-17/23/41. |
+| H7 | **One diagnostics extractor** `sx_diag(fit)`: optimizer + attempts, opt code, lme4 check code/messages, warnings (dedup identical text only), lme4 isSingular, nlme per-block relative covariance (min eigenvalue of G/σ² < 1e-6 or eigen ratio < 1e-6 or |r| > 0.999 → near-boundary; non-PD → singular), apVar status, Hessian messages. Status set: clean / warned / singular / near_boundary / failed / unknown. Retry nlme with optim only on optimizer errors; structural errors are not retried. | STAT-18/32. |
+| H8 | R² = direct Gaussian decomposition (var(Xβ), Σ levels mean diag(ZGZ'), σ²) or NA with reason; never the package fallback that drops random variance. | STAT-45. |
+| H9 | Family-aware comparison capability matrix (Gaussian ML/REML rules; GLMM/CLMM ML Laplace LR; GEE robust Wald (geepack anova) + QIC/QICu/CIC, never LR/AIC; mblogit none). Unsupported → disabled with reason. All-failed / single-success comparisons are explicit. | STAT-19/25/33/34. |
+| H10 | Clustered Discovery validation (CD-11): holdout by organization (default when ≥ 10 clusters), participant, or forward time; whole search on training rows; holdout untouched; too few groups → unavailable, no row split. | CD-11. |
+| H11 | Generated code: export bundle = script + consented analysis-columns CSV + manifest (SHA-256, package versions, spec, provenance) with relative paths and data/row assertions; refuses to claim reproducibility when the data file is absent. | STAT-36. |
+| H12 | Developer runner `tools/sx_regress.py` (no user mode): runs references + app adapters, writes machine-readable results with PASS/FAIL/BLOCKED/SKIPPED/NOT RUN/NOT APPLICABLE, nonzero exit on any mandatory non-pass. | 05 runner. |
+
+## Phases (v1.3.2)
+- [x] 0 Baseline: suite on clean worktree, references (done), reproduce STAT-21/22/44/45/17/18 on v1.3.1 with fixtures
+- [x] 1 Identity: STAT-22/39/40 (H4, H5), migration of old rows → unverifiable
+- [x] 2 Construction: STAT-21 (H1–H3), STAT-17/19/20/33 (H6, H9)
+- [x] 3 Diagnostics: STAT-18/32/34/41/44/45, STAT-23 (H6–H8), plot isolation
+- [x] 4 Clustered Discovery A/B (04, matrix 12), UI-54/56, CD-01..12
+- [x] 5 Reporting/UI: remaining STAT-24..30/35/36/38/42/43/46, UI-28..57
+- [x] 6 Regression runner, full suite, references vs app, build on E:, frozen self-test, docs, ledger, release
+
+### Review (v1.3.2)
+- Baseline 373/373 (clean worktree). Final: 424 pass + 1 screenshot-only skip; runner 68/68 mandatory gates PASS
+  (5 wording items N/A → manual checklist; clean VM and physical 150 % DPI = owner steps). Frozen self-test OK.
+- Independent references regenerated on identical bytes; 353/353 historical targets reproduced.
+- Root causes: STAT-21 three divergent random-part generators; STAT-22 identity = n/IC; STAT-44 postVar list;
+  STAT-45 package R² fallback; STAT-46 RI count overwritten by an unmapped tests frame; UI-42 status text not in the
+  frame; UI-31 grouping only on 2 of 8 lists.
+- Performance: identity fingerprints first cost +268 % on cross-sectional searches (R's sha256 is slow); fixed by
+  per-variable caching → +19 %.
+- Evidence: docs/v1.3.2/, E:\sx_v132_work, E:\sx_v132_runs.

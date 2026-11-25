@@ -5,7 +5,7 @@ import json
 
 from ..core.dataset import Dataset
 from ..core.schema import AnalysisResult
-from ..rbridge.codegen import alias, r_num, r_str, r_vec
+from ..rbridge.codegen import factor_label, alias, r_num, r_str, r_vec
 from .models import ModelCheckError, ModelSpec, check_model, model_view
 from .session import RSession
 
@@ -38,7 +38,7 @@ def _outcome_coding(ds: Dataset, m: ModelSpec, y: str) -> list[str]:
             ev = ("sx_lv <- if (is.factor(d$Y)) levels(droplevels(d$Y)) else sort(unique(d$Y))\n"
                   "  d$sx_event <- as.integer(d$Y == sx_lv[2])  # event = second category (default)")
         elif v.is_categorical:
-            ev = (f"d$sx_event <- as.integer(as.character(d$Y) == {r_str(ds.level_label(m.outcome, m.event))})"
+            ev = (f"d$sx_event <- as.integer(as.character(d$Y) == {r_str(factor_label(ds, m.outcome, m.event))})"
                   "  # event category of the source model")
         else:
             ev = f"d$sx_event <- as.integer(d$Y == {r_num(m.event)})  # event category of the source model"
@@ -48,7 +48,7 @@ def _outcome_coding(ds: Dataset, m: ModelSpec, y: str) -> list[str]:
         return ["sx_code_y <- function(d) {",
                 f"  d${y} <- droplevels(factor(as.character(d${y}), levels = {r_vec(labels)}, ordered = TRUE))",
                 "  d", "}"]
-    ref = ds.level_label(m.outcome, m.reference) if m.reference is not None else labels[0]
+    ref = factor_label(ds, m.outcome, m.reference) if m.reference is not None else labels[0]
     return ["sx_code_y <- function(d) {",
             f"  d${y} <- stats::relevel(droplevels(factor(as.character(d${y}), levels = {r_vec(labels)})), "
             f"ref = {r_str(ref)})", "  d", "}"]
@@ -135,12 +135,14 @@ def build(ds: Dataset, models: list[ModelSpec], common_sample: bool, plot_path: 
     if common_sample:
         L.append("sx_common <- sx_complete(dat, sx_all)")
     L += _outcome_coding(ds, models[0], y)
-    L.append("sx_fits <- list(); sx_n <- integer()")
+    L.append("sx_fits <- list(); sx_n <- integer(); sx_ids <- list()")
+    resp = "sx_event" if family == "binomial" else y
     for k, m in enumerate(models, start=1):
         need = [a(v) for v in dict.fromkeys([m.outcome] + m.variables + m.sample_vars)]
         data = "sx_common" if common_sample else f"sx_complete(dat, {r_vec(need)})"
         L += [f"sx_dk <- sx_code_y({data})", f"sx_fits[[{k}]] <- {_fit_call(family, m.rhs(ds)).replace('sx_yname', y)}",
-              f"sx_n[{k}] <- nrow(sx_dk)"]
+              f"sx_n[{k}] <- nrow(sx_dk)",
+              f"sx_ids[[{k}]] <- sx_identity(sx_dk, {resp} ~ {m.rhs(ds)}, {r_str(resp)})  # identity fingerprints (STAT-22)"]
     labels = [m.label or f"Model {k}" for k, m in enumerate(models, start=1)]
     L += [
         f"sx_labels <- {r_vec(labels)}",
@@ -215,6 +217,7 @@ def build(ds: Dataset, models: list[ModelSpec], common_sample: bool, plot_path: 
     non_nested = len(models) * (len(models) - 1) // 2 - len(pairs)
     L += [
         "sx_result <- list(tables = sx_tabs, checks = sx_checks, n_used = max(sx_n), n_excluded = nrow(dat) - max(sx_n),",
+        "  identities = sx_ids,",
         f"  notes = c({r_str(f'{len(pairs)} nested pair(s) tested; {non_nested} non-nested pair(s) compared by AIC/BIC only (no significance test).')}))",
     ]
     return "\n".join(L) + "\n"
@@ -233,11 +236,13 @@ def _check_identities(result: AnalysisResult, models: list[ModelSpec]) -> None:
         if not m.descriptor or k >= len(fit.rows):
             continue
         row = fit.rows[k]
-        ok, text = verify(m.descriptor, row[col["n"]] if "n" in col else None,
-                          row[col["logLik"]] if "logLik" in col else None, row[col["AIC"]] if "AIC" in col else None)
+        idents = result.values.get("identities") or []
+        status, text = verify(m.descriptor, row[col["n"]] if "n" in col else None,
+                              row[col["logLik"]] if "logLik" in col else None, row[col["AIC"]] if "AIC" in col else None,
+                              identity=idents[k] if k < len(idents) else None)
         if text:
-            result.messages.append(f"{m.label}: {text}" if ok else f"Check: {m.label}: {text}")
-        if ok is False:
+            result.messages.append(f"{m.label}: {text}" if status == "verified" else f"Check: {m.label}: {text}")
+        if status in ("mismatch", "unverifiable"):
             result.status = Status.WARNING
 
 
@@ -274,6 +279,9 @@ def compare(session: RSession, ds: Dataset, models: list[ModelSpec],
     for c in _as_list(raw.get("checks")):
         result.messages.append(f"Check: {c}")
         result.status = Status.WARNING
+    from .descriptor import parse_identity
+
+    result.values["identities"] = [parse_identity(x) for x in _as_list(raw.get("identities"))]
     _check_identities(result, models)
     artifacts: dict[str, bytes] = {}
     if plot.is_file():

@@ -248,6 +248,7 @@ class MainWindow(QMainWindow):
         except ProjectError as e:
             QMessageBox.warning(self, "Open project", str(e))
             return
+        self._restore_forms()
         self._update_title()
         if self.state.project.loaded_version < 2:
             self.statusBar().showMessage("This project was saved by StatExplore 1.0. It opens unchanged; the first save "
@@ -271,8 +272,31 @@ class MainWindow(QMainWindow):
             path += ".sxp"
         return self._save_to(Path(path))
 
+    def _collect_forms(self) -> None:
+        """UI-48 / CD-12: the current settings of pages with a form (outcome, predictors, cluster, workflow, ...) are
+        saved with the project and restored when it is opened."""
+        forms = self.state.project.settings.setdefault("forms", {})
+        for name, page in self.pages.items():
+            fn = getattr(page, "form_state", None)
+            if fn is not None:
+                try:
+                    forms[name] = fn()
+                except Exception:  # noqa: BLE001 - an incomplete form must never block saving
+                    pass
+
+    def _restore_forms(self) -> None:
+        forms = (self.state.project.settings.get("forms") or {}) if self.state.project else {}
+        for name, page in self.pages.items():
+            fn = getattr(page, "restore_form", None)
+            if fn is not None and forms.get(name):
+                try:
+                    fn(forms[name])
+                except Exception:  # noqa: BLE001 - variables may have been removed since
+                    pass
+
     def _save_to(self, path: Path) -> bool:
         try:
+            self._collect_forms()
             self.state.project.save(path)
         except Exception as e:
             QMessageBox.warning(self, "Save project", f"Could not save: {e}")

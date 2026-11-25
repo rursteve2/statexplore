@@ -23,12 +23,17 @@ def candidate_from_row(run: DiscoveryRun, row: dict[str, Any]) -> Candidate:
     kind = str(row.get("kind") or "focal")
     # workflow-B candidates differ only in their structure: dropping it silently substituted another model (P0-01 B/C)
     structure = str(row.get("structure") or "") if kind == "structure" else ""
+    # exploratory cluster on/off candidates: the row's own cluster mode (dropping it would refit another model)
+    clustered = (bool(row.get("clustered")) if kind == "structure" and getattr(run.settings, "cluster_compare", False)
+                 and row.get("clustered") is not None else None)
     return Candidate(int(row["idx"]), tuple(row["focal"]), tuple(row["covariates"]), tuple(run.settings.required),
-                     kind, tuple(tuple(t) for t in inter), structure)
+                     kind, tuple(tuple(t) for t in inter), structure, clustered)
 
 
 def full_analysis(session: RSession, ds: Dataset, run: DiscoveryRun,
-                  c: Candidate) -> tuple[AnalysisResult, dict[str, bytes]]:
+                  c: Candidate, new_analysis: list[str] | None = None) -> tuple[AnalysisResult, dict[str, bytes]]:
+    """`ds` is the search's own data view (current or rebuilt, history.context); `new_analysis` lists why the
+    project differs when the user explicitly chose a NEW analysis under the current settings instead."""
     s = run.settings
     a = lambda n: alias(ds.var(n).alias)  # noqa: E731
     if c.kind in ("main", "combo", "factorial"):
@@ -65,5 +70,8 @@ def full_analysis(session: RSession, ds: Dataset, run: DiscoveryRun,
     if row is not None:
         from ..analysis.descriptor import attach_check, from_discovery
 
-        attach_check(result, from_discovery(run, row))
+        d = from_discovery(run, row).to_dict()
+        if new_analysis:
+            d.update(new_analysis=True, new_analysis_reasons=list(new_analysis))
+        attach_check(result, d)
     return result, artifacts

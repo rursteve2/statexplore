@@ -44,6 +44,17 @@ run.bat                                  :: GUI
   `STATEXPLORE_HRS` environment variable) and skip if it is absent.
 - GUI tests run offscreen (`QT_QPA_PLATFORM=offscreen`).
 
+## v1.3.2 regression runner (developer only)
+```bat
+.venv\Scripts\python tools\sx_regress.py --package E:\Downloads\StatExplore_v1.3.2_Developer_Package --out E:\sx_runs
+```
+Creates a fresh `run_<timestamp>` folder: regenerates the synthetic fixtures (07) and the independent R references
+(08) in `Rscript --vanilla`, audits the historical targets, checks that `tests/fixtures/v132` holds the same bytes,
+runs pytest with JUnit XML and writes `gates.csv` (every register ID → tests → PASS / FAIL / BLOCKED / SKIPPED /
+NOT RUN / NOT APPLICABLE) and `summary.json`. Exit code 0 only when every mandatory gate passes; the clean-VM and
+physical-DPI checks are owner steps and stay NOT RUN. `tests/test_v132.py` compares the application with the
+committed independent reference output (`tests/fixtures/v132/reference`), never with itself.
+
 ## Build the offline distribution, installer and release
 ```bat
 set STATEXPLORE_BUILD_DIR=E:\statexplore_build   & :: optional: build on a drive with space (~3 GB)

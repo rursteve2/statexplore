@@ -161,6 +161,38 @@ def _full_selftest(say, rscript, tmp: Path) -> bool:
             say(f"  {'ok ' if good else 'BAD'} {label}: {r2.status}"
                 + ("" if good else f" {[r['reason'] for r in r2.rows if r['status'] not in ('ok', 'warning')][:1]}"))
             ok &= good
+        # v1.3.2: participants nested in clusters (shared structure builder, identity-verified transfer)
+        cl = pd.DataFrame({"school": np.repeat(np.arange(1, 13), 24), "pid": np.repeat(np.arange(1, 73), 4),
+                           "w": np.tile([0, 1, 2, 3], 72)})
+        cl["grp"] = (cl["pid"] % 2).astype(int)
+        cl["y"] = (10 + 0.5 * cl["w"] + 0.6 * cl["grp"] + np.repeat(rng.normal(0, 2, 12), 24)
+                   + np.repeat(rng.normal(0, 1, 72), 4) + np.repeat(rng.normal(0, .3, 72), 4) * cl["w"]
+                   + rng.normal(size=len(cl)))
+        cl.to_csv(tmp / "clustered.csv", index=False)
+        cds = import_file(tmp / "clustered.csv")
+        cds.set_variable_field("grp", "measure", "nominal")
+        with RWorker(rscript) as w2:
+            s2 = RSession(w2, tmp / "clustered")
+            res, _ = mixed.run(s2, cds, mixed.MixedSpec(outcome="y", id="pid", time="w", predictors=["grp"],
+                                                        cluster="school", random="slope", residual="ar1",
+                                                        interactions="none"))
+            fit = next(t for t in res.tables if t.name == "Model fit")
+            good = res.status.value in ("ok", "warning") and fit.rows[0][fit.columns.index("clusters")] == 12
+            say(f"  {'ok ' if good else 'BAD'} mixed (clustered RS + AR1): {res.status.value}")
+            ok &= good
+            b = execute(create_run(cds, SearchSettings(outcome="y", family="gaussian", candidates=["grp"],
+                                                       required=["w"], participant="pid", time="w", cluster="school",
+                                                       workflow="structure", structures=["ri", "rs_ar1", "car1"],
+                                                       workers=1, max_models=None, max_minutes=None)),
+                        cds, rscript=str(rscript))
+            good = b.status == "complete" and all(r["status"] in ("ok", "warning") for r in b.rows)
+            say(f"  {'ok ' if good else 'BAD'} discovery (clustered workflow B): {b.status}")
+            ok &= good
+            row = next(r for r in b.rows if r["structure"] == "rs_ar1")
+            tr, _ = mixed.run(s2, cds, mixed.spec_from_discovery(b, row))
+            good = tr.values.get("identity_check") == "verified"
+            say(f"  {'ok ' if good else 'BAD'} transfer identity (fingerprints): {tr.values.get('identity_check')}")
+            ok &= good
         out = export(proj, [r.id for r in proj.results], tmp / "export", {"xlsx", "docx", "pdf", "R", "py"},
                      [run.id])
         say(f"  ok  exports: {len(out)} files")

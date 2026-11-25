@@ -46,10 +46,10 @@ class VariableSelector(QWidget):
 
     def __init__(self, parent: QWidget | None = None, *, single: bool = False, max_height: int | None = None,
                  placeholder: str = "Search name, label or original name…", show_level_filter: bool = True,
-                 selected_first: bool = False):
+                 selected_first: bool = True):
         super().__init__(parent)
         self.single = single
-        self.selected_first = selected_first
+        self.selected_first = selected_first and not single   # UI-31: every multi-select list groups selections first
         self._regroup_timer = QTimer(self)
         self._regroup_timer.setSingleShot(True)
         self._regroup_timer.setInterval(0)

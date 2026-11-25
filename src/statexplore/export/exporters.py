@@ -163,7 +163,8 @@ def portable_script(result: AnalysisResult, data_name: str = "data.csv") -> str:
               + "# Run from this folder:  Rscript " + f"{slug(result.title)}_{result.id}.R"
               + "   (or source() it from anywhere)\n"
               "dir.create(\"plots\", showWarnings = FALSE)\n")
-    footer = (f'\n# ---- write the result so it can be compared with StatExplore ----\n'
+    footer = (identity_check(result.values.get("identity"))
+              + f'\n# ---- write the result so it can be compared with StatExplore ----\n'
               f'jsonlite::write_json(sx_result, "result_{result.id}.json", auto_unbox = TRUE, digits = I(17), '
               f'null = "null", na = "null", force = TRUE)\n')
     return header + script + footer
@@ -221,11 +222,38 @@ def _pseudonymize(path: Path, columns: list[str]) -> list[str]:
     return done
 
 
+def _sha256(path: Path) -> str:
+    import hashlib
+
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def identity_check(identity: dict | None) -> str:
+    """R lines that stop unless the re-run analysed the same rows, outcome values / coding and fixed design as the
+    recorded model (identity schema 2, SHA-256; STAT-22 / STAT-36)."""
+    if not identity or int(identity.get("schema") or 0) < 2:
+        return ""
+    parts = [(k, identity[k]) for k in ("rows", "response", "design", "groups") if identity.get(k)]
+    if not parts:
+        return ""
+    return ("\n# ---- identity check: same analysed rows, outcome coding and design as the recorded model ----\n"
+            "stopifnot(\n" + ",\n".join(f'  "{k} differ from the recorded model" = identical(sx_result$identity${k}, '
+                                       f'"{v}")' for k, v in parts) + ")\n"
+            'cat("Model identity reproduced (rows, outcome, design, grouping).\\n")\n')
+
+
 def write_portable(script: str, folder: Path, ds: Dataset, name: str = "analysis",
-                   pseudonymize_ids: bool = True) -> list[Path]:
+                   pseudonymize_ids: bool = True, provenance: dict | None = None, identity: dict | None = None,
+                   engine: Any = None) -> list[Path]:
     """Save a script, the data file it reads (analysis columns only) and a manifest as a self-contained set.
-    The script checks its packages first and refuses a data file whose MD5 differs from the exported one
-    (P1-EXPORT). Numeric participant IDs are replaced by order-preserving codes unless `pseudonymize_ids` is off."""
+    The script checks its packages first and refuses a data file whose SHA-256 differs from the exported one
+    (P1-EXPORT, STAT-36); with `identity` it also stops unless the re-run analysed the same rows, outcome coding and
+    design. Paths are relative; output folders are created. Numeric participant IDs are replaced by
+    order-preserving codes unless `pseudonymize_ids` is off."""
     import datetime as _dt
 
     from .. import __version__
@@ -236,24 +264,28 @@ def write_portable(script: str, folder: Path, ds: Dataset, name: str = "analysis
     data_path = folder / data_name
     export_data_csv(ds, data_path, used)
     ids = _pseudonymize(data_path, sorted(set(_ID_COLUMN.findall(script)))) if pseudonymize_ids else []
-    md5 = _md5(data_path)
-    check = (f'sx_data_md5 <- "{md5}"  # MD5 of {data_name} as exported (see {name}_manifest.json)\n'
-             "if (!isTRUE(get0(\"sx_skip_checksum\")) && !identical(unname(tools::md5sum(sx_data_file)), sx_data_md5))\n"
-             "  stop(\"The data file \", sx_data_file, \" is not the file exported with this script (MD5 differs). \",\n"
+    md5, sha = _md5(data_path), _sha256(data_path)
+    check = (f'sx_data_sha256 <- "{sha}"  # SHA-256 of {data_name} as exported (see {name}_manifest.json)\n'
+             "if (!isTRUE(get0(\"sx_skip_checksum\")) && !identical(unname(tools::sha256sum(sx_data_file)), sx_data_sha256))\n"
+             "  stop(\"The data file \", sx_data_file, \" is not the file exported with this script (SHA-256 differs). \",\n"
              "       \"Use the exported file, or set sx_skip_checksum <- TRUE before source() to run anyway.\", call. = FALSE)")
     text, used = portable_text(script, data_name, check)
     packages = required_packages(text)
-    text = package_check(packages) + text
+    text = package_check(packages) + 'dir.create("plots", showWarnings = FALSE)  # output folder for any plots\n' + text
+    text += identity_check(identity)
     if ids:
         text = ("# Participant IDs in the data file are order-preserving codes (1, 2, ...), not the original IDs; "
                 "grouping, row order and results are unchanged.\n" + text)
     (folder / f"{name}.R").write_text(text, encoding="utf-8")
     rows = sum(1 for _ in open(data_path, encoding="utf-8")) - 1
     manifest = {"created": _dt.datetime.now().isoformat(timespec="seconds"), "statexplore": __version__,
-                "script": f"{name}.R", "data": {"file": data_name, "md5": md5, "rows": rows,
+                "script": f"{name}.R", "data": {"file": data_name, "sha256": sha, "md5": md5, "rows": rows,
                                                 "columns": sorted(used) if used is not None else None,
                                                 "pseudonymized_id_columns": ids},
                 "r_packages": packages,
+                "r_versions": ({"r": getattr(engine, "version", None), **(getattr(engine, "packages", {}) or {})}
+                               if engine is not None else None),
+                "provenance": provenance or None, "identity": identity or None,
                 "notes": "Paths are relative to this folder. Run: source(\"" + name + ".R\") or Rscript " + name + ".R"}
     (folder / f"{name}_manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
     return [folder / f"{name}.R", data_path, folder / f"{name}_manifest.json"]

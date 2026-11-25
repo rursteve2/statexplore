@@ -125,8 +125,9 @@ def test_I_ar1_likelihood_matches_independent_computation(tmp_path, rng, r_sessi
     assert 0.4 < phi < 0.8
     fx = tab(res, "Fixed effects").set_index("term")["estimate"]
     vc = tab(res, "Random effects")
-    tau2 = float(vc.loc[vc["term"] == "(Intercept)", "variance"].iloc[0])
-    sigma2 = float(vc.loc[vc["term"] == "Residual", "variance"].iloc[0])
+    # v1.3.2 (STAT-43): one row per variance / covariance of every grouping level, residual as group "Residual"
+    tau2 = float(vc.loc[vc["term"] == "(Intercept)", "variance_or_cov"].iloc[0])
+    sigma2 = float(vc.loc[vc["group"] == "Residual", "variance_or_cov"].iloc[0])
     df = df.assign(tidx=df["time"].rank(method="dense").astype(int))
     beta = lambda sub: (fx["(Intercept)"] + fx["time"] * sub["time"] + fx["g=b"] * (sub["g"] == "b")  # noqa: E731
                         + fx["time:g=b"] * sub["time"] * (sub["g"] == "b")).to_numpy()
@@ -229,17 +230,20 @@ def test_specification_comparisons(tmp_path, rng, r_session):
     lin = smf.mixedlm("y ~ time + g", df, groups=df["id"]).fit(reml=False)
     quad = smf.mixedlm("y ~ time + I(time**2) + g", df, groups=df["id"]).fit(reml=False)
     row = lrt[(lrt["smaller"].str.startswith("Continuous (linear")) & (lrt["larger"].str.startswith("Continuous (quad"))].iloc[0]
-    assert row["chi2"] == pytest.approx(2 * (quad.llf - lin.llf), rel=1e-3, abs=1e-4)
+    assert row["LR"] == pytest.approx(2 * (quad.llf - lin.llf), rel=1e-3, abs=1e-4)
 
     res, _ = mixed.compare_specs(r_session, ds, base, "random")
-    lrt = tab(res, "Likelihood-ratio tests").iloc[0]
+    # v1.3.2 (UI-54, STAT-23): RI, uncorrelated and correlated slopes; the reference follows each hypothesis
+    lrts = tab(res, "Likelihood-ratio tests")
+    lrt = lrts[lrts["null_hypothesis"].str.startswith("participant time-slope variance = 0 and")].iloc[0]
     assert set(tab(res, "Specification comparison")["estimation"]) == {"REML"}
     assert lrt["df"] == 2
-    assert lrt["p_boundary_corrected"] == pytest.approx(0.5 * chi2.sf(lrt["chi2"], 2) + 0.5 * chi2.sf(lrt["chi2"], 1), rel=1e-9)
+    assert lrt["p"] == pytest.approx(0.5 * chi2.sf(lrt["LR"], 2) + 0.5 * chi2.sf(lrt["LR"], 1), rel=1e-9)
 
     res, _ = mixed.compare_specs(r_session, ds, base, "residual")
     comp = tab(res, "Specification comparison")
-    assert list(comp["engine"]) == ["nlme"] * 3 and len(tab(res, "Likelihood-ratio tests")) == 2
+    lrts = tab(res, "Likelihood-ratio tests")      # 2 nested tests + AR(1) vs CAR(1) reported as not nested
+    assert list(comp["engine"]) == ["nlme"] * 3 and (lrts["status"] == "tested").sum() == 2
 
     with pytest.raises(mixed.MixedInputError):
         mixed.comparison_variants(mixed.MixedSpec(outcome="y", id="id", time="time", time_type="categorical",

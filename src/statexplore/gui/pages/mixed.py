@@ -139,6 +139,11 @@ class MixedPage(QWidget):
         mf = QFormLayout(mbox)
         self.outcome, self.idv, self.time, self.cluster = (make_searchable(QComboBox()) for _ in range(4))
         self.time_type = self._choice(mixed.TIME_TYPES)
+        self.id_policy = self._choice(mixed.ID_POLICIES, "global")
+        self.id_policy.setToolTip("With a higher-level cluster: are participant IDs unique across clusters, or numbered "
+                                  "within each cluster (then the participant is the (cluster, ID) pair)? IDs that "
+                                  "appear in several clusters under the 'unique' setting are refused (crossed designs "
+                                  "are not supported).")
         self.interactions = self._choice(mixed.INTERACTIONS, "time")
         self.random = self._choice(mixed.RANDOM)
         self.residual = self._choice(mixed.RESIDUAL)
@@ -177,6 +182,7 @@ class MixedPage(QWidget):
                          ("", self.treatment_panel.outcome_box),
                          ("Estimator", self.estimator), ("Participant ID", self.idv), ("Time", self.time),
                          ("Time as", self.time_type), ("Cluster (optional)", self.cluster),
+                         ("Participant IDs", self.id_policy),
                          ("Interactions", self.interactions), ("Random effects", self.random),
                          ("Residual covariance", self.residual), ("Estimation", self.method),
                          ("Inference (Gaussian lme4)", self.inference), ("Event category (binary)", self.event_combo),
@@ -368,10 +374,29 @@ class MixedPage(QWidget):
         if key:
             self.family.setCurrentIndex(self.family.findData(key))
 
+    # ---------- form persistence (UI-48 / CD-12) ----------
+    def form_state(self) -> dict:
+        return {"spec": self._spec().to_dict()}
+
+    def restore_form(self, st: dict) -> None:
+        s = st.get("spec") or {}
+        for combo, key in ((self.outcome, "outcome"), (self.idv, "id"), (self.time, "time"), (self.cluster, "cluster"),
+                           (self.id_policy, "id_policy"), (self.family, "family"), (self.estimator, "estimator"),
+                           (self.random, "random"), (self.residual, "residual"), (self.time_type, "time_type"),
+                           (self.interactions, "interactions"), (self.gee_corstr, "gee_corstr"),
+                           (self.inference, "inference")):
+            i = combo.findData(s.get(key))
+            if i >= 0:
+                combo.setCurrentIndex(i)
+        if s.get("method"):
+            self.method.setCurrentText(s["method"])
+        self.pred_sel.set_selected(list(s.get("predictors") or []))
+
     def _spec(self) -> mixed.MixedSpec:
         return mixed.MixedSpec(
             outcome=self.outcome.currentData(), id=self.idv.currentData(), time=self.time.currentData(),
             time_type=self.time_type.currentData(), cluster=self.cluster.currentData(),
+            id_policy=self.id_policy.currentData() or "global",
             predictors=self.pred_sel.selected(),
             interactions=self.interactions.currentData(), random=self.random.currentData(),
             residual=self.residual.currentData(), method=self.method.currentText(), n_trajectories=self.ntraj.value(),
@@ -438,9 +463,15 @@ class MixedPage(QWidget):
                          + (f"; absent for everyone inside the range: "
                             f"{_html.escape(', '.join(view.level_label(rep.time, c) for c in rep.interior_absent))}"
                             if rep.interior_absent else "") + ")</p>")
-        parts.append(f"<p>Usable for this model (complete on outcome, time and predictors): {rep.n_usable:,} "
-                     f"participants — {rep.n_usable_multi:,} with 2+ rows, {rep.n_usable_one:,} with one; "
-                     f"{rep.n_intermittent:,} with intermittent gaps.</p>")
+        parts.append(f"<p>Complete model rows (outcome, time, predictors, ID{', cluster' if rep.cluster else ''}): "
+                     f"<b>{rep.n_complete:,}</b>, time range {_html.escape(rep._range_text(view, rep.complete_range))}; "
+                     f"{rep.n_usable:,} participants — {rep.n_usable_multi:,} with 2+ rows, {rep.n_usable_one:,} with "
+                     f"one; {rep.n_intermittent:,} with intermittent gaps.</p>")
+        if rep.cluster:
+            sizes = f"{rep.cluster_sizes[0]}–{rep.cluster_sizes[1]}" if rep.cluster_sizes else "—"
+            parts.append(f"<p>Nested design: <b>{rep.n_clusters:,}</b> clusters, {sizes} participants per cluster; "
+                         f"{rep.n_cluster_missing:,} rows excluded for a missing cluster; IDs in 2+ clusters: "
+                         f"{rep.n_crossing:,}.</p>")
         parts += [f"<p style='color:#8d6e00'>⚠ {_html.escape(w)}</p>" for w in rep.warnings]
         parts += [f"<p class='note'>{_html.escape(n)}</p>" for n in rep.notes]
         from ..result_view import table_html
@@ -479,7 +510,8 @@ class MixedPage(QWidget):
             return
         for combo, val in ((self.outcome, s.outcome), (self.idv, s.id), (self.time, s.time), (self.family, s.family),
                            (self.estimator, s.estimator), (self.random, s.random), (self.residual, s.residual),
-                           (self.time_type, s.time_type), (self.gee_corstr, s.gee_corstr)):
+                           (self.time_type, s.time_type), (self.gee_corstr, s.gee_corstr), (self.cluster, s.cluster),
+                           (self.id_policy, s.id_policy)):
             i = combo.findData(val)
             if i >= 0:
                 combo.setCurrentIndex(i)

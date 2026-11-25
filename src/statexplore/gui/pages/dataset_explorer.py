@@ -22,7 +22,7 @@ OVERVIEW_COLUMNS = {
     "display_name": "Variable", "label": "Label", "storage": "Type", "measure": "Measure",
     "role": "Role", "n_valid": "Valid N", "n_missing": "Missing", "pct_missing": "% missing",
     "n_unique": "Unique", "mean": "Mean", "sd": "SD", "min": "Min", "max": "Max",
-    "n_outliers": "Potential outliers (Tukey)", "n_user_missing_codes": "User-missing codes",
+    "n_outliers": "Potential outliers (Tukey)", "n_user_missing_codes": "Rows with a user-missing code",
 }
 
 
@@ -156,6 +156,12 @@ class DatasetExplorerPage(QWidget):
         lay.addLayout(row)
         lay.addWidget(QLabel("<b>Row filters</b> — all filters must hold (AND). Applied after derived "
                              "variables are computed; filtered rows are greyed in the Data tab."))
+        ctx = QLabel("Filters define the CURRENT data for new analyses. Results and discovery searches already run "
+                     "keep the rows they used: reopening one after a filter change asks whether to rebuild its "
+                     "original data view or to run a new analysis on the current rows (UI-39).")
+        ctx.setWordWrap(True)
+        ctx.setObjectName("hint")
+        lay.addWidget(ctx)
         self.filter_list = QListWidget()
         lay.addWidget(self.filter_list)
         row = QHBoxLayout()

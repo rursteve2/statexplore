@@ -1,0 +1,51 @@
+{
+  "run": "20261125_030050",
+  "statexplore": "1.3.2",
+  "rscript": "C:\\Program Files\\R\\R-4.6.2\\bin\\x64\\Rscript.exe",
+  "steps": {
+    "fixtures": 0,
+    "references": 2,
+    "historical_audit": 0,
+    "pytest": 0
+  },
+  "fixtures_identical_to_fresh_generation": {
+    "CD_Crossing.csv": true,
+    "CD_DuplicateTime.csv": true,
+    "CD_Irregular.csv": true,
+    "CD_Missing.csv": true,
+    "CD_ReusedID.csv": true,
+    "StatExplore_v1.3.0_Whitespace_Regression_Fixture.csv": true,
+    "StatExplore_v131_Test26C_Sparse.csv": true,
+    "T28_29_Synthetic.csv": true,
+    "T33_MissingCodes.csv": true,
+    "T35A_Ordinal.csv": true,
+    "T35C_Identity.csv": true,
+    "T36A.csv": true,
+    "T36B.csv": true,
+    "T36C.csv": true,
+    "T36D.csv": true,
+    "T37A.csv": true,
+    "T37A_Discovery.csv": true,
+    "T37B.csv": true,
+    "T37D_3702.csv": true,
+    "T37D_3703.csv": true,
+    "T38.csv": true
+  },
+  "tests_by_status": {
+    "PASS": 424,
+    "SKIPPED": 1
+  },
+  "gates_by_status": {
+    "PASS": 68,
+    "FAIL": 0,
+    "BLOCKED": 0,
+    "SKIPPED": 0,
+    "NOT RUN": 2,
+    "NOT APPLICABLE": 5
+  },
+  "mandatory_not_passed": [],
+  "owner_steps_not_run": [
+    "PACKAGED-OFFLINE-VM",
+    "PHYSICAL-DPI-150"
+  ]
+}

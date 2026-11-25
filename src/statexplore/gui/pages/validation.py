@@ -97,6 +97,14 @@ class ValidationPage(QWidget):
         sf.addRow("Resamples", self.B)
         sf.addRow("Subsample fraction", self.frac)
         sf.addRow("Folds (full-procedure CV)", self.folds)
+        self.target = QComboBox()
+        self.target.addItem("Automatic (new organizations when a cluster has 10+ groups, else new participants)", "auto")
+        for key, text in validation.TARGETS.items():
+            self.target.addItem(text.split(":")[0], key)
+        self.target.setToolTip("Longitudinal searches: what the validation predicts. The folds follow this target; "
+                               "individual repeated rows are never split at random.\n\n"
+                               + "\n".join(validation.TARGETS.values()))
+        sf.addRow("Prediction target (longitudinal)", self.target)
         srow = QHBoxLayout()
         for text, slot in (("Resampling stability", self._stability), ("Full-procedure CV", self._procedure)):
             b = QPushButton(text)
@@ -246,7 +254,7 @@ class ValidationPage(QWidget):
             QMessageBox.information(self, "Validation", "Run a discovery search (≤ 2,000 candidates) first.")
             return
         rs = validation.ResampleSpec(resamples=self.B.value(), fraction=self.frac.value(), folds=self.folds.value(),
-                                     seed=self.cv_seed.value())
+                                     seed=self.cv_seed.value(), target=self.target.currentData() or "auto")
         self._run(lambda s: fn(s, ds, run, rs))
 
     def _stability(self) -> None:

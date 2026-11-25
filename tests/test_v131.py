@@ -195,11 +195,13 @@ def test_27_verify_compares_bic_only_for_new_rows():
     d = ModelDescriptor(source="s", run_id="r", candidate=1, family="lmm", outcome_family="gaussian",
                         engine="nlme::lme", link="identity", outcome="y", terms=[["x"]], n=100, loglik=-50.0,
                         aic=110.0, bic=120.0, ic_basis="native")
-    assert verify(d, 100, -50.0, 110.0, 120.0005)[0] is True
-    ok, text = verify(d, 100, -50.0, 110.0, 120.004)        # the v1.3.0 discrepancy size
-    assert ok is False and "BIC" in text
+    ident = {"schema": 2, "rows": "r", "response": "y", "design": "x"}   # v1.3.2: structure first
+    d.identity = dict(ident)
+    assert verify(d, 100, -50.0, 110.0, 120.0005, identity=ident)[0] == "verified"
+    ok, text = verify(d, 100, -50.0, 110.0, 120.004, identity=ident)        # the v1.3.0 discrepancy size
+    assert ok == "mismatch" and "BIC" in text
     d.ic_basis = ""                                          # a v1.3.0 row: BIC was on another convention
-    assert verify(d, 100, -50.0, 110.0, 120.004)[0] is True
+    assert verify(d, 100, -50.0, 110.0, 120.004, identity=ident)[0] == "verified"
 
 
 # ---- 28: model-family identity across transfers ------------------------------------------------------------
@@ -218,7 +220,8 @@ def test_28_gee_identity_and_blocked_single_level_transfer(panel_ds, r_session):
         spec = mixed.spec_from_discovery(run, row)
         assert (spec.engine, spec.estimator, spec.family) == ("geepack", "gee", "binomial")
         res, _ = mixed.run(r_session, panel_ds, spec)
-        assert res.status.value in ("ok", "warning") and "lme4" not in res.script.split("# ---- StatExplore")[-1]
+        # no lme4 model is fitted (v1.3.2: the shared helper block defines, but does not call, lme4 functions)
+        assert res.status.value in ("ok", "warning") and "lmer(" not in res.script.split("# ---- StatExplore")[-1]
         assert "geepack::geeglm(" in res.script and f'corstr = "{spec.gee_corstr}"' in res.script
         assert row["qic"] is not None and np.isfinite(row["qic"])
         with pytest.raises(TransferError, match="not single-level"):
@@ -466,7 +469,7 @@ def test_30_exports_fail_clearly_on_changed_data_or_missing_packages(panel_ds, r
     df.loc[0, y] = np.nan                              # one analysed row removed
     df.to_csv(data, index=False)
     p = _source(folder, tmp_path)
-    assert p.returncode != 0 and "MD5 differs" in p.stderr
+    assert p.returncode != 0 and "SHA-256 differs" in p.stderr
     p = _source(folder, tmp_path, "sx_skip_checksum <- TRUE; ")
     assert p.returncode != 0 and ("n differs from the app" in p.stderr or "analysis rows differ" in p.stderr)
     script = (folder / "analysis.R").read_text(encoding="utf-8")
@@ -488,7 +491,8 @@ def test_30_row_signature_guards_structure_comparisons():
     run = SimpleNamespace(rows=rows)
     assert structure_tests(run)[1][0]["statistic"] == pytest.approx(10.0)
     rows[1]["rows_sig"] = "bbb"                           # same n, different rows
-    assert structure_tests(run) == {}
+    # v1.3.2: the pair is reported as withheld (reason given), never tested
+    assert all(t["test_status"] == "withheld" and t["p"] is None for ts in structure_tests(run).values() for t in ts)
     rows[1].update(structure="car1", rows_sig="aaa")
     rows.append(dict(rows[1], idx=2, structure="ar1"))
     assert all(t["reference_structure"] != "ar1" for ts in structure_tests(run).values() for t in ts)

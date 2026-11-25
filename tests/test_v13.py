@@ -247,10 +247,14 @@ def test_P0_01_verify_tolerances():
     d = ModelDescriptor(source="s", run_id="r", candidate=1, family="lmm", outcome_family="gaussian",
                         engine="nlme::lme", link="identity", outcome="y", terms=[["x"]], n=100, loglik=-50.0,
                         aic=110.0)
-    assert verify(d, 100, -50.004, 110.005)[0] is True
-    ok, text = verify(d, 99, -50.0, 110.0)
-    assert ok is False and "FAILED" in text
-    assert verify(d, 100, -51.0, 112.0)[0] is False
+    # v1.3.2 (STAT-22): numerical agreement is checked only after structural identity (fingerprints)
+    ident = {"schema": 2, "rows": "r", "response": "y", "design": "x", "n": 100}
+    d.identity = dict(ident)
+    assert verify(d, 100, -50.004, 110.005, identity=ident)[0] == "verified"
+    ok, text = verify(d, 99, -50.0, 110.0, identity=dict(ident, n=99))
+    assert ok == "mismatch" and "MISMATCH" in text
+    assert verify(d, 100, -51.0, 112.0, identity=ident)[0] == "mismatch"
+    assert verify(d, 100, -50.0, 110.0)[0] == "unverifiable"          # equal statistics alone never verify
     assert verify(None, 1, 1, 1) == (None, "")
 
 

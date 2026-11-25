@@ -12,7 +12,7 @@ from typing import Any
 
 from ..core.dataset import Dataset
 from ..core.schema import AnalysisResult, Status
-from ..rbridge.codegen import alias, r_num, r_str, r_vec
+from ..rbridge.codegen import factor_label, alias, r_num, r_str, r_vec
 from .models import ModelCheckError, ModelSpec, check_model, model_view
 from .session import RSession
 
@@ -116,7 +116,7 @@ def build(ds: Dataset, m: ModelSpec, p: PlotSpec, plot_path: str) -> str:
         L += [
             *([f"sx_lv <- if (is.factor(sx_d${y})) levels(sx_d${y}) else sort(unique(sx_d${y}))",
                f"sx_d$sx_event <- as.integer(sx_d${y} == sx_lv[2])"] if m.event is None else
-              [f"sx_d$sx_event <- as.integer(as.character(sx_d${y}) == {r_str(ds.level_label(m.outcome, m.event))})"
+              [f"sx_d$sx_event <- as.integer(as.character(sx_d${y}) == {r_str(factor_label(ds, m.outcome, m.event))})"
                "  # event category of the source model"] if ds.var(m.outcome).is_categorical else
               [f"sx_d$sx_event <- as.integer(sx_d${y} == {r_num(m.event)})  # event category of the source model"]),
             f"sx_fit <- stats::glm(sx_event ~ {m.rhs(ds)}, data = sx_d, family = stats::binomial())",

@@ -128,8 +128,14 @@ class MeasurementReviewWidget(QWidget):
         actions = QHBoxLayout()
         self.accept_btn = QPushButton("Accept suggestion")
         self.accept_btn.clicked.connect(self._accept)
-        self.keep_btn = QPushButton("Keep original classification")
+        self.keep_btn = QPushButton("Keep current level")
+        self.keep_btn.setToolTip("Mark the variable reviewed with the level it has NOW in this project (which may "
+                                 "already differ from the source file).")
         self.keep_btn.clicked.connect(self._keep)
+        self.restore_btn = QPushButton("Restore source-file level")
+        self.restore_btn.setToolTip("Set the level back to the one declared by the source file (SPSS measure; "
+                                    "CSV/Excel: as first inferred on import).")
+        self.restore_btn.clicked.connect(self._restore_source)
         self.level = QComboBox()
         for m in Measure:
             self.level.addItem(m.value, m.value)
@@ -137,7 +143,8 @@ class MeasurementReviewWidget(QWidget):
         self.set_btn.clicked.connect(self._set_level)
         self.order_btn = QPushButton("Review category order…")
         self.order_btn.clicked.connect(self._order)
-        for w in (self.accept_btn, self.keep_btn, QLabel("Different level:"), self.level, self.set_btn, self.order_btn):
+        for w in (self.accept_btn, self.keep_btn, self.restore_btn, QLabel("Different level:"), self.level, self.set_btn,
+                  self.order_btn):
             actions.addWidget(w)
         actions.addStretch()
 
@@ -228,7 +235,7 @@ class MeasurementReviewWidget(QWidget):
             self.table.selectRow(self._names.index(name))
 
     def _enable(self, on: bool) -> None:
-        for b in (self.accept_btn, self.keep_btn, self.set_btn, self.order_btn, self.level):
+        for b in (self.accept_btn, self.keep_btn, self.restore_btn, self.set_btn, self.order_btn, self.level):
             b.setEnabled(on)
 
     def _show_detail(self) -> None:
@@ -240,6 +247,11 @@ class MeasurementReviewWidget(QWidget):
         self._enable(True)
         v = ds.var(name)
         self.accept_btn.setEnabled(bool(v.suggested_measure) and v.suggested_measure != v.measure.value)
+        src = M.source_level(v)
+        # UI-46: say exactly which level each action keeps or restores (current project level vs source file level)
+        self.keep_btn.setText(f"Keep current level ({v.measure.value})")
+        self.restore_btn.setText(f"Restore source level ({src or 'unknown'})")
+        self.restore_btn.setEnabled(bool(src) and src in [m.value for m in Measure] and src != v.measure.value)
         self.order_btn.setEnabled(v.is_categorical)
         self.level.setCurrentIndex(max(0, self.level.findData(v.measure.value)))
         col = ds.analysis_column(name)
@@ -250,6 +262,11 @@ class MeasurementReviewWidget(QWidget):
             rows.append(f"<tr><td align='right'>{html.escape(_fmt(c))}</td><td>{html.escape(ds.level_label(name, c))}"
                         f"</td><td align='right'>{int(counts.get(c, 0)):,}</td></tr>")
         missing_codes = [c for c in raw_counts.index if ds.is_user_missing_value(v, c)]
+        # UI-47: the DEFINITION of user-missing codes (from the file) is not the same as rows that HAVE them
+        defs = [html.escape(_fmt(c)) + (f" ({html.escape(v.value_labels[c])})" if c in v.value_labels else "")
+                for c in v.missing_values] + [f"{_fmt(lo)} to {_fmt(hi)}" for lo, hi in v.missing_ranges]
+        n_code_rows = int(sum(int(raw_counts[c]) for c in missing_codes))
+        n_blank = int(ds.column(name).isna().sum())
         miss = "".join(f"<tr><td align='right'>{html.escape(_fmt(c))}</td><td>"
                        f"{html.escape(v.value_labels.get(c, ''))} <i>(declared missing)</i></td>"
                        f"<td align='right'>{int(raw_counts[c]):,}</td></tr>" for c in missing_codes)
@@ -261,8 +278,11 @@ class MeasurementReviewWidget(QWidget):
             f"Status: {STATUS_TEXT.get(v.measure_status, v.measure_status)}</p>"
             + (f"<p>Coding direction: {html.escape(v.coding_direction)}</p>" if v.coding_direction else "")
             + f"<p><b>Why:</b></p><ul>{reasons}</ul>"
-            f"<p><b>Original numeric codes and value labels</b> (category order as used in analyses; "
-            f"missing: {int(col.isna().sum()):,})</p>"
+            f"<p><b>Missing values.</b> Declared user-missing codes (definitions from the source file): "
+            f"{', '.join(defs) if defs else 'none'}. Rows holding one of those codes: {n_code_rows:,}; blank "
+            f"(system-missing) rows: {n_blank:,}; treated as missing in analyses: {int(col.isna().sum()):,}. "
+            "The codes stay in the data and in saved projects; analyses see them as missing.</p>"
+            f"<p><b>Original numeric codes and value labels</b> (category order as used in analyses)</p>"
             "<table border='1' cellspacing='0' cellpadding='3'><tr><th>Code</th><th>Label</th><th>Count</th></tr>"
             + "".join(rows) + miss + "</table>"
             + ("<p><i>Only the first 60 categories are shown.</i></p>" if len(ds.levels(name)) > 60 else ""))
@@ -305,6 +325,21 @@ class MeasurementReviewWidget(QWidget):
         if not self._confirm(f"Keep {ds.var(name).display_name} as {ds.var(name).measure.value}?"):
             return
         M.keep(ds, name)
+        self.state.notify_metadata_changed()
+
+    def _restore_source(self) -> None:
+        ds, name = self.state.dataset, self.current()
+        if not (ds and name):
+            return
+        v = ds.var(name)
+        src = M.source_level(v)
+        if not self._confirm(f"Restore {v.display_name} to its source-file level '{src}' (currently {v.measure.value})?"):
+            return
+        try:
+            M.approve(ds, name, src)
+        except Exception as e:  # noqa: BLE001 - a user-facing reason
+            QMessageBox.warning(self, "Measurement level", str(e))
+            return
         self.state.notify_metadata_changed()
 
     def _order(self) -> None:

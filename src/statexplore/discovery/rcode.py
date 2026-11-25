@@ -6,7 +6,7 @@ from __future__ import annotations
 import math
 
 from ..core.dataset import Dataset
-from ..rbridge.codegen import alias, r_num, r_str, r_vec
+from ..rbridge.codegen import factor_label, alias, r_num, r_str, r_vec
 from .space import Candidate, SearchSettings
 
 DISCOVERY_HELPERS = r"""# ---- StatExplore: discovery helpers ----
@@ -30,28 +30,31 @@ sx_rows_sig <- function(d) {
   unname(tools::md5sum(tf))
 }
 sx_add <- function(f, extra) stats::update(f, stats::as.formula(paste(". ~ . +", extra)))
-sx_fit_lmm <- function(f, d, st, reml) {
-  if (st %in% c("ri", "rs", "rs_uncorr")) {
-    re <- switch(st, ri = "(1 | sx_gid)", rs = "(1 + sx_time | sx_gid)", rs_uncorr = "(1 + sx_time || sx_gid)")
-    return(lme4::lmer(sx_add(f, re), data = d, REML = reml))
-  }
+sx_last_run <- NULL                   # optimizer attempts of the most recent Gaussian longitudinal fit
+sx_fit_lmm <- function(f, d, st, reml, clustered = sx_disc_clustered) {
   if (startsWith(st, "mmrm")) {
     cs <- switch(st, mmrm_us = "us", mmrm_cs = "cs", mmrm_ar1 = "ar1")
+    sx_last_run <<- NULL
     return(mmrm::mmrm(sx_add(f, paste0(cs, "(sx_timef | sx_gid)")), data = d, reml = reml))
   }
-  random <- if (st == "nlme_rs") ~ 1 + sx_time | sx_gid else ~ 1 | sx_gid
-  cor <- switch(st, ar1 = nlme::corAR1(form = ~ sx_occ | sx_gid), car1 = nlme::corCAR1(form = ~ sx_time | sx_gid),
-                NULL)
-  fit <- function(opt) nlme::lme(f, random = random, correlation = cor, data = d,
-                                 method = if (reml) "REML" else "ML", control = nlme::lmeControl(opt = opt))
-  m <- tryCatch(fit("nlminb"), error = function(e) NULL)
-  if (is.null(m)) { m <- fit("optim"); attr(m, "sx_note") <- "nlminb failed; refitted with optim" }
-  m
+  g <- sx_disc_gstruct[[st]]
+  if (is.null(g)) stop("Unknown covariance structure: ", st)
+  # one structure builder for every module (random part, residual correlation, nested cluster)
+  run <- if (g[3] == "lme4")
+    sx_fit_attempts(function(opt) lme4::lmer(sx_add(f, sx_re_lme4(g[1], clustered, "sx_time", "sx_gid")), data = d,
+                                             REML = reml), "default") else
+    sx_fit_attempts(function(opt) nlme::lme(f, random = sx_re_nlme(g[1], clustered, "sx_time", "sx_gid"),
+      correlation = sx_cor_nlme(g[2], clustered, "sx_occ", "sx_time", "sx_gid"), data = d,
+      method = if (reml) "REML" else "ML", control = nlme::lmeControl(opt = opt, msMaxIter = 200)),
+      c("nlminb", "optim"))
+  sx_last_run <<- run
+  if (is.null(run$fit)) stop(run$error)
+  run$fit
 }
 sx_fit_model <- function(f, d) {
   st <- sx_disc_struct
   switch(sx_disc_family,
-    lmm = sx_fit_lmm(f, d, st, sx_disc_reml),
+    lmm = sx_fit_lmm(f, d, st, sx_disc_reml, sx_disc_clustered),
     glmm = lme4::glmer(sx_add(f, if (st == "glmer_rs") "(1 + sx_time | sx_gid)" else "(1 | sx_gid)"), data = d,
                        family = stats::binomial()),
     clmm = ordinal::clmm(sx_add(f, if (st == "clmm_rs") "(1 + sx_time | sx_gid)" else "(1 | sx_gid)"), data = d,
@@ -63,7 +66,7 @@ sx_fit_model <- function(f, d) {
     multinomial = nnet::multinom(f, data = d, trace = FALSE, maxit = 1000, model = FALSE),
     stats::glm(f, data = d, family = stats::binomial()))
 }
-sx_fit_stats <- function(m) {
+sx_fit_stats <- function(m, d) {
   if (sx_disc_family == "gee") return(list(ll = NA_real_, k = length(stats::coef(m)), conv = ""))
   ll <- stats::logLik(m)
   out <- list(ll = as.numeric(ll), k = attr(ll, "df"), conv = "")
@@ -74,14 +77,16 @@ sx_fit_stats <- function(m) {
     if (m$convergence != 0) out$conv <- "did not converge (iteration limit)" }
   if (sx_disc_family == "ordinal" && !identical(as.integer(m$convergence$code), 0L))
     out$conv <- paste("did not converge:", paste(m$convergence$messages, collapse = " "))
-  if (sx_disc_family %in% c("lmm", "glmm") && inherits(m, "merMod")) {
+  if (sx_disc_family == "glmm" && inherits(m, "merMod")) {
     conv <- unlist(m@optinfo$conv$lme4$messages)
     if (length(conv)) out$conv <- paste("convergence:", conv[1])
   }
   out$r2m <- NA_real_
-  if (sx_disc_family == "lmm" && sx_disc_struct == "ri") {
-    v <- stats::var(as.vector(lme4::getME(m, "X") %*% lme4::fixef(m)))
-    vc <- as.data.frame(lme4::VarCorr(m)); out$r2m <- v / (v + sum(vc$vcov))
+  if (sx_disc_family == "lmm") {
+    # every diagnostic of the fit (convergence, singular / near-boundary, apVar, optimizer fallback): STAT-18 / 32
+    out$diag <- sx_diag(m, if (inherits(m, c("merMod", "lme"))) sx_last_run else NULL)
+    out$conv <- paste(out$diag$flags, collapse = "; ")
+    if (inherits(m, c("merMod", "lme"))) out$r2m <- sx_r2_direct(m, d)$m     # direct decomposition (STAT-45)
   }
   out
 }
@@ -89,7 +94,7 @@ sx_reduced_stats <- function(reduced, d) {
   key <- paste0("m:", paste(sort(reduced), collapse = "+"))      # "m:" = intercept-only model
   if (sx_disc_shared && !is.null(sx_disc_cache[[key]])) return(sx_disc_cache[[key]])
   f0 <- stats::reformulate(if (length(reduced)) reduced else "1", response = "sx_y")
-  st <- sx_fit_stats(sx_fit_model(f0, d))
+  st <- sx_fit_stats(sx_fit_model(f0, d), d)
   if (sx_disc_shared) assign(key, st, envir = sx_disc_cache)
   st
 }
@@ -134,16 +139,22 @@ sx_compare <- function(s1, s0, d) {
     lr <- 2 * (s1$ll - s0$ll); r$df1 <- s1$k - s0$k
   }
   r$statistic <- lr
-  r$p <- stats::pchisq(max(lr, 0), r$df1, lower.tail = FALSE)
+  # STAT-41: a materially negative LR (larger model fits worse) means an unreliable optimization: no p-value
+  t <- sx_lr_test(0, lr / 2, r$df1, "chisq")
+  r$p <- t$p
+  if (!identical(t$status, "tested")) r$withheld <- t$reason
   r$effect <- switch(sx_disc_family, lmm = s1$r2m - s0$r2m,             # delta marginal R-squared (lme4 RI)
                      glmm = NA_real_, clmm = NA_real_,
                      lr / sx_null_scale(d))                             # delta McFadden pseudo-R-squared
   r
 }
 sx_long <- function() sx_disc_family %in% c("lmm", "glmm", "clmm", "gee")
-sx_discover_one <- function(full, tests, vars, focal_vars, struct = NULL) {
+sx_discover_one <- function(full, tests, vars, focal_vars, struct = NULL, clustered = NULL) {
   if (!is.null(struct)) {      # workflow B: this candidate's structure
     old_struct <- sx_disc_struct; sx_disc_struct <<- struct; on.exit(sx_disc_struct <<- old_struct)
+  }
+  if (!is.null(clustered)) {   # workflow B exploratory: this candidate with or without the cluster variance
+    old_cl <- sx_disc_clustered; sx_disc_clustered <<- clustered; on.exit(sx_disc_clustered <<- old_cl, add = TRUE)
   }
   res <- list(status = "ok", reason = "", flags = character(), n = NA_real_, n_params = NA_real_,
               n_groups = NA_real_, statistic = NA_real_, df1 = NA_real_, df2 = NA_real_, p = NA_real_,
@@ -151,7 +162,8 @@ sx_discover_one <- function(full, tests, vars, focal_vars, struct = NULL) {
               ci_low = NA_real_, ci_high = NA_real_, r2 = NA_real_, adj_r2 = NA_real_, aic = NA_real_,
               bic = NA_real_, loglik = NA_real_, tests = list())
   invalid <- function(why) { res$status <- "invalid"; res$reason <- why; res$flags <- ""; res$tests <- NULL; res }
-  d <- sx_complete(sx_dd, c("sx_y", vars, if (sx_long()) c("sx_gid", if (sx_disc_has_time) c("sx_time", "sx_timef", "sx_occ"))))
+  d <- sx_complete(sx_dd, c("sx_y", vars, if (sx_long()) c("sx_gid", if (sx_disc_has_cluster) "sx_cluster",
+                                                            if (sx_disc_has_time) c("sx_time", "sx_timef", "sx_occ"))))
   # occasion index over the model's own rows (sx_timef levels were dropped above): a time value no analysed row has
   # is compressed exactly as in Full Analysis; a participant's skipped occasion still leaves an index gap
   if (sx_long() && sx_disc_has_time) d$sx_occ <- as.integer(d$sx_timef)
@@ -190,19 +202,30 @@ sx_discover_one <- function(full, tests, vars, focal_vars, struct = NULL) {
     r <- abs(stats::cor(d[cv])); diag(r) <- 0
     if (max(r) > 0.9) res$flags <- c(res$flags, sprintf("|r| = %.2f between continuous predictors", max(r)))
   }
-  if (sx_long() && sx_disc_struct %in% c("rs", "rs_uncorr", "nlme_rs", "glmer_rs", "clmm_rs")) {
+  if (sx_long() && (sx_disc_struct %in% c("glmer_rs", "clmm_rs") ||
+                    (!is.null(sx_disc_gstruct[[sx_disc_struct]]) && sx_disc_gstruct[[sx_disc_struct]][1] != "ri"))) {
     k2 <- sum(tapply(d$sx_time, droplevels(d$sx_gid), function(x) length(unique(x))) >= 2)
     if (k2 < 10) return(invalid(sprintf("only %d participants have 2+ time points: a random slope is not estimable", k2)))
   }
   if (sx_disc_shared) sx_cache_for(d)
   m1 <- sx_fit_model(f1, d)
-  s1 <- sx_fit_stats(m1)
-  if (nzchar(s1$conv)) res$flags <- c(res$flags, s1$conv)
+  s1 <- sx_fit_stats(m1, d)
+  if (!is.null(s1$diag)) {
+    res$flags <- c(res$flags, s1$diag$flags)
+    res$diagnostics <- s1$diag[c("status", "optimizer", "apvar")]
+    res$diagnostics$attempts <- if (is.null(sx_last_run)) "" else paste(sprintf("%s: %s%s", sx_last_run$attempts$optimizer,
+      sx_last_run$attempts$status, ifelse(nzchar(sx_last_run$attempts$error), paste0(" (", sx_last_run$attempts$error, ")"), "")),
+      collapse = "; ")
+  } else if (nzchar(s1$conv)) res$flags <- c(res$flags, s1$conv)
+  # identity fingerprints of exactly what was fitted (rows, outcome, design, grouping): STAT-22
+  res$identity <- sx_identity(d, f1, "sx_y", if (sx_long()) c("sx_gid", if (sx_disc_clustered) "sx_cluster") else character())
   if (sx_long()) {
     res$n_groups <- nlevels(droplevels(d$sx_gid))
-    if (inherits(m1, "merMod") && lme4::isSingular(m1))
+    res$clustered <- sx_disc_clustered
+    if (sx_disc_has_cluster) res$observed_clusters <- nlevels(droplevels(d$sx_cluster))
+    res$modeled_clusters <- if (sx_disc_clustered) nlevels(droplevels(d$sx_cluster)) else 0
+    if (sx_disc_family != "lmm" && inherits(m1, "merMod") && lme4::isSingular(m1))
       res$flags <- c(res$flags, "singular fit (a random-effect variance is ~ 0 or a correlation is +/-1)")
-    if (!is.null(attr(m1, "sx_note"))) res$flags <- c(res$flags, attr(m1, "sx_note"))
     if (sx_disc_family == "gee" && !identical(as.integer(m1$geese$error), 0L))
       res$flags <- c(res$flags, "GEE did not converge")
     if (sx_disc_family == "clmm" && !is.null(m1$condHess) && is.finite(m1$condHess) && m1$condHess > 1e4)
@@ -247,7 +270,8 @@ sx_discover_one <- function(full, tests, vars, focal_vars, struct = NULL) {
       tr <- sx_wald(m1, X, f1, t$drop)
     } else {
       s0 <- sx_reduced_stats(t$reduced, d)
-      if (nzchar(s0$conv) && sx_disc_family %in% c("ordinal", "multinomial", "binomial", "glmm", "clmm"))
+      # a flagged reduced model makes this test provisional too (both fits must be clean)
+      if (nzchar(s0$conv) && sx_disc_family %in% c("ordinal", "multinomial", "binomial", "glmm", "clmm", "lmm"))
         res$flags <- c(res$flags, paste("reduced model", s0$conv))
       tr <- sx_compare(s1, s0, d)
     }
@@ -287,7 +311,7 @@ sx_discover_one <- function(full, tests, vars, focal_vars, struct = NULL) {
 sx_discover_batch <- function(batch) lapply(batch, function(s) {
   warns <- character()
   r <- tryCatch(withCallingHandlers(
-      do.call(sx_discover_one, s[intersect(c("full", "tests", "vars", "focal_vars", "struct"), names(s))]),
+      do.call(sx_discover_one, s[intersect(c("full", "tests", "vars", "focal_vars", "struct", "clustered"), names(s))]),
       warning = function(w) { warns <<- c(warns, conditionMessage(w)); invokeRestart("muffleWarning") }),
     error = function(e) list(status = "failed", reason = conditionMessage(e), flags = ""))
   if (length(warns) && !identical(r$status, "failed") && !identical(r$status, "invalid")) {
@@ -304,14 +328,22 @@ def setup_script(ds: Dataset, s: SearchSettings, family: str) -> str:
     from ..analysis.eda import category_codes
     from .space import binomial_levels, view
 
+    from ..analysis.covstruct import GAUSSIAN_STRUCTURES, MIXED_R_HELPERS
+
     ds = view(ds, s)
     a = lambda n: alias(ds.var(n).alias)  # noqa: E731
-    long = ([s.participant] + ([s.time] if s.time else [])) if s.participant else []
+    cluster = getattr(s, "cluster", None) if s.participant else None
+    long = ([s.participant] + ([s.time] if s.time else []) + ([cluster] if cluster else [])) if s.participant else []
     vars_ = [a(n) for n in dict.fromkeys([s.outcome] + s.candidates + s.required + long)]
     y = a(s.outcome)
+    gstruct = "list(" + ", ".join(f"{k} = {r_vec(list(v))}" for k, v in GAUSSIAN_STRUCTURES.items()) + ")"
     lines = [
+        MIXED_R_HELPERS,
         DISCOVERY_HELPERS,
         "# ---- StatExplore: discovery setup ----",
+        f"sx_disc_gstruct <- {gstruct}  # structure key -> (random, residual, engine)",
+        f"sx_disc_clustered <- {'TRUE' if cluster else 'FALSE'}  # participants nested in a higher-level cluster",
+        f"sx_disc_has_cluster <- {'TRUE' if cluster else 'FALSE'}",
         f"sx_disc_vars <- {r_vec(vars_)}",
         f"sx_disc_family <- {r_str(family)}",
         f"sx_disc_max_params <- {int(s.max_params)}",
@@ -330,8 +362,18 @@ def setup_script(ds: Dataset, s: SearchSettings, family: str) -> str:
               f"sx_disc_corstr <- {r_str({'gee_exch': 'exchangeable', 'gee_ar1': 'ar1', 'gee_ind': 'independence'}.get(struct, 'exchangeable'))}",
               f"sx_disc_gee_family <- {r_str(s.family or 'gaussian')}",
               f"sx_disc_has_time <- {'TRUE' if s.participant and s.time else 'FALSE'}"]
-    if s.participant:
+    if s.participant and cluster:
+        cl, pid = a(cluster), a(s.participant)
+        lines.append(f"sx_dd$sx_cluster <- factor(sx_dd${cl})  # higher-level cluster (missing cluster = excluded row)")
+        if getattr(s, "id_policy", "global") == "global":
+            lines += [f"sx_moves <- tapply(as.character(sx_dd${cl}), as.character(sx_dd${pid}), function(z) length(unique(stats::na.omit(z))))",
+                      "if (any(sx_moves > 1, na.rm = TRUE)) stop(\"Participant IDs occur in more than one cluster: declare IDs as "
+                      "numbered within each cluster, or the design is crossed (not supported).\")"]
+        lines.append(f"sx_dd$sx_gid <- sx_nested_id(sx_dd$sx_cluster, sx_dd${pid})  # participant = (cluster, ID) composite key"
+                     + (" (IDs numbered within clusters)" if getattr(s, "id_policy", "global") == "local" else ""))
+    elif s.participant:
         lines.append(f"sx_dd$sx_gid <- factor(sx_dd${a(s.participant)})  # participant (grouping, not a predictor)")
+    if s.participant:
         if s.time:
             tv = ds.var(s.time)
             if tv.is_categorical:
@@ -350,7 +392,7 @@ def setup_script(ds: Dataset, s: SearchSettings, family: str) -> str:
     elif family == "binomial":
         event, ref = binomial_levels(ds, s)
         if v.is_categorical:
-            ev, rf = ds.level_label(s.outcome, event), ds.level_label(s.outcome, ref)
+            ev, rf = factor_label(ds, s.outcome, event), factor_label(ds, s.outcome, ref)
             lines.append(f"sx_dd$sx_y <- as.integer(as.character(sx_dd${y}) == {r_str(ev)})  "
                          f"# event = {r_str(ev)}; reference = {r_str(rf)}")
         else:
@@ -362,7 +404,7 @@ def setup_script(ds: Dataset, s: SearchSettings, family: str) -> str:
                          "  # ordered categories, lowest first")
         else:
             ref = s.reference if s.reference is not None else ds.levels(s.outcome)[0]
-            lab = ds.level_label(s.outcome, ref)
+            lab = factor_label(ds, s.outcome, ref)
             lines += [f"sx_disc_ref <- {r_str(lab)}",
                       f"sx_dd$sx_y <- stats::relevel(factor(as.character(sx_dd${y}), levels = {r_vec(labels)}), "
                       "ref = sx_disc_ref)  # unordered; baseline = reference category"]
@@ -391,6 +433,8 @@ def candidate_args(ds: Dataset, c: Candidate, s: SearchSettings | None = None) -
     cells = av(c.focal) if c.kind in ("focal", "all_two_way") else \
         "list(" + ", ".join(av(t) for t in c.inter) + ")"
     struct = f", struct = {r_str(c.structure)}" if c.kind == "structure" else ""
+    if c.kind == "structure" and c.clustered is not None:
+        struct += f", clustered = {'TRUE' if c.clustered else 'FALSE'}"
     variables = list(dict.fromkeys(v for t in full_terms(c) for v in t)) if c.kind == "structure" else c.variables
     return (f"full = {terms(full_terms(c))}, tests = list({tests}), "
             f"vars = {av(variables)}, focal_vars = {cells}{struct}")
@@ -419,7 +463,8 @@ def _mixture_r(weights: dict[int, float] | None, df: float) -> str:
 
 def comparison_script(ds: Dataset, s: SearchSettings, c: Candidate, comparisons: list[dict]) -> str:
     """Workflow B: refit each reference structure on the same rows and fixed part and recompute the reported
-    covariance-structure likelihood-ratio tests (P0-02: exports reproduce the claimed inference too)."""
+    covariance-structure likelihood-ratio tests with the same reference distribution (sx_lr_test, the R twin of the
+    app's test service), so exports reproduce the claimed inference too (P0-02, STAT-17/23)."""
     import dataclasses
 
     from ..rbridge.codegen import r_num
@@ -429,18 +474,25 @@ def comparison_script(ds: Dataset, s: SearchSettings, c: Candidate, comparisons:
     L = ["# ---- covariance-structure comparisons shown in the discovery results (same rows, same fixed part, "
          + ("REML" if s.workflow == "structure" else "ML") + ") ----", "sx_cmp <- list()"]
     for k, t in enumerate(comparisons, start=1):
-        ref = dataclasses.replace(c, structure=t["reference_structure"])
-        how = ("boundary-corrected chi-square mixture (variance / correlation tested on the edge of its range)"
-               if t.get("boundary") else f"chi-square({int(t['df1'])})")
+        ref = dataclasses.replace(c, structure=t["reference_structure"], clustered=t.get("reference_clustered")
+                                  if t.get("reference_clustered") is not None or c.clustered is not None else None)
+        kind = t.get("reference_kind") or ("mixture" if t.get("boundary") else "chisq")
         L += [f"sx_ref <- sx_discover_one({candidate_args(ds, ref, s)})",
               "# nested comparison only on identical rows: same row identities, order and factor coding",
               "stopifnot(\"the reference model was fitted to different rows\" = identical(sx_ref$rows_sig, sx_result$rows_sig))",
-              "sx_lr <- 2 * (sx_result$loglik - sx_ref$loglik)",
+              f"sx_t <- sx_lr_test(sx_ref$loglik, sx_result$loglik, {r_num(float(t['df1']))}, {r_str(kind)})",
               f"sx_cmp[[{k}]] <- data.frame(comparison = {r_str(t['label'])}, reference = {r_str(t['reference_structure'])},",
-              f"  LR = sx_lr, df = {r_num(float(t['df1']))}, p = {_mixture_r(t.get('mixture'), t['df1'])},",
-              f"  method = {r_str(how)}, app_LR = {r_num(float(t['statistic']))}, app_p = {r_num(float(t['p']))})",
-              f"stopifnot({r_str('comparison ' + str(k) + ': LR differs from the app')} = sx_rel(sx_cmp[[{k}]]$LR, sx_cmp[[{k}]]$app_LR),",
-              f"          {r_str('comparison ' + str(k) + ': p differs from the app')} = sx_close_p(sx_cmp[[{k}]]$p, sx_cmp[[{k}]]$app_p))"]
+              f"  null = {r_str(t.get('null') or '')}, distribution = {r_str(t.get('reference_distribution') or kind)},",
+              "  LR_raw = sx_t$LR_raw, LR = sx_t$LR, df = sx_t$df, p = sx_t$p, status = sx_t$status,",
+              f"  app_LR = {r_num(t.get('statistic'))}, app_p = {r_num(t.get('p'))})"]
+        if t.get("statistic") is not None:
+            L.append(f"stopifnot({r_str('comparison ' + str(k) + ': LR differs from the app')} = "
+                     f"sx_rel(sx_cmp[[{k}]]$LR, sx_cmp[[{k}]]$app_LR))")
+        if t.get("p") is not None:
+            L.append(f"stopifnot({r_str('comparison ' + str(k) + ': p differs from the app')} = "
+                     f"sx_close_p(sx_cmp[[{k}]]$p, sx_cmp[[{k}]]$app_p))")
+        else:
+            L.append(f"# comparison {k}: no p-value in the app ({t.get('test_reason') or t.get('test_status') or 'withheld'})")
     L += ["sx_comparisons <- do.call(rbind, sx_cmp)", "print(sx_comparisons, digits = 6)",
           'cat("Covariance-structure comparisons reproduced within tolerance.\\n")']
     return "\n".join(L) + "\n"
@@ -473,6 +525,12 @@ def verification_script(row: dict, adjusted: list[dict] | None = None) -> str:
     if row.get("rows_sig"):
         checks.append(f'"analysis rows differ from the app (row signature)" = identical(sx_result$rows_sig, '
                       f'{r_str(row["rows_sig"])})')
+    ident = row.get("identity") or {}
+    if int(ident.get("schema") or 0) >= 2:      # SHA-256 fingerprints of what the engine used (STAT-22)
+        for k in ("rows", "response", "design", "groups"):
+            if ident.get(k):
+                checks.append(f'"{k} differ from the app (identity fingerprint)" = identical(sx_result$identity${k}, '
+                              f'{r_str(ident[k])})')
     for key, label in (("loglik", "logLik"), ("aic", "AIC"), ("bic", "BIC")):
         if _finite(row.get(key)):
             checks.append(f'"{label} differs from the app" = sx_abs(sx_result${key}, {r_num(float(row[key]))})')

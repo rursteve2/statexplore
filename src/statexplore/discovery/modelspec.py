@@ -90,13 +90,15 @@ RANDOM_STRUCTURES = {
     # key: (random-effect variances, random-effect covariances, residual/dispersion parameters)
     "ri": (1, 0, 1), "rs": (2, 1, 1), "rs_uncorr": (2, 0, 1),
     "nlme_ri": (1, 0, 1), "nlme_rs": (2, 1, 1), "ar1": (1, 0, 2), "car1": (1, 0, 2),
+    "nlme_diag": (2, 0, 1), "diag_ar1": (2, 0, 2), "rs_ar1": (2, 1, 2), "diag_car1": (2, 0, 2), "rs_car1": (2, 1, 2),
     "glmer_ri": (1, 0, 0), "glmer_rs": (2, 1, 0), "clmm_ri": (1, 0, 0), "clmm_rs": (2, 1, 0),
 }
 
 
-def random_parameters(structure: str, n_times: int | None = None) -> dict[str, int]:
+def random_parameters(structure: str, n_times: int | None = None, clustered: bool = False) -> dict[str, int]:
     """Random-effect and residual covariance parameters of a longitudinal structure, counted
-    separately from fixed effects (X §2C). mmrm structures depend on the number of occasions."""
+    separately from fixed effects (X §2C). mmrm structures depend on the number of occasions. A higher-level cluster
+    adds one random-intercept variance."""
     if structure == "mmrm_us" and n_times:
         return {"re_variances": 0, "re_covariances": 0, "residual": n_times * (n_times + 1) // 2}
     if structure == "mmrm_cs":
@@ -104,7 +106,7 @@ def random_parameters(structure: str, n_times: int | None = None) -> dict[str, i
     if structure == "mmrm_ar1":
         return {"re_variances": 0, "re_covariances": 0, "residual": 2}
     var, cov, res = RANDOM_STRUCTURES.get(structure, (0, 0, 0))
-    return {"re_variances": var, "re_covariances": cov, "residual": res}
+    return {"re_variances": var + (1 if clustered else 0), "re_covariances": cov, "residual": res}
 
 
 def display(terms: Iterable[Iterable[str]], outcome: str = "y", name: Callable[[str], str] = str,

@@ -255,6 +255,10 @@ def run_analysis(session: RSession, ds: Dataset, spec: AnalysisSpec, vars_: dict
     for t in raw.get("tables") or []:
         result.tables.append(_parse_table(t, names))
     result.n_used = _scalar(raw.get("n_used"))
+    if isinstance(raw.get("identity"), dict):
+        from .descriptor import parse_identity
+
+        result.values["identity"] = parse_identity(raw["identity"])
     excluded = _scalar(raw.get("n_excluded"))
     if excluded:
         result.values["n_excluded"] = excluded

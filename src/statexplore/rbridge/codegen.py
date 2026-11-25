@@ -97,10 +97,74 @@ def level_labels(ds: Dataset, name: str, levels: list[Any]) -> list[str]:
     return unique_labels([ds.level_label(name, code) for code in levels])
 
 
+def factor_label(ds: Dataset, name: str, code: Any) -> str:
+    """The exact R factor level of category `code` (STAT-40): duplicated value labels are made distinct in the load
+    script ("Label [2]"), so comparisons in R must use this, never the raw label; codes stay the stable identity."""
+    levels = ds.levels(name)
+    if code in levels:
+        return level_labels(ds, name, levels)[levels.index(code)]
+    return ds.level_label(name, code)
+
+
 _COLCLASS = {Storage.NUMERIC: "numeric", Storage.STRING: "character", Storage.DATETIME: "character"}
 
 # Small helper functions used by StatExplore scripts. They are part of the
 # load script, so every "View Code" listing is self-contained.
+IDENTITY_R_HELPERS = r"""# ---- StatExplore: model identity fingerprints (schema 2, SHA-256) ----
+# Canonical rows = analysed source rows sorted by row number; every fingerprint is computed in that order, so the
+# fitting order does not change it. Values are hashed as exact IEEE doubles; text with length prefixes.
+sx_sha_raw <- function(writer) { tf <- tempfile(); con <- file(tf, "wb"); on.exit(unlink(tf))
+  tryCatch(writer(con), finally = close(con)); unname(tools::sha256sum(tf)) }
+sx_put_txt <- function(con, x) { x <- enc2utf8(as.character(x)); writeBin(as.integer(length(x)), con, size = 4)
+  # vectorised: every string as <byte length>:<bytes>, one write (length prefixes keep it unambiguous)
+  writeBin(charToRaw(paste0(nchar(x, type = "bytes"), ":", x, collapse = "")), con) }
+sx_put_num <- function(con, x) { x <- as.double(x); writeBin(as.integer(length(x)), con, size = 4)
+  writeBin(is.na(x), con, size = 1); writeBin(ifelse(is.na(x), 0, x), con, size = 8, endian = "little") }
+sx_canon_names <- function(nm) vapply(strsplit(gsub("sx_timef", "sx_time", nm, fixed = TRUE), ":", fixed = TRUE),
+  function(p) paste(sort(p), collapse = ":"), "")
+sx_ident_cache <- new.env()   # row / response / grouping fingerprints of the last sample (recomputed when it changes)
+sx_identity <- function(d, fixed, response, groups = character()) {
+  rn <- rownames(d); y0 <- d[[response]]; g0 <- lapply(groups, function(g) d[[g]])
+  rid <- suppressWarnings(as.numeric(rn))
+  o <- if (anyNA(rid)) order(rn) else order(rid)
+  X <- stats::model.matrix(stats::delete.response(stats::terms(fixed)), d[seq_len(min(nrow(d), 2L)), , drop = FALSE])
+  # (only the column names are needed: they encode the terms, coding and reference levels; values are hashed per
+  # variable below)
+  cn <- sx_canon_names(colnames(X)); ix <- order(cn)
+  k <- sx_ident_cache
+  if (!(identical(k$rn, rn) && identical(k$y, y0) && identical(k$g, g0))) {
+    dc <- d[o, c(response, groups), drop = FALSE]
+    y <- dc[[response]]
+    k$rows <- sx_sha_raw(function(con) sx_put_txt(con, rn[o]))
+    k$rows_ordered <- sx_sha_raw(function(con) sx_put_txt(con, rn))
+    k$response <- sx_sha_raw(function(con) { if (is.factor(y)) { sx_put_txt(con, levels(y)); sx_put_num(con, as.integer(y)) }
+                                             else sx_put_num(con, y) })
+    k$groups <- sx_sha_raw(function(con) for (g in groups) { f <- dc[[g]]   # partitions only: names and labels never enter
+      sx_put_num(con, match(as.character(f), unique(as.character(f)))) })
+    k$rn <- rn; k$y <- y0; k$g <- g0
+  }
+  # design: the canonical design-column names (terms, coding, reference levels) + the SHA-256 of every variable the
+  # design uses (values in canonical row order; factors as level labels + codes). X is an exact function of these,
+  # so this equals a hash of the realized matrix while hashing only a few bytes per model (variables are cached).
+  vars <- intersect(all.vars(stats::delete.response(stats::terms(fixed))), names(d))
+  vh <- vapply(vars, function(v) {
+    col <- d[[v]]; e <- k$vars[[v]]
+    if (!is.null(e) && identical(e$rn, rn) && identical(e$col, col)) return(e$sha)
+    co <- col[o]
+    sha <- sx_sha_raw(function(con) { if (is.factor(co)) { sx_put_txt(con, levels(co)); sx_put_num(con, as.integer(co)) }
+                                       else sx_put_num(con, co) })
+    if (is.null(k$vars)) k$vars <- list()
+    k$vars[[v]] <- list(rn = rn, col = col, sha = sha)
+    sha
+  }, "")
+  vn <- sx_canon_names(names(vh)); vo <- order(vn)
+  list(schema = 2L, algorithm = "sha256", n = nrow(d), rows = k$rows, rows_ordered = k$rows_ordered,
+    response = k$response,
+    design = sx_sha_raw(function(con) { sx_put_txt(con, cn[ix]); sx_put_txt(con, vn[vo]); sx_put_txt(con, unname(vh)[vo]) }),
+    groups = k$groups, design_columns = I(cn[ix]))
+}
+"""
+
 R_HELPERS = r"""# ---- StatExplore helper functions ----
 sx_item_mean <- function(d, min_valid) {
   n <- rowSums(!is.na(d)); out <- rowMeans(d, na.rm = TRUE); out[n < min_valid] <- NA_real_; out
@@ -193,7 +257,17 @@ sx_po_check <- function(fit, form, data, link = "logit") {
   rows <- lapply(terms, function(tm) one(tm, stats::as.formula(paste("~", tm))))
   if (length(terms) > 1) rows[[length(rows) + 1]] <- one("All terms (global test)",
     stats::as.formula(paste("~", paste(terms, collapse = " + "))), cells_check = FALSE)
-  do.call(rbind, rows)
+  out <- do.call(rbind, rows)
+  # STAT-26: an interaction term made category-specific frees every cell of its design; when that uses as many
+  # parameters as the global test it IS the global alternative, not a separate test of the interaction
+  if (length(terms) > 1) {
+    g <- out$df[nrow(out)]
+    span <- seq_len(nrow(out) - 1)[grepl(":", out$term[-nrow(out)]) & is.finite(out$df[-nrow(out)]) &
+                                   out$df[-nrow(out)] == g]
+    for (i in span) out$reason[i] <- paste(c(if (nzchar(out$reason[i])) out$reason[i],
+      "same df as the global test: this interaction test spans the global alternative (cell-based parameterization), not an independent test of the interaction"), collapse = "; ")
+  }
+  out
 }
 # Information criteria. Native AIC()/BIC() for every engine except mmrm: its own criteria count only covariance
 # parameters under REML and use n = subjects, so it is put on nlme's convention (k = fixed + covariance parameters,
@@ -218,6 +292,8 @@ sx_table <- function(name, df, notes = "", row_names = NULL) {
        row_names = I(as.character(row_names)), notes = notes)
 }
 """
+
+R_HELPERS += IDENTITY_R_HELPERS   # v1.3.2: model identity fingerprints in every script
 
 
 def _derived_r(ds: Dataset, spec) -> str:

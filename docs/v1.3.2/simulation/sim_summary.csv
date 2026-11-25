@@ -1,0 +1,7 @@
+"metric","value","mc_se"
+"A GROUP LR: rejection at .05 (null true)",0.065,0.0174320107847603
+"A: fits converged",1,0
+"TIME 95% CI coverage",0.99,0.00703562363973515
+"cluster variance boundary test: rejection at .05 (null true)",0.0304568527918782,0.012150973810747
+"cluster test: p = 1 share (LR = 0)",0.568527918781726,0.0350217021536251
+"optimizer fallback used",0,0

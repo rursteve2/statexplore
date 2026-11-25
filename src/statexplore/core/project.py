@@ -172,7 +172,8 @@ class Project:
         return project
 
 
-NESTED_ROW_FIELDS = ("tests", "inter")   # v1.2 discovery rows: kept as JSON text inside the parquet
+# discovery rows: nested fields kept as JSON text inside the parquet (v1.2 tests / inter; v1.3.2 identity, diagnostics)
+NESTED_ROW_FIELDS = ("tests", "inter", "identity", "diagnostics")
 
 
 def _flat_row(r: dict[str, Any]) -> dict[str, Any]:

@@ -243,6 +243,12 @@ def _source_level(v: VariableMeta) -> str:
     return {"scale": "continuous"}.get(v.source_measure, v.source_measure)
 
 
+def source_level(v: VariableMeta) -> str:
+    """The level the source file declared, in project terms ('' when the file declared none)."""
+    lvl = _source_level(v)
+    return "" if lvl in ("", "unknown", None) else lvl
+
+
 # ---- analysis-specific treatment --------------------------------------------------------------
 
 @dataclass

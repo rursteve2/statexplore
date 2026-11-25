@@ -21,11 +21,16 @@ ENGINES = {
     "glmm": ("binomial", "lme4::glmer", "logit"),
     "clmm": ("ordinal", "ordinal::clmm", "cumulative logit"),
 }
-LMM_ENGINES = {"ri": "lme4::lmer", "rs": "lme4::lmer", "rs_uncorr": "lme4::lmer", "nlme_ri": "nlme::lme",
-               "nlme_rs": "nlme::lme", "ar1": "nlme::lme", "car1": "nlme::lme", "mmrm_us": "mmrm::mmrm",
-               "mmrm_cs": "mmrm::mmrm", "mmrm_ar1": "mmrm::mmrm"}
+from .covstruct import GAUSSIAN_STRUCTURES as _GS  # noqa: E402
+
+LMM_ENGINES = {**{k: ("lme4::lmer" if v[2] == "lme4" else "nlme::lme") for k, v in _GS.items()},
+               "mmrm_us": "mmrm::mmrm", "mmrm_cs": "mmrm::mmrm", "mmrm_ar1": "mmrm::mmrm"}
 GEE_CORSTR = {"gee_exch": "exchangeable", "gee_ar1": "ar1", "gee_ind": "independence"}
 TIME_INDEX = {
+    **{k: "global observed-occasion index (rank of the time values present in the analysed rows)"
+       for k, v in _GS.items() if v[1] == "ar1" and k != "ar1"},
+    **{k: "actual time values (correlation decays with the numeric time difference)"
+       for k, v in _GS.items() if v[1] == "car1" and k != "car1"},
     "ar1": "global observed-occasion index (sx_occ = rank of the time values present in the analysed rows; a time "
            "value no analysed row has is compressed; a participant who skips an occasion others have keeps an index "
            "gap, correlation phi^gap)",
@@ -81,6 +86,14 @@ class ModelDescriptor:
     n_cov: int | None = None        # random-effect + residual covariance / correlation parameters
     flags: str = ""
     treatments: list[dict[str, Any]] = field(default_factory=list)
+    # ---- v1.3.2: identity fingerprints (schema 2, SHA-256) and the canonical structure (H4) ----
+    identity: dict[str, Any] = field(default_factory=dict)   # rows / response / design / groups of the origin fit
+    cluster: str | None = None
+    id_policy: str = ""
+    clustered: bool = False         # this candidate's random part includes the cluster (B exploratory may drop it)
+    random: str = ""                # ri | diag | rs (Gaussian longitudinal)
+    residual: str = ""              # independent | ar1 | car1
+    diagnostics: dict[str, Any] = field(default_factory=dict)
 
     @property
     def longitudinal(self) -> bool:
@@ -139,6 +152,13 @@ def candidate_structure(run: Any, row: dict[str, Any]) -> str:
                                                else s.structure) or "ri"
 
 
+def _gauss(st: str) -> tuple[str, str]:
+    from .covstruct import GAUSSIAN_STRUCTURES
+
+    v = GAUSSIAN_STRUCTURES.get(st)
+    return (v[0], v[1]) if v else ("", "")
+
+
 def from_discovery(run: Any, row: dict[str, Any]) -> ModelDescriptor:
     from ..discovery.detail import candidate_from_row
     from ..discovery.space import full_terms
@@ -169,7 +189,8 @@ def from_discovery(run: Any, row: dict[str, Any]) -> ModelDescriptor:
         estimation = "ML"
     coding = run.coding or {}
     sample_vars = list(dict.fromkeys([s.outcome] + list(s.candidates) + list(s.required)
-                                     + ([s.participant] if s.participant else []) + ([s.time] if s.time else []))) \
+                                     + ([s.participant] if s.participant else []) + ([s.time] if s.time else [])
+                                     + ([s.cluster] if s.participant and getattr(s, "cluster", None) else []))) \
         if s.sample == "shared" else []
     return ModelDescriptor(
         source=f"discovery search {run.id}, candidate #{row['idx']}", run_id=run.id, candidate=int(row["idx"]),
@@ -187,42 +208,92 @@ def from_discovery(run: Any, row: dict[str, Any]) -> ModelDescriptor:
         ic_basis=str(row.get("ic_basis") or ""),
         rows_sig=str(row.get("rows_sig") or ""), dataset_signature=str(getattr(run, "signature", "") or ""),
         n_fixed=_int(row.get("n_params")), n_cov=_int(row.get("n_re_params")),
-        flags=str(row.get("flags") or ""), treatments=[dict(t) for t in getattr(s, "treatments", [])])
+        flags=str(row.get("flags") or ""), treatments=[dict(t) for t in getattr(s, "treatments", [])],
+        identity=dict(row.get("identity") or {}), cluster=getattr(s, "cluster", None) if s.participant else None,
+        id_policy=getattr(s, "id_policy", "global") if getattr(s, "cluster", None) else "",
+        clustered=bool(row.get("clustered")) if s.participant else False,
+        random=_gauss(st)[0], residual=_gauss(st)[1], diagnostics=dict(row.get("diagnostics") or {}))
+
+
+IDENTITY_PARTS = {"rows": "analysed rows (source row identities)", "response": "outcome values or outcome coding",
+                  "design": "fixed-effect design (predictor values, coding, reference levels or terms)",
+                  "groups": "participant / cluster grouping"}
+STATUS_TEXT = {"verified": "verified", "mismatch": "MISMATCH", "unverifiable": "unverifiable",
+               "refit failed": "refit failed", "new analysis": "new analysis (not the historical model)"}
+
+
+def parse_identity(raw: Any) -> dict[str, Any]:
+    """The `identity` list returned by R's sx_identity(), flattened (length-1 vectors -> scalars)."""
+    if not isinstance(raw, dict):
+        return {}
+    out = {}
+    for k, v in raw.items():
+        out[k] = v[0] if isinstance(v, list) and len(v) == 1 and k != "design_columns" else v
+    return out
+
+
+def structural_check(origin: dict[str, Any] | None, refit: dict[str, Any] | None) -> tuple[str, list[str]]:
+    """('verified' | 'mismatch' | 'unverifiable', differences). Semantic identity is decided by fingerprints of what
+    the engine actually used: equal n or equal fit statistics never establish it (STAT-22)."""
+    if not origin or int(origin.get("schema") or 0) < 2 or not origin.get("rows"):
+        return "unverifiable", ["the origin has no identity fingerprints (created before v1.3.2 or not recorded)"]
+    if not refit or int(refit.get("schema") or 0) < 2 or not refit.get("rows"):
+        return "unverifiable", ["the refit returned no identity fingerprints"]
+    diffs = [IDENTITY_PARTS[k] for k in ("rows", "response", "design", "groups")
+             if origin.get(k) and refit.get(k) and origin[k] != refit[k]]
+    if origin.get("n") is not None and refit.get("n") is not None and int(origin["n"]) != int(refit["n"]):
+        diffs.insert(0, f"n ({int(refit['n']):,} vs {int(origin['n']):,})")
+    return ("mismatch" if diffs else "verified"), diffs
 
 
 def verify(d: ModelDescriptor | dict[str, Any] | None, n: Any = None, loglik: Any = None,
-           aic: Any = None, bic: Any = None) -> tuple[bool | None, str]:
-    """Compare a refit with its origin. Returns (True, note) when n, logLik and AIC agree within tolerance,
-    (False, reason) when any differs, (None, '') when there is nothing to compare."""
+           aic: Any = None, bic: Any = None, identity: dict[str, Any] | None = None,
+           failed: bool = False) -> tuple[str | None, str]:
+    """Compare a refit with its origin: structural identity first (fingerprints), numerical agreement separately.
+    Returns (status, note); status is None when there is nothing to compare."""
     if d is None:
         return None, ""
+    if isinstance(d, dict) and d.get("new_analysis"):
+        return "new analysis", ("NEW analysis under the current data and settings (the project changed since the "
+                                "search: " + "; ".join(d.get("new_analysis_reasons") or []) + "); no identity with "
+                                "the historical model is claimed.")
     if isinstance(d, dict):
         d = ModelDescriptor.from_dict(d)
-    checks, diffs = [], []
-    if d.n is not None and _int(n) is not None:
-        checks.append("n")
-        if _int(n) != d.n:
-            diffs.append(f"n {_int(n):,} vs {d.n:,} in the search")
+    if failed:
+        return "refit failed", (f"Refit FAILED for {d.source}: the original model could not be reproduced here. The "
+                                "stored search result is unchanged; nothing in this result describes that model.")
+    struct, diffs = structural_check(d.identity, identity)
+    checks, ndiffs = [], []
     if d.loglik is not None and _num(loglik) is not None:
         checks.append("log-likelihood")
         if abs(_num(loglik) - d.loglik) > TOL_LOGLIK:
-            diffs.append(f"logLik {_num(loglik):.3f} vs {d.loglik:.3f}")
+            ndiffs.append(f"logLik {_num(loglik):.3f} vs {d.loglik:.3f}")
     # rows from before v1.3.1 (no ic_basis) computed mmrm's AIC and every BIC on another convention: skip those
     if d.aic is not None and _num(aic) is not None and (d.engine != "mmrm::mmrm" or d.ic_basis):
         checks.append("AIC")
         if abs(_num(aic) - d.aic) > TOL_AIC:
-            diffs.append(f"AIC {_num(aic):.3f} vs {d.aic:.3f}")
+            ndiffs.append(f"AIC {_num(aic):.3f} vs {d.aic:.3f}")
     if d.bic is not None and _num(bic) is not None and d.ic_basis:
         checks.append("BIC")
         if abs(_num(bic) - d.bic) > TOL_BIC:
-            diffs.append(f"BIC {_num(bic):.3f} vs {d.bic:.3f}")
-    if not checks:
-        return None, ""
-    if diffs:
-        return False, (f"Model identity check FAILED against {d.source}: " + "; ".join(diffs)
-                       + ". This refit is not the model the search reported; do not interpret it as that model.")
-    return True, (f"Model identity verified against {d.source}: {', '.join(checks)} agree "
-                  f"({d.engine}, {d.estimation}{', structure ' + d.structure if d.structure else ''}).")
+            ndiffs.append(f"BIC {_num(bic):.3f} vs {d.bic:.3f}")
+    numeric = ("not compared" if not checks else "agree (" + ", ".join(checks) + ")" if not ndiffs
+               else "differ: " + "; ".join(ndiffs))
+    what = f"({d.engine}, {d.estimation}{', structure ' + d.structure if d.structure else ''})"
+    if struct == "mismatch":
+        return "mismatch", (f"Model identity MISMATCH against {d.source}: " + "; ".join(diffs) + " differ. Numerical "
+                            f"check: {numeric}. Equal fit statistics do not make it the same model: this refit is NOT "
+                            "the model the search reported; do not interpret it as that model.")
+    if struct == "unverifiable":
+        return "unverifiable", (f"Model identity UNVERIFIABLE against {d.source}: {diffs[0]}. Numerical check: "
+                                f"{numeric}. Matching statistics alone cannot show that the rows, coding and design "
+                                "are the same, so this refit is not certified as the original model.")
+    if ndiffs:
+        return "mismatch", (f"Structural identity verified against {d.source} (same rows, outcome, design and grouping "
+                            f"{what}), but the numerical results differ: {numeric}. The same model reached a different "
+                            "optimum (optimizer / package version); treat the two results as different estimates.")
+    return "verified", (f"Model identity verified against {d.source}: structural (rows, outcome, design, grouping "
+                        f"fingerprints, SHA-256) and numerical ({numeric}) {what}.")
 
 
 def fit_stats(result: Any) -> dict[str, Any]:
@@ -275,18 +346,31 @@ def provenance(d: ModelDescriptor, result: Any = None) -> dict[str, str]:
 
 
 def attach_check(result: Any, d: ModelDescriptor | dict[str, Any] | None) -> None:
-    """Record the identity check on a refit result (message + values) and downgrade its status on failure."""
+    """Record the identity check on a refit result (message + values) and downgrade its status unless verified."""
     from ..core.schema import Status
 
     if d is None:
         return
-    st = fit_stats(result)
-    ok, text = verify(d, st.get("n"), st.get("loglik"), st.get("aic"), st.get("bic"))
+    if isinstance(d, dict) and d.get("new_analysis"):
+        desc = ModelDescriptor.from_dict(d)
+        result.values["origin_model"] = desc.summary()
+        result.values["provenance"] = provenance(desc, result)
+        result.values["identity_check"] = "new analysis (not the historical model)"
+        result.messages.insert(0, f"Check: NEW analysis under the current data and settings, started from {desc.source}. "
+                                  "The project changed since that search (" + "; ".join(d.get("new_analysis_reasons") or [])
+                               + "), so this is not the historical model and no identity with it is claimed.")
+        if result.status is Status.OK:
+            result.status = Status.WARNING
+        return
+    failed = result.status is Status.FAILED
+    st = fit_stats(result) if not failed else {}
+    status, text = verify(d, st.get("n"), st.get("loglik"), st.get("aic"), st.get("bic"),
+                          identity=result.values.get("identity"), failed=failed)
     desc = d if isinstance(d, ModelDescriptor) else ModelDescriptor.from_dict(d)
     result.values["origin_model"] = desc.summary()
     result.values["provenance"] = provenance(desc, result)
-    result.values["identity_check"] = {True: "verified", False: "FAILED", None: "not available"}[ok]
+    result.values["identity_check"] = STATUS_TEXT.get(status or "", "not available")
     if text:
-        result.messages.insert(0, text if ok else f"Check: {text}")
-    if ok is False:
+        result.messages.insert(0, text if status == "verified" else f"Check: {text}")
+    if status in ("mismatch", "unverifiable") and result.status is Status.OK:
         result.status = Status.WARNING

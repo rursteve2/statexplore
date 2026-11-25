@@ -151,6 +151,11 @@ class FilterDialog(QDialog):
         self.hint.setObjectName("hint")
         lay.addWidget(self.hint)
         lay.addWidget(QLabel("Rows where the variable is missing are dropped by comparisons."))
+        note = QLabel("This changes the rows used by NEW analyses. Existing results and searches are not changed; "
+                      "they keep a record of their own rows and filters.")
+        note.setWordWrap(True)
+        note.setObjectName("hint")
+        lay.addWidget(note)
         btns = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         btns.accepted.connect(self._accept)
         btns.rejected.connect(self.reject)

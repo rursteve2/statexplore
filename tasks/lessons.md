@@ -89,3 +89,23 @@
 
 ## cmd.exe quoting (third time)
 - Paths with spaces as program + args: write a .bat and run `cmd.exe /c 'E:\path\x.bat'`. Never `cmd.exe /c '"C:\...\python.exe" ...'`.
+
+## Source snapshots for test runs (v1.3.2)
+- A copy of `src/` on E: needs the `r\library` junction next to it (the package finds R packages relative to the
+  repository root): without it every R test errors at the fixture. Use a .bat with `mklink /J` (cmd quoting).
+
+## Identity fingerprints and speed (v1.3.2)
+- `tools::sha256sum` is ~20 MB/s: hashing a whole design matrix per discovery candidate tripled search time. Hash
+  each variable once per sample (cached) and the per-model design as (canonical column names + variable hashes).
+  Profile with Rprof before guessing; per-element `writeBin` loops were the other cost.
+
+## Labels in generated R
+- Factor levels in R are de-duplicated value labels ("Label [2]"). Any R comparison with a category must use
+  `factor_label()`, never `ds.level_label()` — a duplicated event label silently made a binary outcome constant.
+
+## Tests that index list rows
+- Don't index `QListWidget.item(i)` in tests when the widget may insert header rows; use the selector's `items()`.
+
+## Ask "nested?" before testing structures
+- Two structures differing in more than one component (e.g. RI-independent vs RS-AR(1)) have no LR test; a test
+  fixture that expects one is wrong, not the app.
