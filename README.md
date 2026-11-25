@@ -9,6 +9,12 @@ variables, runs standard statistical tests, searches automatically for interacti
 draws graphs with a short plain-English interpretation underneath. It also shows you the exact
 statistical code behind every result.
 
+**Current version: 1.3.2** (November 2026) — [download](https://github.com/rursteve2/statexplore/releases/latest) ·
+[release notes](docs/RELEASE_NOTES_v1.3.2.md). New in 1.3.2: Automated Model Discovery for participants nested in a
+higher-level cluster (school, hospital, …) in both workflows, model identity checked with fingerprints of the rows,
+coding and design, hypothesis-specific likelihood-ratio tests, per-model diagnostics and direct R². Earlier
+highlights are listed below and in the release notes.
+
 **New in 1.1:** a *Measurement Review* that flags variables whose declared level looks wrong (for
 example ordered answer scales stored as "nominal"), a per-analysis **"treat as continuous"** option,
 frequency tables, cross-tabulations and categorical plots, odds / risk ratios and risk differences,
@@ -74,9 +80,9 @@ yourself (see 2B).
 ### Download it (for most people)
 1. Go to the **[Releases page](https://github.com/rursteve2/statexplore/releases/latest)**.
 2. Under **Assets**, download **one** of:
-   - **`StatExplore-1.3.0-Setup.exe`**: the installer (recommended). Double-click it and click
+   - **`StatExplore-1.3.2-Setup.exe`**: the installer (recommended). Double-click it and click
      through; then start **StatExplore** from the Start menu or the desktop shortcut.
-   - **`StatExplore-1.3.0-portable.zip`**: no installation. Right-click ▸ *Extract All…* into, for
+   - **`StatExplore-1.3.2-portable.zip`**: no installation. Right-click ▸ *Extract All…* into, for
      example, your Documents folder, open the extracted `StatExplore` folder and double-click
      **`StatExplore.exe`**.
 3. **If Windows says "Windows protected your PC":** click **More info**, then **Run anyway**. This
@@ -488,8 +494,10 @@ Measurement Review, the variable lists, the scroll bars and the result tables we
 How each requirement of the original specification is met: **[docs/spec-compliance.md](docs/spec-compliance.md)**;
 for the 1.1 upgrade: **[docs/spec-compliance-v1.1.md](docs/spec-compliance-v1.1.md)**; for 1.2:
 **[docs/spec-compliance-v1.2.md](docs/spec-compliance-v1.2.md)** (with a feature matrix); for 1.3 (defect
-traceability, test evidence, limitations): **[docs/spec-compliance-v1.3.md](docs/spec-compliance-v1.3.md)**.
-Release notes: [docs/RELEASE_NOTES_v1.3.0.md](docs/RELEASE_NOTES_v1.3.0.md), [1.2.0](docs/RELEASE_NOTES_v1.2.0.md),
+traceability, test evidence, limitations): **[docs/spec-compliance-v1.3.md](docs/spec-compliance-v1.3.md)**,
+[1.3.1](docs/spec-compliance-v1.3.1.md), [1.3.2](docs/v1.3.2/spec-compliance-v1.3.2.md).
+Release notes: [docs/RELEASE_NOTES_v1.3.2.md](docs/RELEASE_NOTES_v1.3.2.md), [1.3.1](docs/RELEASE_NOTES_v1.3.1.md),
+[1.3.0](docs/RELEASE_NOTES_v1.3.0.md), [1.2.0](docs/RELEASE_NOTES_v1.2.0.md),
 [1.1.0](docs/RELEASE_NOTES_v1.1.0.md).
 The discovery grammar is in [docs/formula-grammar.md](docs/formula-grammar.md).
 
