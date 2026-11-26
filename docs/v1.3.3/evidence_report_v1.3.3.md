@@ -17,13 +17,31 @@ AMD Ryzen 7 5800X, Python 3.11.1, PySide6 (offscreen Qt for automated GUI tests)
 | G3 Test 51 | independent enumeration oracle, `p.adjust` per family, log10 p, cancel → resume exactly once | PASS |
 | G4 Test 52 | Full Analysis and AMD bundles run unmodified in a clean `Rscript --vanilla` after relocation to paths with spaces / non-ASCII, corrupted data fails closed, manifest fields populated; save / reopen of searches with validation runs; historical reconstruction (960 verified vs new 800, 3-category reference change) | PASS (physical 150 % DPI: owner) |
 | G4 Test 53 | `benchmark_v1.3.3.md`: no throughput regression; cancellation 368.7 s → 2.3 s; no orphan R processes | PASS (100k-row tier not run) |
-| G5 Test 54 | full suite on Windows with real Qt + R: **492 pass, 1 skip** (screenshot-only evidence test), 0 fail; runner `evidence/gates.csv`: **97 PASS, 0 FAIL, 0 BLOCKED**, 5 not applicable (wording-only, inherited), 3 owner-only; frozen build self-test (below) | PASS except owner steps |
+| G5 Test 54 | full suite on Windows with real Qt + R: **492 pass, 1 skip** (screenshot-only evidence test), 0 fail; runner `evidence/gates.csv`: **97 PASS, 0 FAIL, 0 BLOCKED**, 5 not applicable (wording-only, inherited), 3 owner-only; frozen build `--selftest --full` OK (below) | PASS except owner steps |
 
 Reference reproducibility: the four package reference scripts re-executed by the runner reproduce the committed
 reference output 1994 / 1994 (`evidence/133_reference_reproducibility.csv`); committed fixtures are byte-identical to
 the package; v1.3.2 historical targets 353 PASS / 101 documentary; 07 anchors: 155 / 166 equal the fresh references,
 the other 11 (BH, Holm, CI, ΔR², exclusions, variance SDs) are application outputs checked by
 `test_07_application_only_anchors` (`evidence/historical_targets_audit.csv`).
+
+## Build
+
+Built with `packaging/build.py` (STATEXPLORE_BUILD_DIR on E:) from commit `df249322ad24` (recorded in the frozen
+build's `_internal/statexplore/_build.txt`; later commits only add this section). Frozen `StatExplore.exe --selftest
+--full`: all checks OK, exit 0 (fits of every engine, clustered RS + AR(1), discovery A / B / clustered B, transfer
+identity verified, 68 export files, project save / reopen, R console). New modules present in the frozen archive
+(`discovery.validate`, `gui.widgets.validation_panel`, `gui.widgets.terms_editor`).
+
+| File | SHA-256 |
+|---|---|
+| StatExplore-1.3.3-Setup.exe | `240966342ad70fda29553d1bb0dacc33ddc052bb3a98f64189f17ed4d3598414` |
+| StatExplore-1.3.3-portable.zip | `a1c381f600bcfa32537685afdfe85e01a3df45b80fe546faf807129a2674f842` |
+| statexplore-1.3.3-source.zip (`git archive` of df249322) | `80363c07cf741a4bb1a26498c0f4ed628de79422345a185765ee41c07a0d298b` |
+
+Reproducible build: `py -3.11 -m venv .venv`, `pip install -e ".[dev]"` + `pyinstaller`, R 4.6.2 with
+`r\install_packages.R` (versions in `r/packages.lock.json`), Inno Setup 6, then `set STATEXPLORE_BUILD_DIR=E:\statexplore_build`
+and `.venv\Scripts\python packaging\build.py` (docs/DEVELOPER.md).
 
 ## Issue dispositions
 
