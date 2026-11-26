@@ -1,0 +1,22 @@
+# StatExplore 1.3.3 — owner manual acceptance (short, targeted)
+
+Developer evidence covers the full campaign (see `evidence_report_v1.3.3.md`); this list only checks the P0s, the new
+validation and the steps a developer cannot do on this machine. Data: `fixtures/Test43B.csv` from the v1.3.3 package
+(or `tests/fixtures/v133/Test43B.csv`, identical bytes). Report PASS / FAIL / PARTIAL per step.
+
+| # | Steps (exact control labels) | Expected |
+|---|---|---|
+| M1 | Install `StatExplore-1.3.3-Setup.exe` with the network off. Start it; the status bar shows **R ready: R version 4.6.2**. Open an existing 1.3.2 project, then open Test43B.csv. | Starts offline; old project opens; title shows 1.3.3. |
+| M2 | Automated Model Discovery: Dependent variable **Y**, confirm family; Study **Longitudinal**; Participant ID **ID**; Time **TIME**; Cluster **SCHOOL**; Participant IDs **unique across clusters**; Workflow **A**; Structure **Random intercept + correlated time slope + AR(1)**; Strategy **Time × each eligible predictor**; candidate **GROUP**; Start. | 1 model; n 960; k 10; TIME × GROUP 0.63949; logLik −1647.952; AIC 3315.904; BIC 3364.574; one focal test LR 63.5209, p ≈ 1.5867e−15 (BH = Holm = p). The estimate line notes that TIME counts once. |
+| M3 | Select the row ▸ **Open full analysis**. | Interaction preset **Time × each predictor**; **Fixed terms** list shows TIME, GROUP, **TIME × GROUP** ticked; "Model origin and state" says **Origin: discovery search … Unchanged**; identity check **verified**. |
+| M4 | Click **Fit model** (unchanged). Then set **Trajectories to draw** 40 → 20: the state box warns "plot settings" → **Fit model**. Then **Estimation** ML → REML → **Fit model**. | Interaction never disappears. Unchanged / plot-only fits: same AIC 3315.904, identity **verified**. REML: k 10, AIC 3324.079, BIC 3372.706, BIC n 956; state **Modified … estimation: 'ML' → 'REML'**; identity "modified from the origin". **Return to origin** restores ML (verified after Fit). |
+| M5 | Custom terms: untick **TIME × GROUP** (preset becomes **Custom**), Fit; then tick it again. Try unticking **GROUP** while TIME × GROUP is ticked. | Custom fit = reduced model (AIC 3377.425); hierarchy warning and Fit refused for the non-hierarchical set. |
+| M6 | With the AR(1) model at REML: **Compare: Time specs**. | Notice "ML fits; your model is REML"; three rows, each **fitted structure** "lme; participant …; cluster: 1; residual AR(1); ML"; no lme4/independent row. |
+| M7 | Open `reference/output/Test45A_ReusedIDs.csv` (package; or re-create with `reference/generate_fixtures.R`). Mixed page: Cluster SCHOOL, Participant IDs **numbered within each cluster**. | Preflight: **160 participants (composite key: cluster, ID)**, duplicates 0. With "unique across clusters" a warning and Fit refusal. |
+| M8 | AMD (43B search from M2 or a RI search) ▸ **Validation** tab: target **New clusters (e.g. new schools)**, modes Holdout + CV, **Preview split**, **Run validation**. Repeat with **New participants in existing clusters** and with **Bootstrap stability** (B = 20). **Export…** | Preview: every fold "disjointness checks: OK". Status **complete**; Folds table lists n train / test, clusters; performance per fold and pooled (observation- and group-weighted); bootstrap table with both denominators. Export folder contains split_manifest.csv, predictions.csv, validation_code.R. |
+| M9 | Save project, reopen. Then add filter TIME ≤ 4 and open the M2 candidate again: choose **Refit original**; then **New analysis**. | Validation runs listed under **Runs**. Original: n 960 verified while the filter stays; new: n 800 (logLik −1399.416) labelled new analysis. |
+| M10 | Full analysis result ▸ **View Code** ▸ **Save reproducibility bundle…** ▸ Yes (include data). Close StatExplore, move the folder to a path with spaces, run `Rscript analysis.R` there (network off). | Prints "Model identity reproduced" and "Results reproduced"; manifest has R / package versions, provenance, identity, expected results; edited data → stops with "SHA-256 differs". |
+| M11 | Display: Windows at 150 % on the real monitor; resize / maximize the Mixed page and the AMD Validation tab. | No clipped controls; scrollbars reach every control. |
+
+Sign-off fields: build SHA / installer SHA-256 (SHA256SUMS.txt in the release) / Windows / R / P0 count / P1 count /
+unresolved P2–P3 / decision GO or NO-GO / date.

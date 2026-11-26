@@ -447,3 +447,57 @@ selected historical targets PASS, 101 documentary; 1 reference fit fails in both
 - Performance: identity fingerprints first cost +268 % on cross-sectional searches (R's sha256 is slow); fixed by
   per-variable caching → +19 %.
 - Evidence: docs/v1.3.2/, E:\sx_v132_work, E:\sx_v132_runs.
+
+---
+
+# v1.3.3 (package `E:\Downloads\StatExplore_v1.3.3` = MASTER_PROMPT + 01..07; started 2026-11-25)
+
+Baseline: tag v1.3.2 = ff7b4f3c9b38a63e5c67f033eb4454872f99e6e7 (HEAD 93bc432 = + README only). Clean worktree
+`E:\sx_v132_base` (r/library junction). Work/evidence: `E:\sx_v133_work` (package copy `pkg\`, SHA256SUMS OK).
+Independent references (`pkg\reference\*.R`, R 4.6.2, all four scripts exit 0; 8 flagged fits = apVar / singular,
+expected): 43B ML logLik −1647.9521623673, LR 63.5209122009, p 1.5867e−15; REML AIC 3324.0788 — match 07 anchors.
+
+## Gate 0 reproductions on v1.3.2 (real Qt + R, `repro\repro_p0.py`, `repro\repro_48c.py`)
+| Item | Result on v1.3.2 | Root cause |
+|---|---|---|
+| STAT-47 / V133-STATE-01 | after transfer the Interactions combo shows **None** | `fit_spec` puts the candidate's exact terms in `MixedSpec.terms` with `interactions="none"`; the form has no term editor |
+| V133-STATE-02 | Fit unchanged / trajectories 40→20 + Fit → AIC 3377.425 = **reduced** model, identity none | `_fit` rebuilds the spec from widgets (`_spec()`): `terms`, `descriptor`, `source`, `sample_vars` dropped |
+| V133-STATE-03 | ML→REML + Fit → REML reduced model | same |
+| V133-STATE-04 | provenance/identity gone after any refit | same |
+| V133-STAT-01 | time comparison after a transfer drops TIME×GROUP (k 7 vs 8); AR(1) kept in both tested routes (manual form, A and B transfers on 46A). The reported "independent lme4" substitution did **not** reproduce on ff7b4f3 (logged with inputs); variants are now verified from the fitted objects anyway | `_compare` also uses `_spec()`; with explicit terms, time-form variants would not remap time terms |
+| V133-STAT-02 | 45A local IDs: preflight 8 participants / 48 duplicates | `preflight()` groups on the raw ID column |
+
+## Design decisions (v1.3.3)
+| # | Decision | Why |
+|---|---|---|
+| J1 | **ModelDraft in the Mixed workspace**: the page owns `origin` (immutable MixedSpec + descriptor from a transfer), `draft` (MixedSpec) and `fitted` (last FittedSnapshot spec). Widgets are a projection of the draft (populated under a binding guard, no handler mutates it). `_spec()` = draft + widget edits; terms always explicit. | 01 §1–2, STAT-47 |
+| J2 | **Fixed-terms editor**: checkable list of every main effect and every eligible 2-/3-way term; presets (None / Time × each / All two-way) materialize term sets with a preview of additions/removals; an imported set shows "Custom". Hierarchy enforced (warn + block a missing lower-order term). | V133-STATE-05 |
+| J3 | **Spec diff + lineage**: Fit compares the requested spec with the origin's canonical spec (plot settings excluded). Equal → origin kept, verified against the descriptor. Different → status "modified from origin" with the field-level diff, lineage kept, never "verified". "Return to origin" restores the origin draft. | 01 §1 identity |
+| J4 | **Fitted-vs-requested check**: R returns the fitted object's actual fixed term labels, engine/class, random/grouping, correlation class, estimation method; Python compares with the requested canonical spec; mismatch → result FAILED with both shown. | 01 §1 "inspect actual fitted object" |
+| J5 | **Comparisons keep the model**: every variant keeps terms (time terms remapped to the time form), random part, residual correlation, cluster, ID policy; the method change (REML→ML) is stated before and in the result; each variant row shows the fitted engine/random/residual/cluster read back from R and fails closed if it differs from the request. | V133-STAT-01 |
+| J6 | **Composite participant key in preflight**: with a cluster, participant = (cluster, ID) in both policies; counts, duplicates, gaps and sizes on that key after complete-row restriction; label "composite (cluster, ID)". | V133-STAT-02, UI-04 |
+| J7 | **AMD validation engine** (`discovery/validate.py`): Python builds a deterministic split manifest (numpy PCG64(seed), stable row IDs + composite group keys) for holdout / grouped K-fold (repeats) / bootstrap; targets independent rows, new participant, new cluster, new participant within existing cluster; fixed-candidate or full-pipeline (train-only search + prespecified selection rule); R fits with the search's own model helpers, predicts per target (population / cluster-conditional), returns per-row predictions and per-fold metrics; Python aggregates (observation- and group-weighted), selection/sign stability with both denominators. Stored with the run (project), exported as CSVs + R script. | V133-VAL-01, 02 §2 |
+| J8 | **Portable Full Analysis bundle**: script with relative paths + consented data CSV + manifest (versions, provenance, identity, effective spec) + README; the script asserts data hash, rows, design columns and results; AMD manifest gets the same fields. | V133-EXP-01..04 |
+
+## Phases (v1.3.3)
+- [x] G0 baseline worktree, references run, P0 reproductions
+- [x] G0 baseline suite result recorded (424 + 1 skip after rerunning 4 memory-exhaustion failures)
+- [x] G1 J1–J4 model draft / term editor / diff / fitted-vs-requested (STAT-47 family) + tests
+- [x] G2 J5 comparisons, J6 preflight, 18×2 matrix vs references, GLMM/CLMM/GEE vs references, diagnostics injection
+- [x] G3 J7 validation engine + AMD UI, Test 51 grammar/adjustment/cancel-resume tests
+- [x] G4 J8 bundles, UI items (V133-UI-01..09), persistence, benchmarks (+ J9 prompt cancellation)
+- [x] G5 runner + gates, full suite, build on E:, frozen self-test, docs, disposition report, release
+
+| J9 | Cancel kills the R workers of running discovery batches; interrupted candidates are not recorded; n_done = contiguous prefix; resume skips existing rows. | Benchmark found 369 s cancel latency (also in 1.3.2). |
+
+### Review (v1.3.3)
+- Tests 425 → 493: final runner 492 pass + 1 screenshot skip, 0 fail; 97 gates PASS (3 owner-only NOT RUN, 5 N/A
+  wording). New: tests/test_v133.py (matrix 36 obligations + 18 standalone vs independent R; STAT-47 GUI; 48C; 45A;
+  validation oracle/leakage/bootstrap/GEE/rows; bundles; history; diagnostics; Test 51), tests/test_v133_gui.py.
+- Root causes: Full Analysis refit from widget defaults (STAT-47 + time comparison); raw-ID preflight; AMD dialog
+  without result (null manifest); sx_diag declared ordinal for every model; cancel waited for batches.
+- Found during the work: nlme corAR1 → corARMA(1,0) with index gaps; lme4::nobars deprecation warning downgraded
+  clean fits; 'All two-way' + quadratic listed time × time²; TIME could be required and enter through Time × each.
+- Not reproduced: 48C "AR(1) → independent lme4" (all tested routes kept AR(1) on ff7b4f3); hardened anyway.
+- Evidence: docs/v1.3.3/, E:\sx_v133_work, E:\sx_v133_runs, E:\sx_v133_bench. Owner steps: clean offline VM,
+  physical 150 % DPI (docs/v1.3.3/manual_acceptance_v1.3.3.md).

@@ -1,0 +1,16 @@
+workload,repeat,rows,candidates,status,wall_s,first_result_s,candidates_per_s,peak_rss_mb
+small_43B_A_rs_ar1_time,1,960,1,complete,1.908,0.872,0.524,381.1
+small_43B_A_rs_ar1_time,2,960,1,complete,1.897,0.848,0.527,382.0
+small_43B_A_rs_ar1_time,3,960,1,complete,1.923,0.888,0.52,380.3
+small_43B_B_9_structures,1,960,9,complete,3.721,0.86,2.419,559.6
+small_43B_B_9_structures,2,960,9,complete,3.789,0.889,2.375,552.7
+small_43B_B_9_structures,3,960,9,complete,3.745,0.836,2.403,549.9
+medium_16k_A_ri_main_10pred_cap3,1,16000,175,complete,24.344,1.779,7.189,1290.9
+medium_16k_A_ri_main_10pred_cap3,2,16000,175,complete,24.42,1.765,7.166,1284.6
+medium_16k_A_ri_main_10pred_cap3,3,16000,175,complete,24.227,1.754,7.223,1284.0
+medium_16k_A_ar1_time_10pred,1,16000,10,complete,34.621,1.734,0.289,549.1
+medium_16k_A_ar1_time_10pred,2,16000,10,complete,34.6,1.732,0.289,547.1
+medium_16k_A_ar1_time_10pred,3,16000,10,complete,34.423,1.765,0.291,543.8
+validation_43B_cluster_holdout_cv5_B20_pipeline,1,960,2,complete,7.163,,,378.9
+validation_43B_cluster_holdout_cv5_B20_pipeline,2,960,2,complete,5.485,,,385.5
+validation_43B_cluster_holdout_cv5_B20_pipeline,3,960,2,complete,5.417,,,383.0

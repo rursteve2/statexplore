@@ -1,0 +1,1995 @@
+case,metric,expected,actual,status,rule
+A_participant_RI_independent_full,n,960.0,960.0,PASS,exact
+A_participant_RI_independent_full,participants,160.0,160.0,PASS,exact
+A_participant_RI_independent_full,k,6.0,6.0,PASS,exact
+A_participant_RI_independent_full,logLik,-1840.43451052041,-1840.43451052041,PASS,abs <= 0.0019404345
+A_participant_RI_independent_full,AIC,3692.86902104081,3692.86902104081,PASS,abs <= 0.003792869
+A_participant_RI_independent_full,BIC,3722.07062074758,3722.07062074758,PASS,abs <= 0.0038220706
+A_participant_RI_independent_full,BIC_n,960.0,960.0,PASS,exact
+A_participant_RI_independent_full,observed_clusters,20.0,20.0,PASS,exact
+A_participant_RI_independent_full,modeled_clusters,0.0,0.0,PASS,exact
+A_participant_RI_independent_full,residual_variance,1.42563387311681,1.42563387311681,PASS,abs <= 0.00024256339
+A_participant_RI_independent_full,singular,0.0,0.0,PASS,exact
+A_participant_RI_independent_full,cov:PID:(Intercept):variance,10.9334579059493,10.9334579059493,PASS,abs <= 0.0011933458
+A_participant_RI_independent_full,beta:(Intercept),19.3749048025675,19.3749048025675,PASS,abs <= 0.0001193749
+A_participant_RI_independent_full,se:(Intercept),0.382103037578744,0.382103037578744,PASS,abs <= 0.0001382103
+A_participant_RI_independent_full,beta:TIME,0.425811267684567,0.425811267684567,PASS,abs <= 0.00010042581
+A_participant_RI_independent_full,se:TIME,0.031910968480589,0.031910968480589,PASS,abs <= 0.0001031911
+A_participant_RI_independent_full,beta:GROUP1,1.08754616179541,1.08754616179541,PASS,abs <= 0.00010108755
+A_participant_RI_independent_full,se:GROUP1,0.540375297967816,0.540375297967816,PASS,abs <= 0.00015403753
+A_participant_RI_independent_full,beta:TIME:GROUP1,0.623139520769183,0.623139520769183,PASS,abs <= 0.00010062314
+A_participant_RI_independent_full,se:TIME:GROUP1,0.0451289244137094,0.0451289244137094,PASS,abs <= 0.00010451289
+A_participant_RI_independent_full,R2_marginal,0.226658363429475,0.226658363429475,PASS,abs <= 0.00012266584
+A_participant_RI_independent_full,R2_conditional,0.910794251527935,0.910794251527935,PASS,abs <= 0.00019107943
+A_participant_RI_independent_reduced,n,960.0,960.0,PASS,exact
+A_participant_RI_independent_reduced,participants,160.0,160.0,PASS,exact
+A_participant_RI_independent_reduced,k,5.0,5.0,PASS,exact
+A_participant_RI_independent_reduced,logLik,-1925.93855756511,-1925.93855756511,PASS,abs <= 0.0020259386
+A_participant_RI_independent_reduced,AIC,3861.87711513022,3861.87711513022,PASS,abs <= 0.0039618771
+A_participant_RI_independent_reduced,BIC,3886.21178155253,3886.21178155253,PASS,abs <= 0.0039862118
+A_participant_RI_independent_reduced,BIC_n,960.0,960.0,PASS,exact
+A_participant_RI_independent_reduced,observed_clusters,20.0,20.0,PASS,exact
+A_participant_RI_independent_reduced,modeled_clusters,0.0,0.0,PASS,exact
+A_participant_RI_independent_reduced,residual_variance,1.76539887881297,1.76539887881297,PASS,abs <= 0.00027653989
+A_participant_RI_independent_reduced,singular,0.0,0.0,PASS,exact
+A_participant_RI_independent_reduced,cov:PID:(Intercept):variance,10.876830246004,10.876830246004,PASS,abs <= 0.001187683
+A_participant_RI_independent_reduced,beta:(Intercept),18.59598040161,18.59598040161,PASS,abs <= 0.00011859598
+A_participant_RI_independent_reduced,se:(Intercept),0.378918084687555,0.378918084687555,PASS,abs <= 0.00013789181
+A_participant_RI_independent_reduced,beta:TIME,0.737381028069103,0.737381028069103,PASS,abs <= 0.00010073738
+A_participant_RI_independent_reduced,se:TIME,0.0251097510855059,0.0251097510855059,PASS,abs <= 0.00010251098
+A_participant_RI_independent_reduced,beta:GROUP1,2.6453949637181,2.6453949637181,PASS,abs <= 0.00010264539
+A_participant_RI_independent_reduced,se:GROUP1,0.528466257022958,0.528466257022958,PASS,abs <= 0.00015284663
+A_participant_RI_independent_reduced,R2_marginal,0.208927075459367,0.208927075459367,PASS,abs <= 0.00012089271
+A_participant_RI_independent_reduced,R2_conditional,0.889532198771667,0.889532198771667,PASS,abs <= 0.00018895322
+A_participant_RI_independent_focal,LR_raw,171.008094089406,171.008094089406,PASS,abs <= 0.00027100809
+A_participant_RI_independent_focal,df,1.0,1.0,PASS,exact
+A_participant_RI_independent_focal,LR,171.008094089406,171.008094089406,PASS,abs <= 0.00027100809
+A_participant_RI_independent_focal,p,4.45648450846883e-39,4.45648450846883e-39,PASS,log10 abs<=.001
+A_participant_RI_independent_focal,log10_p,-38.3510075988227,-38.3510075988227,PASS,log10 abs<=.001
+B_participant_RI_independent,n,960.0,960.0,PASS,exact
+B_participant_RI_independent,participants,160.0,160.0,PASS,exact
+B_participant_RI_independent,k,6.0,6.0,PASS,exact
+B_participant_RI_independent,logLik,-1845.60953997332,-1845.60953997332,PASS,abs <= 0.0019456095
+B_participant_RI_independent,AIC,3703.21907994665,3703.21907994665,PASS,abs <= 0.0038032191
+B_participant_RI_independent,BIC,3732.42067965342,3732.42067965342,PASS,abs <= 0.0038324207
+B_participant_RI_independent,BIC_n,960.0,960.0,PASS,exact
+B_participant_RI_independent,observed_clusters,20.0,20.0,PASS,exact
+B_participant_RI_independent,modeled_clusters,0.0,0.0,PASS,exact
+B_participant_RI_independent,residual_variance,1.42920690566135,1.42920690566135,PASS,abs <= 0.00024292069
+B_participant_RI_independent,singular,0.0,0.0,PASS,exact
+B_participant_RI_independent,cov:PID:(Intercept):variance,11.0742676624151,11.0742676624151,PASS,abs <= 0.0012074268
+B_participant_RI_independent,beta:(Intercept),19.374904802568,19.374904802568,PASS,abs <= 0.0001193749
+B_participant_RI_independent,se:(Intercept),0.384429770099413,0.384429770099413,PASS,abs <= 0.00013844298
+B_participant_RI_independent,beta:TIME,0.425811267684576,0.425811267684576,PASS,abs <= 0.00010042581
+B_participant_RI_independent,se:TIME,0.0319509323099091,0.0319509323099091,PASS,abs <= 0.00010319509
+B_participant_RI_independent,beta:GROUP1,1.087546161797,1.087546161797,PASS,abs <= 0.00010108755
+B_participant_RI_independent,se:GROUP1,0.543665794654561,0.543665794654561,PASS,abs <= 0.00015436658
+B_participant_RI_independent,beta:TIME:GROUP1,0.623139520769108,0.623139520769108,PASS,abs <= 0.00010062314
+B_participant_RI_independent,se:TIME:GROUP1,0.0451854418031382,0.0451854418031382,PASS,abs <= 0.00010451854
+B_participant_RI_independent,R2_marginal,0.22462897102665,0.22462897102665,PASS,abs <= 0.0001224629
+B_participant_RI_independent,R2_conditional,0.911371385367728,0.911371385367728,PASS,abs <= 0.00019113714
+A_participant_RI_AR1_full,n,960.0,960.0,PASS,exact
+A_participant_RI_AR1_full,participants,160.0,160.0,PASS,exact
+A_participant_RI_AR1_full,k,7.0,7.0,PASS,exact
+A_participant_RI_AR1_full,logLik,-1729.39912032282,-1729.39912032282,PASS,abs <= 0.0018293991
+A_participant_RI_AR1_full,AIC,3472.79824064564,3472.79824064564,PASS,abs <= 0.0035727982
+A_participant_RI_AR1_full,BIC,3506.86677363687,3506.86677363687,PASS,abs <= 0.0036068668
+A_participant_RI_AR1_full,BIC_n,960.0,960.0,PASS,exact
+A_participant_RI_AR1_full,observed_clusters,20.0,20.0,PASS,exact
+A_participant_RI_AR1_full,modeled_clusters,0.0,0.0,PASS,exact
+A_participant_RI_AR1_full,residual_variance,3.14648015674641,3.14648015674641,PASS,abs <= 0.00041464802
+A_participant_RI_AR1_full,cov:PID:(Intercept):variance,9.40295883307499,9.40295883307499,PASS,abs <= 0.0010402959
+A_participant_RI_AR1_full,phi,0.748185425230335,0.748185425230335,PASS,abs <= 0.00017481854
+A_participant_RI_AR1_full,beta:(Intercept),19.4212003227611,19.4212003227611,PASS,abs <= 0.0001194212
+A_participant_RI_AR1_full,se:(Intercept),0.395055894954752,0.395055894954752,PASS,abs <= 0.00013950559
+A_participant_RI_AR1_full,wald_p:(Intercept),1.14552683222574e-243,1.14552683222574e-243,PASS,log10 abs<=.001
+A_participant_RI_AR1_full,beta:TIME,0.413022667905873,0.413022667905873,PASS,abs <= 0.00010041302
+A_participant_RI_AR1_full,se:TIME,0.0491214756548116,0.0491214756548116,PASS,abs <= 0.00010491215
+A_participant_RI_AR1_full,wald_p:TIME,1.90621865925179e-16,1.90621865925179e-16,PASS,log10 abs<=.001
+A_participant_RI_AR1_full,beta:GROUP1,0.992996783314029,0.992996783314029,PASS,abs <= 0.000100993
+A_participant_RI_AR1_full,se:GROUP1,0.558693404540457,0.558693404540457,PASS,abs <= 0.00015586934
+A_participant_RI_AR1_full,wald_p:GROUP1,0.0774336108497822,0.0774336108497822,PASS,log10 abs<=.001
+A_participant_RI_AR1_full,beta:TIME:GROUP1,0.647801385394484,0.647801385394484,PASS,abs <= 0.0001006478
+A_participant_RI_AR1_full,se:TIME:GROUP1,0.0694682570748144,0.0694682570748144,PASS,abs <= 0.00010694683
+A_participant_RI_AR1_full,wald_p:TIME:GROUP1,1.06345568450566e-19,1.06345568450566e-19,PASS,log10 abs<=.001
+A_participant_RI_AR1_full,R2_marginal,0.222915319296487,0.222915319296487,PASS,abs <= 0.00012229153
+A_participant_RI_AR1_full,R2_conditional,0.805164077061263,0.805164077061263,PASS,abs <= 0.00018051641
+A_participant_RI_AR1_reduced,n,960.0,960.0,PASS,exact
+A_participant_RI_AR1_reduced,participants,160.0,160.0,PASS,exact
+A_participant_RI_AR1_reduced,k,6.0,6.0,PASS,exact
+A_participant_RI_AR1_reduced,logLik,-1764.93210104684,-1764.93210104684,PASS,abs <= 0.0018649321
+A_participant_RI_AR1_reduced,AIC,3541.86420209368,3541.86420209368,PASS,abs <= 0.0036418642
+A_participant_RI_AR1_reduced,BIC,3571.06580180046,3571.06580180046,PASS,abs <= 0.0036710658
+A_participant_RI_AR1_reduced,BIC_n,960.0,960.0,PASS,exact
+A_participant_RI_AR1_reduced,observed_clusters,20.0,20.0,PASS,exact
+A_participant_RI_AR1_reduced,modeled_clusters,0.0,0.0,PASS,exact
+A_participant_RI_AR1_reduced,residual_variance,11.9120085001975,11.9120085001975,PASS,abs <= 0.0012912009
+A_participant_RI_AR1_reduced,cov:PID:(Intercept):variance,1.30841909091784,1.30841909091784,PASS,abs <= 0.00023084191
+A_participant_RI_AR1_reduced,phi,0.929187589656774,0.929187589656774,PASS,abs <= 0.00019291876
+A_participant_RI_AR1_reduced,beta:(Intercept),18.6207417132536,18.6207417132536,PASS,abs <= 0.00011862074
+A_participant_RI_AR1_reduced,se:(Intercept),0.392540132046594,0.392540132046594,PASS,abs <= 0.00013925401
+A_participant_RI_AR1_reduced,wald_p:(Intercept),1.41286438843477e-234,1.41286438843477e-234,PASS,log10 abs<=.001
+A_participant_RI_AR1_reduced,beta:TIME,0.736848592828571,0.736848592828571,PASS,abs <= 0.00010073685
+A_participant_RI_AR1_reduced,se:TIME,0.0428515467169164,0.0428515467169164,PASS,abs <= 0.00010428515
+A_participant_RI_AR1_reduced,wald_p:TIME,1.27452895815438e-56,1.27452895815438e-56,PASS,log10 abs<=.001
+A_participant_RI_AR1_reduced,beta:GROUP1,2.59158810428186,2.59158810428186,PASS,abs <= 0.00010259159
+A_participant_RI_AR1_reduced,se:GROUP1,0.534062095953188,0.534062095953188,PASS,abs <= 0.00015340621
+A_participant_RI_AR1_reduced,wald_p:GROUP1,2.90039600213734e-06,2.90039600213734e-06,PASS,log10 abs<=.001
+A_participant_RI_AR1_reduced,R2_marginal,0.198106065407506,0.198106065407506,PASS,abs <= 0.00011981061
+A_participant_RI_AR1_reduced,R2_conditional,0.277469106101981,0.277469106101981,PASS,abs <= 0.00012774691
+A_participant_RI_AR1_focal,LR_raw,71.0659614480473,71.0659614480473,PASS,abs <= 0.00017106596
+A_participant_RI_AR1_focal,df,1.0,1.0,PASS,exact
+A_participant_RI_AR1_focal,LR,71.0659614480473,71.0659614480473,PASS,abs <= 0.00017106596
+A_participant_RI_AR1_focal,p,3.45479302596578e-17,3.45479302596578e-17,PASS,log10 abs<=.001
+A_participant_RI_AR1_focal,log10_p,-16.461577965764,-16.461577965764,PASS,log10 abs<=.001
+B_participant_RI_AR1,n,960.0,960.0,PASS,exact
+B_participant_RI_AR1,participants,160.0,160.0,PASS,exact
+B_participant_RI_AR1,k,7.0,7.0,PASS,exact
+B_participant_RI_AR1,logLik,-1733.70549915193,-1733.70549915193,PASS,abs <= 0.0018337055
+B_participant_RI_AR1,AIC,3481.41099830387,3481.41099830387,PASS,abs <= 0.003581411
+B_participant_RI_AR1,BIC,3515.45030369523,3515.45030369523,PASS,abs <= 0.0036154503
+B_participant_RI_AR1,BIC_n,956.0,956.0,PASS,exact
+B_participant_RI_AR1,observed_clusters,20.0,20.0,PASS,exact
+B_participant_RI_AR1,modeled_clusters,0.0,0.0,PASS,exact
+B_participant_RI_AR1,residual_variance,3.21775437239638,3.21775437239638,PASS,abs <= 0.00042177544
+B_participant_RI_AR1,cov:PID:(Intercept):variance,9.48730836969556,9.48730836969556,PASS,abs <= 0.0010487308
+B_participant_RI_AR1,phi,0.753397335086314,0.753397335086314,PASS,abs <= 0.00017533973
+B_participant_RI_AR1,beta:(Intercept),19.4215985844288,19.4215985844288,PASS,abs <= 0.0001194216
+B_participant_RI_AR1,se:(Intercept),0.396738641873542,0.396738641873542,PASS,abs <= 0.00013967386
+B_participant_RI_AR1,wald_p:(Intercept),1.44667972905608e-242,1.44667972905608e-242,PASS,log10 abs<=.001
+B_participant_RI_AR1,beta:TIME,0.412943552148354,0.412943552148354,PASS,abs <= 0.00010041294
+B_participant_RI_AR1,se:TIME,0.0493070084000261,0.0493070084000261,PASS,abs <= 0.0001049307
+B_participant_RI_AR1,wald_p:TIME,2.47192380930822e-16,2.47192380930822e-16,PASS,log10 abs<=.001
+B_participant_RI_AR1,beta:GROUP1,0.992154982136964,0.992154982136964,PASS,abs <= 0.00010099215
+B_participant_RI_AR1,se:GROUP1,0.56107316805505,0.56107316805505,PASS,abs <= 0.00015610732
+B_participant_RI_AR1,wald_p:GROUP1,0.0789378317440511,0.0789378317440511,PASS,log10 abs<=.001
+B_participant_RI_AR1,beta:TIME:GROUP1,0.647953954255455,0.647953954255455,PASS,abs <= 0.00010064795
+B_participant_RI_AR1,se:TIME:GROUP1,0.0697306399993616,0.0697306399993616,PASS,abs <= 0.00010697306
+B_participant_RI_AR1,wald_p:TIME:GROUP1,1.40621133382549e-19,1.40621133382549e-19,PASS,log10 abs<=.001
+B_participant_RI_AR1,R2_marginal,0.220765242186394,0.220765242186394,PASS,abs <= 0.00012207652
+B_participant_RI_AR1,R2_conditional,0.802646700769845,0.802646700769845,PASS,abs <= 0.00018026467
+A_participant_RI_CAR1_full,n,960.0,960.0,PASS,exact
+A_participant_RI_CAR1_full,participants,160.0,160.0,PASS,exact
+A_participant_RI_CAR1_full,k,7.0,7.0,PASS,exact
+A_participant_RI_CAR1_full,logLik,-1729.39912032263,-1729.39912032263,PASS,abs <= 0.0018293991
+A_participant_RI_CAR1_full,AIC,3472.79824064525,3472.79824064525,PASS,abs <= 0.0035727982
+A_participant_RI_CAR1_full,BIC,3506.86677363648,3506.86677363648,PASS,abs <= 0.0036068668
+A_participant_RI_CAR1_full,BIC_n,960.0,960.0,PASS,exact
+A_participant_RI_CAR1_full,observed_clusters,20.0,20.0,PASS,exact
+A_participant_RI_CAR1_full,modeled_clusters,0.0,0.0,PASS,exact
+A_participant_RI_CAR1_full,residual_variance,3.14648797174446,3.14648797174446,PASS,abs <= 0.0004146488
+A_participant_RI_CAR1_full,cov:PID:(Intercept):variance,9.40293304677007,9.40293304677007,PASS,abs <= 0.0010402933
+A_participant_RI_CAR1_full,phi,0.748185991575259,0.748185991575259,PASS,abs <= 0.0001748186
+A_participant_RI_CAR1_full,beta:(Intercept),19.4212003659906,19.4212003659906,PASS,abs <= 0.0001194212
+A_participant_RI_CAR1_full,se:(Intercept),0.395055614463739,0.395055614463739,PASS,abs <= 0.00013950556
+A_participant_RI_CAR1_full,wald_p:(Intercept),1.14503727913999e-243,1.14503727913999e-243,PASS,log10 abs<=.001
+A_participant_RI_CAR1_full,beta:TIME,0.41302265926741,0.41302265926741,PASS,abs <= 0.00010041302
+A_participant_RI_CAR1_full,se:TIME,0.0491215087142146,0.0491215087142146,PASS,abs <= 0.00010491215
+A_participant_RI_CAR1_full,wald_p:TIME,1.90630574796074e-16,1.90630574796074e-16,PASS,log10 abs<=.001
+A_participant_RI_CAR1_full,beta:GROUP1,0.992996691987747,0.992996691987747,PASS,abs <= 0.000100993
+A_participant_RI_CAR1_full,se:GROUP1,0.558693007866255,0.558693007866255,PASS,abs <= 0.0001558693
+A_participant_RI_CAR1_full,wald_p:GROUP1,0.0774334294900213,0.0774334294900213,PASS,log10 abs<=.001
+A_participant_RI_CAR1_full,beta:TIME:GROUP1,0.647801402053123,0.647801402053123,PASS,abs <= 0.0001006478
+A_participant_RI_CAR1_full,se:TIME:GROUP1,0.0694683038278708,0.0694683038278708,PASS,abs <= 0.00010694683
+A_participant_RI_CAR1_full,wald_p:TIME:GROUP1,1.06351026933302e-19,1.06351026933302e-19,PASS,log10 abs<=.001
+A_participant_RI_CAR1_full,R2_marginal,0.222915564928868,0.222915564928868,PASS,abs <= 0.00012229156
+A_participant_RI_CAR1_full,R2_conditional,0.805163375714796,0.805163375714796,PASS,abs <= 0.00018051634
+A_participant_RI_CAR1_reduced,n,960.0,960.0,PASS,exact
+A_participant_RI_CAR1_reduced,participants,160.0,160.0,PASS,exact
+A_participant_RI_CAR1_reduced,k,6.0,6.0,PASS,exact
+A_participant_RI_CAR1_reduced,logLik,-1764.93210105451,-1764.93210105451,PASS,abs <= 0.0018649321
+A_participant_RI_CAR1_reduced,AIC,3541.86420210903,3541.86420210903,PASS,abs <= 0.0036418642
+A_participant_RI_CAR1_reduced,BIC,3571.0658018158,3571.0658018158,PASS,abs <= 0.0036710658
+A_participant_RI_CAR1_reduced,BIC_n,960.0,960.0,PASS,exact
+A_participant_RI_CAR1_reduced,observed_clusters,20.0,20.0,PASS,exact
+A_participant_RI_CAR1_reduced,modeled_clusters,0.0,0.0,PASS,exact
+A_participant_RI_CAR1_reduced,residual_variance,11.9125911831116,11.9125911831116,PASS,abs <= 0.0012912591
+A_participant_RI_CAR1_reduced,cov:PID:(Intercept):variance,1.3075714251313,1.3075714251313,PASS,abs <= 0.00023075714
+A_participant_RI_CAR1_reduced,phi,0.929190713972012,0.929190713972012,PASS,abs <= 0.00019291907
+A_participant_RI_CAR1_reduced,beta:(Intercept),18.6207419220673,18.6207419220673,PASS,abs <= 0.00011862074
+A_participant_RI_CAR1_reduced,se:(Intercept),0.39253575808391,0.39253575808391,PASS,abs <= 0.00013925358
+A_participant_RI_CAR1_reduced,wald_p:(Intercept),1.40359865992912e-234,1.40359865992912e-234,PASS,log10 abs<=.001
+A_participant_RI_CAR1_reduced,beta:TIME,0.736848592114074,0.736848592114074,PASS,abs <= 0.00010073685
+A_participant_RI_CAR1_reduced,se:TIME,0.0428517829893664,0.0428517829893664,PASS,abs <= 0.00010428518
+A_participant_RI_CAR1_reduced,wald_p:TIME,1.27605183486218e-56,1.27605183486218e-56,PASS,log10 abs<=.001
+A_participant_RI_CAR1_reduced,beta:GROUP1,2.59158762884888,2.59158762884888,PASS,abs <= 0.00010259159
+A_participant_RI_CAR1_reduced,se:GROUP1,0.534055429175593,0.534055429175593,PASS,abs <= 0.00015340554
+A_participant_RI_CAR1_reduced,wald_p:GROUP1,2.89963647006648e-06,2.89963647006648e-06,PASS,log10 abs<=.001
+A_participant_RI_CAR1_reduced,R2_marginal,0.198109219414816,0.198109219414816,PASS,abs <= 0.00011981092
+A_participant_RI_CAR1_reduced,R2_conditional,0.277422122125684,0.277422122125684,PASS,abs <= 0.00012774221
+A_participant_RI_CAR1_focal,LR_raw,71.0659614637743,71.0659614637743,PASS,abs <= 0.00017106596
+A_participant_RI_CAR1_focal,df,1.0,1.0,PASS,exact
+A_participant_RI_CAR1_focal,LR,71.0659614637743,71.0659614637743,PASS,abs <= 0.00017106596
+A_participant_RI_CAR1_focal,p,3.45479299842684e-17,3.45479299842684e-17,PASS,log10 abs<=.001
+A_participant_RI_CAR1_focal,log10_p,-16.4615779692259,-16.4615779692259,PASS,log10 abs<=.001
+B_participant_RI_CAR1,n,960.0,960.0,PASS,exact
+B_participant_RI_CAR1,participants,160.0,160.0,PASS,exact
+B_participant_RI_CAR1,k,7.0,7.0,PASS,exact
+B_participant_RI_CAR1,logLik,-1733.70549915017,-1733.70549915017,PASS,abs <= 0.0018337055
+B_participant_RI_CAR1,AIC,3481.41099830034,3481.41099830034,PASS,abs <= 0.003581411
+B_participant_RI_CAR1,BIC,3515.4503036917,3515.4503036917,PASS,abs <= 0.0036154503
+B_participant_RI_CAR1,BIC_n,956.0,956.0,PASS,exact
+B_participant_RI_CAR1,observed_clusters,20.0,20.0,PASS,exact
+B_participant_RI_CAR1,modeled_clusters,0.0,0.0,PASS,exact
+B_participant_RI_CAR1,residual_variance,3.21771704058571,3.21771704058571,PASS,abs <= 0.0004217717
+B_participant_RI_CAR1,cov:PID:(Intercept):variance,9.48732076036928,9.48732076036928,PASS,abs <= 0.0010487321
+B_participant_RI_CAR1,phi,0.753394245121343,0.753394245121343,PASS,abs <= 0.00017533942
+B_participant_RI_CAR1,beta:(Intercept),19.4215983480553,19.4215983480553,PASS,abs <= 0.0001194216
+B_participant_RI_CAR1,se:(Intercept),0.396738217748969,0.396738217748969,PASS,abs <= 0.00013967382
+B_participant_RI_CAR1,wald_p:(Intercept),1.44576434059679e-242,1.44576434059679e-242,PASS,log10 abs<=.001
+B_participant_RI_CAR1,beta:TIME,0.41294359882478,0.41294359882478,PASS,abs <= 0.00010041294
+B_participant_RI_CAR1,se:TIME,0.0493068817084908,0.0493068817084908,PASS,abs <= 0.00010493069
+B_participant_RI_CAR1,wald_p:TIME,2.47149041506341e-16,2.47149041506341e-16,PASS,log10 abs<=.001
+B_participant_RI_CAR1,beta:GROUP1,0.992155482014413,0.992155482014413,PASS,abs <= 0.00010099216
+B_participant_RI_CAR1,se:GROUP1,0.561072568252331,0.561072568252331,PASS,abs <= 0.00015610726
+B_participant_RI_CAR1,wald_p:GROUP1,0.0789373652235595,0.0789373652235595,PASS,log10 abs<=.001
+B_participant_RI_CAR1,beta:TIME:GROUP1,0.64795386424343,0.64795386424343,PASS,abs <= 0.00010064795
+B_participant_RI_CAR1,se:TIME:GROUP1,0.0697304608304735,0.0697304608304735,PASS,abs <= 0.00010697305
+B_participant_RI_CAR1,wald_p:TIME:GROUP1,1.40594204846428e-19,1.40594204846428e-19,PASS,log10 abs<=.001
+B_participant_RI_CAR1,R2_marginal,0.220765593340266,0.220765593340266,PASS,abs <= 0.00012207656
+B_participant_RI_CAR1,R2_conditional,0.802648691943974,0.802648691943974,PASS,abs <= 0.00018026487
+A_participant_DIAG_independent_full,n,960.0,960.0,PASS,exact
+A_participant_DIAG_independent_full,participants,160.0,160.0,PASS,exact
+A_participant_DIAG_independent_full,k,7.0,7.0,PASS,exact
+A_participant_DIAG_independent_full,logLik,-1736.36806382424,-1736.36806382424,PASS,abs <= 0.0018363681
+A_participant_DIAG_independent_full,AIC,3486.73612764847,3486.73612764847,PASS,abs <= 0.0035867361
+A_participant_DIAG_independent_full,BIC,3520.8046606397,3520.8046606397,PASS,abs <= 0.0036208047
+A_participant_DIAG_independent_full,BIC_n,960.0,960.0,PASS,exact
+A_participant_DIAG_independent_full,observed_clusters,20.0,20.0,PASS,exact
+A_participant_DIAG_independent_full,modeled_clusters,0.0,0.0,PASS,exact
+A_participant_DIAG_independent_full,residual_variance,0.83097417408938,0.83097417408938,PASS,abs <= 0.00018309742
+A_participant_DIAG_independent_full,singular,0.0,0.0,PASS,exact
+A_participant_DIAG_independent_full,cov:PID:(Intercept):variance,9.37522051712602,9.37522051712602,PASS,abs <= 0.0010375221
+A_participant_DIAG_independent_full,cov:PID.1:TIME:variance,0.17278480983617,0.17278480983617,PASS,abs <= 0.00011727848
+A_participant_DIAG_independent_full,beta:(Intercept),19.3749048025757,19.3749048025757,PASS,abs <= 0.0001193749
+A_participant_DIAG_independent_full,se:(Intercept),0.350187319579775,0.350187319579775,PASS,abs <= 0.00013501873
+A_participant_DIAG_independent_full,beta:TIME,0.425811267684296,0.425811267684296,PASS,abs <= 0.00010042581
+A_participant_DIAG_independent_full,se:TIME,0.0524724985534773,0.0524724985534773,PASS,abs <= 0.00010524725
+A_participant_DIAG_independent_full,beta:GROUP1,1.08754616178692,1.08754616178692,PASS,abs <= 0.00010108755
+A_participant_DIAG_independent_full,se:GROUP1,0.495239656720743,0.495239656720743,PASS,abs <= 0.00014952397
+A_participant_DIAG_independent_full,beta:TIME:GROUP1,0.623139520769385,0.623139520769385,PASS,abs <= 0.00010062314
+A_participant_DIAG_independent_full,se:TIME:GROUP1,0.0742073191059293,0.0742073191059293,PASS,abs <= 0.00010742073
+A_participant_DIAG_independent_full,R2_marginal,0.235026757842836,0.235026757842836,PASS,abs <= 0.00012350268
+A_participant_DIAG_independent_full,R2_conditional,0.94608396789115,0.94608396789115,PASS,abs <= 0.0001946084
+A_participant_DIAG_independent_reduced,n,960.0,960.0,PASS,exact
+A_participant_DIAG_independent_reduced,participants,160.0,160.0,PASS,exact
+A_participant_DIAG_independent_reduced,k,6.0,6.0,PASS,exact
+A_participant_DIAG_independent_reduced,logLik,-1765.62579283323,-1765.62579283323,PASS,abs <= 0.0018656258
+A_participant_DIAG_independent_reduced,AIC,3543.25158566646,3543.25158566646,PASS,abs <= 0.0036432516
+A_participant_DIAG_independent_reduced,BIC,3572.45318537323,3572.45318537323,PASS,abs <= 0.0036724532
+A_participant_DIAG_independent_reduced,BIC_n,960.0,960.0,PASS,exact
+A_participant_DIAG_independent_reduced,observed_clusters,20.0,20.0,PASS,exact
+A_participant_DIAG_independent_reduced,modeled_clusters,0.0,0.0,PASS,exact
+A_participant_DIAG_independent_reduced,residual_variance,0.832578475543571,0.832578475543571,PASS,abs <= 0.00018325785
+A_participant_DIAG_independent_reduced,singular,0.0,0.0,PASS,exact
+A_participant_DIAG_independent_reduced,cov:PID:(Intercept):variance,9.31159462568965,9.31159462568965,PASS,abs <= 0.0010311595
+A_participant_DIAG_independent_reduced,cov:PID.1:TIME:variance,0.268926212385409,0.268926212385409,PASS,abs <= 0.00012689262
+A_participant_DIAG_independent_reduced,beta:(Intercept),19.2578185763057,19.2578185763057,PASS,abs <= 0.00011925782
+A_participant_DIAG_independent_reduced,se:(Intercept),0.348664571937147,0.348664571937147,PASS,abs <= 0.00013486646
+A_participant_DIAG_independent_reduced,beta:TIME,0.737381028068803,0.737381028068803,PASS,abs <= 0.00010073738
+A_participant_DIAG_independent_reduced,se:TIME,0.0444762665132778,0.0444762665132778,PASS,abs <= 0.00010444763
+A_participant_DIAG_independent_reduced,beta:GROUP1,1.32171861430834,1.32171861430834,PASS,abs <= 0.00010132172
+A_participant_DIAG_independent_reduced,se:GROUP1,0.492519294936053,0.492519294936053,PASS,abs <= 0.00014925193
+A_participant_DIAG_independent_reduced,R2_marginal,0.13835710420957,0.13835710420957,PASS,abs <= 0.00011383571
+A_participant_DIAG_independent_reduced,R2_conditional,0.943106784745612,0.943106784745612,PASS,abs <= 0.00019431068
+A_participant_DIAG_independent_focal,LR_raw,58.515458017986,58.515458017986,PASS,abs <= 0.00015851546
+A_participant_DIAG_independent_focal,df,1.0,1.0,PASS,exact
+A_participant_DIAG_independent_focal,LR,58.515458017986,58.515458017986,PASS,abs <= 0.00015851546
+A_participant_DIAG_independent_focal,p,2.01699959170132e-14,2.01699959170132e-14,PASS,log10 abs<=.001
+A_participant_DIAG_independent_focal,log10_p,-13.6952941897009,-13.6952941897009,PASS,log10 abs<=.001
+B_participant_DIAG_independent,n,960.0,960.0,PASS,exact
+B_participant_DIAG_independent,participants,160.0,160.0,PASS,exact
+B_participant_DIAG_independent,k,7.0,7.0,PASS,exact
+B_participant_DIAG_independent,logLik,-1740.68008887575,-1740.68008887575,PASS,abs <= 0.0018406801
+B_participant_DIAG_independent,AIC,3495.36017775149,3495.36017775149,PASS,abs <= 0.0035953602
+B_participant_DIAG_independent,BIC,3529.42871074272,3529.42871074272,PASS,abs <= 0.0036294287
+B_participant_DIAG_independent,BIC_n,960.0,960.0,PASS,exact
+B_participant_DIAG_independent,observed_clusters,20.0,20.0,PASS,exact
+B_participant_DIAG_independent,modeled_clusters,0.0,0.0,PASS,exact
+B_participant_DIAG_independent,residual_variance,0.831088908946659,0.831088908946659,PASS,abs <= 0.00018310889
+B_participant_DIAG_independent,singular,0.0,0.0,PASS,exact
+B_participant_DIAG_independent,cov:PID:(Intercept):variance,9.49581638916986,9.49581638916986,PASS,abs <= 0.0010495816
+B_participant_DIAG_independent,cov:PID.1:TIME:variance,0.175486792068703,0.175486792068703,PASS,abs <= 0.00011754868
+B_participant_DIAG_independent,beta:(Intercept),19.374904802567,19.374904802567,PASS,abs <= 0.0001193749
+B_participant_DIAG_independent,se:(Intercept),0.352334157349405,0.352334157349405,PASS,abs <= 0.00013523342
+B_participant_DIAG_independent,beta:TIME,0.425811267684982,0.425811267684982,PASS,abs <= 0.00010042581
+B_participant_DIAG_independent,se:TIME,0.0527941269065118,0.0527941269065118,PASS,abs <= 0.00010527941
+B_participant_DIAG_independent,beta:GROUP1,1.08754616179948,1.08754616179948,PASS,abs <= 0.00010108755
+B_participant_DIAG_independent,se:GROUP1,0.498275743810826,0.498275743810826,PASS,abs <= 0.00014982757
+B_participant_DIAG_independent,beta:TIME:GROUP1,0.623139520768667,0.623139520768667,PASS,abs <= 0.00010062314
+B_participant_DIAG_independent,se:TIME:GROUP1,0.0746621702848339,0.0746621702848339,PASS,abs <= 0.00010746622
+B_participant_DIAG_independent,R2_marginal,0.232829063799937,0.232829063799937,PASS,abs <= 0.00012328291
+B_participant_DIAG_independent,R2_conditional,0.94658075254105,0.94658075254105,PASS,abs <= 0.00019465808
+A_participant_DIAG_AR1_full,n,960.0,960.0,PASS,exact
+A_participant_DIAG_AR1_full,participants,160.0,160.0,PASS,exact
+A_participant_DIAG_AR1_full,k,8.0,8.0,PASS,exact
+A_participant_DIAG_AR1_full,logLik,-1717.13060573197,-1717.13060573197,PASS,abs <= 0.0018171306
+A_participant_DIAG_AR1_full,AIC,3450.26121146393,3450.26121146393,PASS,abs <= 0.0035502612
+A_participant_DIAG_AR1_full,BIC,3489.19667773963,3489.19667773963,PASS,abs <= 0.0035891967
+A_participant_DIAG_AR1_full,BIC_n,960.0,960.0,PASS,exact
+A_participant_DIAG_AR1_full,observed_clusters,20.0,20.0,PASS,exact
+A_participant_DIAG_AR1_full,modeled_clusters,0.0,0.0,PASS,exact
+A_participant_DIAG_AR1_full,residual_variance,1.26253203203731,1.26253203203731,PASS,abs <= 0.0002262532
+A_participant_DIAG_AR1_full,cov:PID:(Intercept):variance,9.12811328466867,9.12811328466867,PASS,abs <= 0.0010128113
+A_participant_DIAG_AR1_full,cov:PID:(Intercept):TIME,0.0,0.0,PASS,abs <= 0.0001
+A_participant_DIAG_AR1_full,cov:PID:TIME:variance,0.129445806743885,0.129445806743885,PASS,abs <= 0.00011294458
+A_participant_DIAG_AR1_full,phi,0.423854616077624,0.423854616077624,PASS,abs <= 0.00014238546
+A_participant_DIAG_AR1_full,beta:(Intercept),19.3983730900313,19.3983730900313,PASS,abs <= 0.00011939837
+A_participant_DIAG_AR1_full,se:(Intercept),0.356679808915037,0.356679808915037,PASS,abs <= 0.00013566798
+A_participant_DIAG_AR1_full,wald_p:(Intercept),1.24136564368e-270,1.24136564368e-270,PASS,log10 abs<=.001
+A_participant_DIAG_AR1_full,beta:TIME,0.41869158377415,0.41869158377415,PASS,abs <= 0.00010041869
+A_participant_DIAG_AR1_full,se:TIME,0.0529979378444647,0.0529979378444647,PASS,abs <= 0.00010529979
+A_participant_DIAG_AR1_full,wald_p:TIME,9.22662973225467e-15,9.22662973225467e-15,PASS,log10 abs<=.001
+A_participant_DIAG_AR1_full,beta:GROUP1,1.04020282812799,1.04020282812799,PASS,abs <= 0.0001010402
+A_participant_DIAG_AR1_full,se:GROUP1,0.50442142319229,0.50442142319229,PASS,abs <= 0.00015044214
+A_participant_DIAG_AR1_full,wald_p:GROUP1,0.0408290708114061,0.0408290708114061,PASS,log10 abs<=.001
+A_participant_DIAG_AR1_full,beta:TIME:GROUP1,0.636869302278646,0.636869302278646,PASS,abs <= 0.00010063687
+A_participant_DIAG_AR1_full,se:TIME:GROUP1,0.0749504024774481,0.0749504024774481,PASS,abs <= 0.00010749504
+A_participant_DIAG_AR1_full,wald_p:TIME:GROUP1,9.4658248678762e-17,9.4658248678762e-17,PASS,log10 abs<=.001
+A_participant_DIAG_AR1_full,R2_marginal,0.238033601600127,0.238033601600127,PASS,abs <= 0.00012380336
+A_participant_DIAG_AR1_full,R2_conditional,0.916905267562239,0.916905267562239,PASS,abs <= 0.00019169053
+A_participant_DIAG_AR1_reduced,n,960.0,960.0,PASS,exact
+A_participant_DIAG_AR1_reduced,participants,160.0,160.0,PASS,exact
+A_participant_DIAG_AR1_reduced,k,7.0,7.0,PASS,exact
+A_participant_DIAG_AR1_reduced,logLik,-1747.18583906266,-1747.18583906266,PASS,abs <= 0.0018471858
+A_participant_DIAG_AR1_reduced,AIC,3508.37167812532,3508.37167812532,PASS,abs <= 0.0036083717
+A_participant_DIAG_AR1_reduced,BIC,3542.44021111655,3542.44021111655,PASS,abs <= 0.0036424402
+A_participant_DIAG_AR1_reduced,BIC_n,960.0,960.0,PASS,exact
+A_participant_DIAG_AR1_reduced,observed_clusters,20.0,20.0,PASS,exact
+A_participant_DIAG_AR1_reduced,modeled_clusters,0.0,0.0,PASS,exact
+A_participant_DIAG_AR1_reduced,residual_variance,1.28655524998763,1.28655524998763,PASS,abs <= 0.00022865552
+A_participant_DIAG_AR1_reduced,cov:PID:(Intercept):variance,8.87317144530739,8.87317144530739,PASS,abs <= 0.00098731714
+A_participant_DIAG_AR1_reduced,cov:PID:(Intercept):TIME,0.0,0.0,PASS,abs <= 0.0001
+A_participant_DIAG_AR1_reduced,cov:PID:TIME:variance,0.226312769522131,0.226312769522131,PASS,abs <= 0.00012263128
+A_participant_DIAG_AR1_reduced,phi,0.430813760275619,0.430813760275619,PASS,abs <= 0.00014308138
+A_participant_DIAG_AR1_reduced,beta:(Intercept),19.1612260976347,19.1612260976347,PASS,abs <= 0.00011916123
+A_participant_DIAG_AR1_reduced,se:(Intercept),0.350821552543075,0.350821552543075,PASS,abs <= 0.00013508216
+A_participant_DIAG_AR1_reduced,wald_p:(Intercept),5.79496949060997e-272,5.79496949060997e-272,PASS,log10 abs<=.001
+A_participant_DIAG_AR1_reduced,beta:TIME,0.737121724232435,0.737121724232435,PASS,abs <= 0.00010073712
+A_participant_DIAG_AR1_reduced,se:TIME,0.0449686526346034,0.0449686526346034,PASS,abs <= 0.00010449687
+A_participant_DIAG_AR1_reduced,wald_p:TIME,2.82746716351746e-52,2.82746716351746e-52,PASS,log10 abs<=.001
+A_participant_DIAG_AR1_reduced,beta:GROUP1,1.5144806518533,1.5144806518533,PASS,abs <= 0.00010151448
+A_participant_DIAG_AR1_reduced,se:GROUP1,0.493864074528865,0.493864074528865,PASS,abs <= 0.00014938641
+A_participant_DIAG_AR1_reduced,wald_p:GROUP1,0.00254765417640366,0.00254765417640366,PASS,log10 abs<=.001
+A_participant_DIAG_AR1_reduced,R2_marginal,0.150085178929718,0.150085178929718,PASS,abs <= 0.00011500852
+A_participant_DIAG_AR1_reduced,R2_conditional,0.910622927915784,0.910622927915784,PASS,abs <= 0.00019106229
+A_participant_DIAG_AR1_focal,LR_raw,60.1104666613865,60.1104666613865,PASS,abs <= 0.00016011047
+A_participant_DIAG_AR1_focal,df,1.0,1.0,PASS,exact
+A_participant_DIAG_AR1_focal,LR,60.1104666613865,60.1104666613865,PASS,abs <= 0.00016011047
+A_participant_DIAG_AR1_focal,p,8.96801782421755e-15,8.96801782421755e-15,PASS,log10 abs<=.001
+A_participant_DIAG_AR1_focal,log10_p,-14.0473035372383,-14.0473035372383,PASS,log10 abs<=.001
+B_participant_DIAG_AR1,n,960.0,960.0,PASS,exact
+B_participant_DIAG_AR1,participants,160.0,160.0,PASS,exact
+B_participant_DIAG_AR1,k,8.0,8.0,PASS,exact
+B_participant_DIAG_AR1,logLik,-1721.41305403222,-1721.41305403222,PASS,abs <= 0.0018214131
+B_participant_DIAG_AR1,AIC,3458.82610806443,3458.82610806443,PASS,abs <= 0.0035588261
+B_participant_DIAG_AR1,BIC,3497.72817136884,3497.72817136884,PASS,abs <= 0.0035977282
+B_participant_DIAG_AR1,BIC_n,956.0,956.0,PASS,exact
+B_participant_DIAG_AR1,observed_clusters,20.0,20.0,PASS,exact
+B_participant_DIAG_AR1,modeled_clusters,0.0,0.0,PASS,exact
+B_participant_DIAG_AR1,residual_variance,1.2663627331636,1.2663627331636,PASS,abs <= 0.00022663627
+B_participant_DIAG_AR1,cov:PID:(Intercept):variance,9.24234313677312,9.24234313677312,PASS,abs <= 0.0010242343
+B_participant_DIAG_AR1,cov:PID:(Intercept):TIME,0.0,0.0,PASS,abs <= 0.0001
+B_participant_DIAG_AR1,cov:PID:TIME:variance,0.131753464703658,0.131753464703658,PASS,abs <= 0.00011317535
+B_participant_DIAG_AR1,phi,0.425378444337932,0.425378444337932,PASS,abs <= 0.00014253784
+B_participant_DIAG_AR1,beta:(Intercept),19.3984705087704,19.3984705087704,PASS,abs <= 0.00011939847
+B_participant_DIAG_AR1,se:(Intercept),0.35801039849707,0.35801039849707,PASS,abs <= 0.00013580104
+B_participant_DIAG_AR1,wald_p:(Intercept),1.28334773480964e-269,1.28334773480964e-269,PASS,log10 abs<=.001
+B_participant_DIAG_AR1,beta:TIME,0.418663995884271,0.418663995884271,PASS,abs <= 0.00010041866
+B_participant_DIAG_AR1,se:TIME,0.0531959706787033,0.0531959706787033,PASS,abs <= 0.0001053196
+B_participant_DIAG_AR1,wald_p:TIME,1.15240438660578e-14,1.15240438660578e-14,PASS,log10 abs<=.001
+B_participant_DIAG_AR1,beta:GROUP1,1.0400044927638,1.0400044927638,PASS,abs <= 0.00010104
+B_participant_DIAG_AR1,se:GROUP1,0.506303161025152,0.506303161025152,PASS,abs <= 0.00015063032
+B_participant_DIAG_AR1,wald_p:GROUP1,0.0416123609788534,0.0416123609788534,PASS,log10 abs<=.001
+B_participant_DIAG_AR1,beta:TIME:GROUP1,0.636922503474815,0.636922503474815,PASS,abs <= 0.00010063692
+B_participant_DIAG_AR1,se:TIME:GROUP1,0.0752304631974236,0.0752304631974236,PASS,abs <= 0.00010752305
+B_participant_DIAG_AR1,wald_p:TIME:GROUP1,1.20799633953086e-16,1.20799633953086e-16,PASS,log10 abs<=.001
+B_participant_DIAG_AR1,R2_marginal,0.235870382773087,0.235870382773087,PASS,abs <= 0.00012358704
+B_participant_DIAG_AR1,R2_conditional,0.917409658729776,0.917409658729776,PASS,abs <= 0.00019174097
+A_participant_DIAG_CAR1_full,n,960.0,960.0,PASS,exact
+A_participant_DIAG_CAR1_full,participants,160.0,160.0,PASS,exact
+A_participant_DIAG_CAR1_full,k,8.0,8.0,PASS,exact
+A_participant_DIAG_CAR1_full,logLik,-1717.13060573197,-1717.13060573197,PASS,abs <= 0.0018171306
+A_participant_DIAG_CAR1_full,AIC,3450.26121146393,3450.26121146393,PASS,abs <= 0.0035502612
+A_participant_DIAG_CAR1_full,BIC,3489.19667773963,3489.19667773963,PASS,abs <= 0.0035891967
+A_participant_DIAG_CAR1_full,BIC_n,960.0,960.0,PASS,exact
+A_participant_DIAG_CAR1_full,observed_clusters,20.0,20.0,PASS,exact
+A_participant_DIAG_CAR1_full,modeled_clusters,0.0,0.0,PASS,exact
+A_participant_DIAG_CAR1_full,residual_variance,1.26253238688791,1.26253238688791,PASS,abs <= 0.00022625324
+A_participant_DIAG_CAR1_full,cov:PID:(Intercept):variance,9.12811189481525,9.12811189481525,PASS,abs <= 0.0010128112
+A_participant_DIAG_CAR1_full,cov:PID:(Intercept):TIME,0.0,0.0,PASS,abs <= 0.0001
+A_participant_DIAG_CAR1_full,cov:PID:TIME:variance,0.129445772159557,0.129445772159557,PASS,abs <= 0.00011294458
+A_participant_DIAG_CAR1_full,phi,0.423854756873633,0.423854756873633,PASS,abs <= 0.00014238548
+A_participant_DIAG_CAR1_full,beta:(Intercept),19.3983730990278,19.3983730990278,PASS,abs <= 0.00011939837
+A_participant_DIAG_CAR1_full,se:(Intercept),0.356679791382588,0.356679791382588,PASS,abs <= 0.00013566798
+A_participant_DIAG_CAR1_full,wald_p:(Intercept),1.24132692219502e-270,1.24132692219502e-270,PASS,log10 abs<=.001
+A_participant_DIAG_CAR1_full,beta:TIME,0.418691581225439,0.418691581225439,PASS,abs <= 0.00010041869
+A_participant_DIAG_CAR1_full,se:TIME,0.0529979371624511,0.0529979371624511,PASS,abs <= 0.00010529979
+A_participant_DIAG_CAR1_full,wald_p:TIME,9.226626054265e-15,9.226626054265e-15,PASS,log10 abs<=.001
+A_participant_DIAG_CAR1_full,beta:GROUP1,1.04020280981253,1.04020280981253,PASS,abs <= 0.0001010402
+A_participant_DIAG_CAR1_full,se:GROUP1,0.504421398397665,0.504421398397665,PASS,abs <= 0.00015044214
+A_participant_DIAG_CAR1_full,wald_p:GROUP1,0.0408290645373548,0.0408290645373548,PASS,log10 abs<=.001
+A_participant_DIAG_CAR1_full,beta:TIME:GROUP1,0.636869307193659,0.636869307193659,PASS,abs <= 0.00010063687
+A_participant_DIAG_CAR1_full,se:TIME:GROUP1,0.0749504015129352,0.0749504015129352,PASS,abs <= 0.00010749504
+A_participant_DIAG_CAR1_full,wald_p:TIME:GROUP1,9.46581179189022e-17,9.46581179189022e-17,PASS,log10 abs<=.001
+A_participant_DIAG_CAR1_full,R2_marginal,0.238033622592698,0.238033622592698,PASS,abs <= 0.00012380336
+A_participant_DIAG_CAR1_full,R2_conditional,0.916905236792648,0.916905236792648,PASS,abs <= 0.00019169052
+A_participant_DIAG_CAR1_reduced,n,960.0,960.0,PASS,exact
+A_participant_DIAG_CAR1_reduced,participants,160.0,160.0,PASS,exact
+A_participant_DIAG_CAR1_reduced,k,7.0,7.0,PASS,exact
+A_participant_DIAG_CAR1_reduced,logLik,-1747.18583907661,-1747.18583907661,PASS,abs <= 0.0018471858
+A_participant_DIAG_CAR1_reduced,AIC,3508.37167815321,3508.37167815321,PASS,abs <= 0.0036083717
+A_participant_DIAG_CAR1_reduced,BIC,3542.44021114445,3542.44021114445,PASS,abs <= 0.0036424402
+A_participant_DIAG_CAR1_reduced,BIC_n,960.0,960.0,PASS,exact
+A_participant_DIAG_CAR1_reduced,observed_clusters,20.0,20.0,PASS,exact
+A_participant_DIAG_CAR1_reduced,modeled_clusters,0.0,0.0,PASS,exact
+A_participant_DIAG_CAR1_reduced,residual_variance,1.28654733905973,1.28654733905973,PASS,abs <= 0.00022865473
+A_participant_DIAG_CAR1_reduced,cov:PID:(Intercept):variance,8.8731653484299,8.8731653484299,PASS,abs <= 0.00098731653
+A_participant_DIAG_CAR1_reduced,cov:PID:(Intercept):TIME,0.0,0.0,PASS,abs <= 0.0001
+A_participant_DIAG_CAR1_reduced,cov:PID:TIME:variance,0.226318556813182,0.226318556813182,PASS,abs <= 0.00012263186
+A_participant_DIAG_CAR1_reduced,phi,0.430812431314579,0.430812431314579,PASS,abs <= 0.00014308124
+A_participant_DIAG_CAR1_reduced,beta:(Intercept),19.1612313517866,19.1612313517866,PASS,abs <= 0.00011916123
+A_participant_DIAG_CAR1_reduced,se:(Intercept),0.350821357397805,0.350821357397805,PASS,abs <= 0.00013508214
+A_participant_DIAG_CAR1_reduced,wald_p:(Intercept),5.79193640834326e-272,5.79193640834326e-272,PASS,log10 abs<=.001
+A_participant_DIAG_CAR1_reduced,beta:TIME,0.737121725094256,0.737121725094256,PASS,abs <= 0.00010073712
+A_participant_DIAG_CAR1_reduced,se:TIME,0.0449690134543058,0.0449690134543058,PASS,abs <= 0.0001044969
+A_participant_DIAG_CAR1_reduced,wald_p:TIME,2.83204877265699e-52,2.83204877265699e-52,PASS,log10 abs<=.001
+A_participant_DIAG_CAR1_reduced,beta:GROUP1,1.51447014668136,1.51447014668136,PASS,abs <= 0.00010151447
+A_participant_DIAG_CAR1_reduced,se:GROUP1,0.493863862774239,0.493863862774239,PASS,abs <= 0.00014938639
+A_participant_DIAG_CAR1_reduced,wald_p:GROUP1,0.00254781457679614,0.00254781457679614,PASS,log10 abs<=.001
+A_participant_DIAG_CAR1_reduced,R2_marginal,0.150084301901613,0.150084301901613,PASS,abs <= 0.00011500843
+A_participant_DIAG_CAR1_reduced,R2_conditional,0.910623670481288,0.910623670481288,PASS,abs <= 0.00019106237
+A_participant_DIAG_CAR1_focal,LR_raw,60.1104666892807,60.1104666892807,PASS,abs <= 0.00016011047
+A_participant_DIAG_CAR1_focal,df,1.0,1.0,PASS,exact
+A_participant_DIAG_CAR1_focal,LR,60.1104666892807,60.1104666892807,PASS,abs <= 0.00016011047
+A_participant_DIAG_CAR1_focal,p,8.96801769712298e-15,8.96801769712298e-15,PASS,log10 abs<=.001
+A_participant_DIAG_CAR1_focal,log10_p,-14.0473035433931,-14.0473035433931,PASS,log10 abs<=.001
+B_participant_DIAG_CAR1,n,960.0,960.0,PASS,exact
+B_participant_DIAG_CAR1,participants,160.0,160.0,PASS,exact
+B_participant_DIAG_CAR1,k,8.0,8.0,PASS,exact
+B_participant_DIAG_CAR1,logLik,-1721.41305400272,-1721.41305400272,PASS,abs <= 0.0018214131
+B_participant_DIAG_CAR1,AIC,3458.82610800543,3458.82610800543,PASS,abs <= 0.0035588261
+B_participant_DIAG_CAR1,BIC,3497.72817130984,3497.72817130984,PASS,abs <= 0.0035977282
+B_participant_DIAG_CAR1,BIC_n,956.0,956.0,PASS,exact
+B_participant_DIAG_CAR1,observed_clusters,20.0,20.0,PASS,exact
+B_participant_DIAG_CAR1,modeled_clusters,0.0,0.0,PASS,exact
+B_participant_DIAG_CAR1,residual_variance,1.26639279399872,1.26639279399872,PASS,abs <= 0.00022663928
+B_participant_DIAG_CAR1,cov:PID:(Intercept):variance,9.24243247219098,9.24243247219098,PASS,abs <= 0.0010242432
+B_participant_DIAG_CAR1,cov:PID:(Intercept):TIME,0.0,0.0,PASS,abs <= 0.0001
+B_participant_DIAG_CAR1,cov:PID:TIME:variance,0.131747637684883,0.131747637684883,PASS,abs <= 0.00011317476
+B_participant_DIAG_CAR1,phi,0.425391424569464,0.425391424569464,PASS,abs <= 0.00014253914
+B_participant_DIAG_CAR1,beta:(Intercept),19.3984713390161,19.3984713390161,PASS,abs <= 0.00011939847
+B_participant_DIAG_CAR1,se:(Intercept),0.35801255526368,0.35801255526368,PASS,abs <= 0.00013580126
+B_participant_DIAG_CAR1,wald_p:(Intercept),1.28817497012801e-269,1.28817497012801e-269,PASS,log10 abs<=.001
+B_participant_DIAG_CAR1,beta:TIME,0.418663760858107,0.418663760858107,PASS,abs <= 0.00010041866
+B_participant_DIAG_CAR1,se:TIME,0.0531955744906584,0.0531955744906584,PASS,abs <= 0.00010531956
+B_participant_DIAG_CAR1,wald_p:TIME,1.1519412044831e-14,1.1519412044831e-14,PASS,log10 abs<=.001
+B_participant_DIAG_CAR1,beta:GROUP1,1.04000280237927,1.04000280237927,PASS,abs <= 0.00010104
+B_participant_DIAG_CAR1,se:GROUP1,0.506306211153743,0.506306211153743,PASS,abs <= 0.00015063062
+B_participant_DIAG_CAR1,wald_p:GROUP1,0.0416139012404125,0.0416139012404125,PASS,log10 abs<=.001
+B_participant_DIAG_CAR1,beta:TIME:GROUP1,0.636922956705315,0.636922956705315,PASS,abs <= 0.00010063692
+B_participant_DIAG_CAR1,se:TIME:GROUP1,0.0752299029029171,0.0752299029029171,PASS,abs <= 0.00010752299
+B_participant_DIAG_CAR1,wald_p:TIME:GROUP1,1.20733946477733e-16,1.20733946477733e-16,PASS,log10 abs<=.001
+B_participant_DIAG_CAR1,R2_marginal,0.235869350374325,0.235869350374325,PASS,abs <= 0.00012358694
+B_participant_DIAG_CAR1,R2_conditional,0.917408051738885,0.917408051738885,PASS,abs <= 0.00019174081
+A_participant_RS_independent_full,n,960.0,960.0,PASS,exact
+A_participant_RS_independent_full,participants,160.0,160.0,PASS,exact
+A_participant_RS_independent_full,k,8.0,8.0,PASS,exact
+A_participant_RS_independent_full,logLik,-1735.48709518021,-1735.48709518021,PASS,abs <= 0.0018354871
+A_participant_RS_independent_full,AIC,3486.97419036042,3486.97419036042,PASS,abs <= 0.0035869742
+A_participant_RS_independent_full,BIC,3525.90965663612,3525.90965663612,PASS,abs <= 0.0036259097
+A_participant_RS_independent_full,BIC_n,960.0,960.0,PASS,exact
+A_participant_RS_independent_full,observed_clusters,20.0,20.0,PASS,exact
+A_participant_RS_independent_full,modeled_clusters,0.0,0.0,PASS,exact
+A_participant_RS_independent_full,residual_variance,0.834444058687469,0.834444058687469,PASS,abs <= 0.00018344441
+A_participant_RS_independent_full,singular,0.0,0.0,PASS,exact
+A_participant_RS_independent_full,cov:PID:(Intercept):variance,9.20961803000926,9.20961803000926,PASS,abs <= 0.0010209618
+A_participant_RS_independent_full,cov:PID:TIME:variance,0.168910545138908,0.168910545138908,PASS,abs <= 0.00011689105
+A_participant_RS_independent_full,cov:PID:(Intercept):TIME,0.153330909564726,0.153330909564726,PASS,abs <= 0.00011533309
+A_participant_RS_independent_full,beta:(Intercept),19.3749048025703,19.3749048025703,PASS,abs <= 0.0001193749
+A_participant_RS_independent_full,se:(Intercept),0.347251849797785,0.347251849797785,PASS,abs <= 0.00013472518
+A_participant_RS_independent_full,beta:TIME,0.425811267684804,0.425811267684804,PASS,abs <= 0.00010042581
+A_participant_RS_independent_full,se:TIME,0.0520328096947228,0.0520328096947228,PASS,abs <= 0.00010520328
+A_participant_RS_independent_full,beta:GROUP1,1.08754616179783,1.08754616179783,PASS,abs <= 0.00010108755
+A_participant_RS_independent_full,se:GROUP1,0.491088275543152,0.491088275543152,PASS,abs <= 0.00014910883
+A_participant_RS_independent_full,beta:TIME:GROUP1,0.623139520769094,0.623139520769094,PASS,abs <= 0.00010062314
+A_participant_RS_independent_full,se:TIME:GROUP1,0.0735855051586564,0.0735855051586564,PASS,abs <= 0.00010735855
+A_participant_RS_independent_full,R2_marginal,0.226658767334088,0.226658767334088,PASS,abs <= 0.00012266588
+A_participant_RS_independent_full,R2_conditional,0.94778649633417,0.94778649633417,PASS,abs <= 0.00019477865
+A_participant_RS_independent_reduced,n,960.0,960.0,PASS,exact
+A_participant_RS_independent_reduced,participants,160.0,160.0,PASS,exact
+A_participant_RS_independent_reduced,k,7.0,7.0,PASS,exact
+A_participant_RS_independent_reduced,logLik,-1765.11229158719,-1765.11229158719,PASS,abs <= 0.0018651123
+A_participant_RS_independent_reduced,AIC,3544.22458317438,3544.22458317438,PASS,abs <= 0.0036442246
+A_participant_RS_independent_reduced,BIC,3578.29311616561,3578.29311616561,PASS,abs <= 0.0036782931
+A_participant_RS_independent_reduced,BIC_n,960.0,960.0,PASS,exact
+A_participant_RS_independent_reduced,observed_clusters,20.0,20.0,PASS,exact
+A_participant_RS_independent_reduced,modeled_clusters,0.0,0.0,PASS,exact
+A_participant_RS_independent_reduced,residual_variance,0.834441873199491,0.834441873199491,PASS,abs <= 0.00018344419
+A_participant_RS_independent_reduced,singular,0.0,0.0,PASS,exact
+A_participant_RS_independent_reduced,cov:PID:(Intercept):variance,9.21205262418314,9.21205262418314,PASS,abs <= 0.0010212053
+A_participant_RS_independent_reduced,cov:PID:TIME:variance,0.265987992131526,0.265987992131526,PASS,abs <= 0.0001265988
+A_participant_RS_independent_reduced,cov:PID:(Intercept):TIME,0.168607847007772,0.168607847007772,PASS,abs <= 0.00011686078
+A_participant_RS_independent_reduced,beta:(Intercept),19.4239758275046,19.4239758275046,PASS,abs <= 0.00011942398
+A_participant_RS_independent_reduced,se:(Intercept),0.347225627720336,0.347225627720336,PASS,abs <= 0.00013472256
+A_participant_RS_independent_reduced,beta:TIME,0.737381028069428,0.737381028069428,PASS,abs <= 0.00010073738
+A_participant_RS_independent_reduced,se:TIME,0.0442768551902245,0.0442768551902245,PASS,abs <= 0.00010442769
+A_participant_RS_independent_reduced,beta:GROUP1,0.989404111924492,0.989404111924492,PASS,abs <= 0.0001009894
+A_participant_RS_independent_reduced,se:GROUP1,0.490952152019333,0.490952152019333,PASS,abs <= 0.00014909522
+A_participant_RS_independent_reduced,R2_marginal,0.120876445077898,0.120876445077898,PASS,abs <= 0.00011208764
+A_participant_RS_independent_reduced,R2_conditional,0.944958667366627,0.944958667366627,PASS,abs <= 0.00019449587
+A_participant_RS_independent_focal,LR_raw,59.2503928139572,59.2503928139572,PASS,abs <= 0.00015925039
+A_participant_RS_independent_focal,df,1.0,1.0,PASS,exact
+A_participant_RS_independent_focal,LR,59.2503928139572,59.2503928139572,PASS,abs <= 0.00015925039
+A_participant_RS_independent_focal,p,1.38832622005221e-14,1.38832622005221e-14,PASS,log10 abs<=.001
+A_participant_RS_independent_focal,log10_p,-13.8575084741389,-13.8575084741389,PASS,log10 abs<=.001
+B_participant_RS_independent,n,960.0,960.0,PASS,exact
+B_participant_RS_independent,participants,160.0,160.0,PASS,exact
+B_participant_RS_independent,k,8.0,8.0,PASS,exact
+B_participant_RS_independent,logLik,-1739.82650109175,-1739.82650109175,PASS,abs <= 0.0018398265
+B_participant_RS_independent,AIC,3495.6530021835,3495.6530021835,PASS,abs <= 0.003595653
+B_participant_RS_independent,BIC,3534.5884684592,3534.5884684592,PASS,abs <= 0.0036345885
+B_participant_RS_independent,BIC_n,960.0,960.0,PASS,exact
+B_participant_RS_independent,observed_clusters,20.0,20.0,PASS,exact
+B_participant_RS_independent,modeled_clusters,0.0,0.0,PASS,exact
+B_participant_RS_independent,residual_variance,0.834442074277343,0.834442074277343,PASS,abs <= 0.00018344421
+B_participant_RS_independent,singular,0.0,0.0,PASS,exact
+B_participant_RS_independent,cov:PID:(Intercept):variance,9.33178338854169,9.33178338854169,PASS,abs <= 0.0010331783
+B_participant_RS_independent,cov:PID:TIME:variance,0.171653099219113,0.171653099219113,PASS,abs <= 0.00011716531
+B_participant_RS_independent,cov:PID:(Intercept):TIME,0.153749185936812,0.153749185936812,PASS,abs <= 0.00011537492
+B_participant_RS_independent,beta:(Intercept),19.374904802559,19.374904802559,PASS,abs <= 0.0001193749
+B_participant_RS_independent,se:(Intercept),0.349443702442018,0.349443702442018,PASS,abs <= 0.00013494437
+B_participant_RS_independent,beta:TIME,0.425811267684882,0.425811267684882,PASS,abs <= 0.00010042581
+B_participant_RS_independent,se:TIME,0.0523611859423956,0.0523611859423956,PASS,abs <= 0.00010523612
+B_participant_RS_independent,beta:GROUP1,1.08754616180904,1.08754616180904,PASS,abs <= 0.00010108755
+B_participant_RS_independent,se:GROUP1,0.494188023279439,0.494188023279439,PASS,abs <= 0.0001494188
+B_participant_RS_independent,beta:TIME:GROUP1,0.623139520768783,0.623139520768783,PASS,abs <= 0.00010062314
+B_participant_RS_independent,se:TIME:GROUP1,0.0740498993016753,0.0740498993016753,PASS,abs <= 0.00010740499
+B_participant_RS_independent,R2_marginal,0.224559572420517,0.224559572420517,PASS,abs <= 0.00012245596
+B_participant_RS_independent,R2_conditional,0.94827019350694,0.94827019350694,PASS,abs <= 0.00019482702
+A_participant_RS_AR1_full,n,960.0,960.0,PASS,exact
+A_participant_RS_AR1_full,participants,160.0,160.0,PASS,exact
+A_participant_RS_AR1_full,k,9.0,9.0,PASS,exact
+A_participant_RS_AR1_full,logLik,-1713.07979159611,-1713.07979159611,PASS,abs <= 0.0018130798
+A_participant_RS_AR1_full,AIC,3444.15958319223,3444.15958319223,PASS,abs <= 0.0035441596
+A_participant_RS_AR1_full,BIC,3487.96198275238,3487.96198275238,PASS,abs <= 0.003587962
+A_participant_RS_AR1_full,BIC_n,960.0,960.0,PASS,exact
+A_participant_RS_AR1_full,observed_clusters,20.0,20.0,PASS,exact
+A_participant_RS_AR1_full,modeled_clusters,0.0,0.0,PASS,exact
+A_participant_RS_AR1_full,residual_variance,1.52420229910463,1.52420229910463,PASS,abs <= 0.00025242023
+A_participant_RS_AR1_full,cov:PID:(Intercept):variance,8.18870345432284,8.18870345432284,PASS,abs <= 0.00091887035
+A_participant_RS_AR1_full,cov:PID:(Intercept):TIME,0.361914725919457,0.361914725919457,PASS,abs <= 0.00013619147
+A_participant_RS_AR1_full,cov:PID:TIME:variance,0.0952400346757257,0.0952400346757257,PASS,abs <= 0.000109524
+A_participant_RS_AR1_full,phi,0.513802735146493,0.513802735146493,PASS,abs <= 0.00015138027
+A_participant_RS_AR1_full,beta:(Intercept),19.4042887396371,19.4042887396371,PASS,abs <= 0.00011940429
+A_participant_RS_AR1_full,se:(Intercept),0.345084889855028,0.345084889855028,PASS,abs <= 0.00013450849
+A_participant_RS_AR1_full,wald_p:(Intercept),8.39725762648636e-280,8.39725762648636e-280,PASS,log10 abs<=.001
+A_participant_RS_AR1_full,beta:TIME,0.417057263177136,0.417057263177136,PASS,abs <= 0.00010041706
+A_participant_RS_AR1_full,se:TIME,0.0512660790061076,0.0512660790061076,PASS,abs <= 0.00010512661
+A_participant_RS_AR1_full,wald_p:TIME,1.5716705536497e-15,1.5716705536497e-15,PASS,log10 abs<=.001
+A_participant_RS_AR1_full,beta:GROUP1,1.02812146796626,1.02812146796626,PASS,abs <= 0.00010102812
+A_participant_RS_AR1_full,se:GROUP1,0.488023731403009,0.488023731403009,PASS,abs <= 0.00014880237
+A_participant_RS_AR1_full,wald_p:GROUP1,0.0367229869625787,0.0367229869625787,PASS,log10 abs<=.001
+A_participant_RS_AR1_full,beta:TIME:GROUP1,0.640020968138509,0.640020968138509,PASS,abs <= 0.00010064002
+A_participant_RS_AR1_full,se:TIME:GROUP1,0.0725011842201278,0.0725011842201278,PASS,abs <= 0.00010725012
+A_participant_RS_AR1_full,wald_p:TIME:GROUP1,6.68172208870944e-18,6.68172208870944e-18,PASS,log10 abs<=.001
+A_participant_RS_AR1_full,R2_marginal,0.225731559950888,0.225731559950888,PASS,abs <= 0.00012257316
+A_participant_RS_AR1_full,R2_conditional,0.904792828405801,0.904792828405801,PASS,abs <= 0.00019047928
+A_participant_RS_AR1_reduced,n,960.0,960.0,PASS,exact
+A_participant_RS_AR1_reduced,participants,160.0,160.0,PASS,exact
+A_participant_RS_AR1_reduced,k,8.0,8.0,PASS,exact
+A_participant_RS_AR1_reduced,logLik,-1744.88498319919,-1744.88498319919,PASS,abs <= 0.001844885
+A_participant_RS_AR1_reduced,AIC,3505.76996639838,3505.76996639838,PASS,abs <= 0.00360577
+A_participant_RS_AR1_reduced,BIC,3544.70543267408,3544.70543267408,PASS,abs <= 0.0036447054
+A_participant_RS_AR1_reduced,BIC_n,960.0,960.0,PASS,exact
+A_participant_RS_AR1_reduced,observed_clusters,20.0,20.0,PASS,exact
+A_participant_RS_AR1_reduced,modeled_clusters,0.0,0.0,PASS,exact
+A_participant_RS_AR1_reduced,residual_variance,1.43343337012579,1.43343337012579,PASS,abs <= 0.00024334334
+A_participant_RS_AR1_reduced,cov:PID:(Intercept):variance,8.30856723184734,8.30856723184734,PASS,abs <= 0.00093085672
+A_participant_RS_AR1_reduced,cov:PID:(Intercept):TIME,0.380559312053324,0.380559312053324,PASS,abs <= 0.00013805593
+A_participant_RS_AR1_reduced,cov:PID:TIME:variance,0.203951679443379,0.203951679443379,PASS,abs <= 0.00012039517
+A_participant_RS_AR1_reduced,phi,0.484020033278624,0.484020033278624,PASS,abs <= 0.000148402
+A_participant_RS_AR1_reduced,beta:(Intercept),19.5166985027375,19.5166985027375,PASS,abs <= 0.0001195167
+A_participant_RS_AR1_reduced,se:(Intercept),0.344859780519932,0.344859780519932,PASS,abs <= 0.00013448598
+A_participant_RS_AR1_reduced,wald_p:(Intercept),9.24440247686785e-282,9.24440247686785e-282,PASS,log10 abs<=.001
+A_participant_RS_AR1_reduced,beta:TIME,0.737087130447743,0.737087130447743,PASS,abs <= 0.00010073709
+A_participant_RS_AR1_reduced,se:TIME,0.0441960711216533,0.0441960711216533,PASS,abs <= 0.00010441961
+A_participant_RS_AR1_reduced,wald_p:TIME,8.26022705599402e-54,8.26022705599402e-54,PASS,log10 abs<=.001
+A_participant_RS_AR1_reduced,beta:GROUP1,0.803395289915944,0.803395289915944,PASS,abs <= 0.0001008034
+A_participant_RS_AR1_reduced,se:GROUP1,0.487191544162066,0.487191544162066,PASS,abs <= 0.00014871915
+A_participant_RS_AR1_reduced,wald_p:GROUP1,0.101127593814095,0.101127593814095,PASS,log10 abs<=.001
+A_participant_RS_AR1_reduced,R2_marginal,0.114518515604445,0.114518515604445,PASS,abs <= 0.00011145185
+A_participant_RS_AR1_reduced,R2_conditional,0.906079218633665,0.906079218633665,PASS,abs <= 0.00019060792
+A_participant_RS_AR1_focal,LR_raw,63.6103832061553,63.6103832061553,PASS,abs <= 0.00016361038
+A_participant_RS_AR1_focal,df,1.0,1.0,PASS,exact
+A_participant_RS_AR1_focal,LR,63.6103832061553,63.6103832061553,PASS,abs <= 0.00016361038
+A_participant_RS_AR1_focal,p,1.51627858456186e-15,1.51627858456186e-15,PASS,log10 abs<=.001
+A_participant_RS_AR1_focal,log10_p,-14.8192209988209,-14.8192209988209,PASS,log10 abs<=.001
+B_participant_RS_AR1,n,960.0,960.0,PASS,exact
+B_participant_RS_AR1,participants,160.0,160.0,PASS,exact
+B_participant_RS_AR1,k,9.0,9.0,PASS,exact
+B_participant_RS_AR1,logLik,-1717.47216643845,-1717.47216643845,PASS,abs <= 0.0018174722
+B_participant_RS_AR1,AIC,3452.94433287691,3452.94433287691,PASS,abs <= 0.0035529443
+B_participant_RS_AR1,BIC,3496.70915409437,3496.70915409437,PASS,abs <= 0.0035967092
+B_participant_RS_AR1,BIC_n,956.0,956.0,PASS,exact
+B_participant_RS_AR1,observed_clusters,20.0,20.0,PASS,exact
+B_participant_RS_AR1,modeled_clusters,0.0,0.0,PASS,exact
+B_participant_RS_AR1,residual_variance,1.5233162313433,1.5233162313433,PASS,abs <= 0.00025233162
+B_participant_RS_AR1,cov:PID:(Intercept):variance,8.30983771169038,8.30983771169038,PASS,abs <= 0.00093098377
+B_participant_RS_AR1,cov:PID:(Intercept):TIME,0.362713224442799,0.362713224442799,PASS,abs <= 0.00013627132
+B_participant_RS_AR1,cov:PID:TIME:variance,0.0979532597861286,0.0979532597861286,PASS,abs <= 0.00010979533
+B_participant_RS_AR1,phi,0.513530738144152,0.513530738144152,PASS,abs <= 0.00015135307
+B_participant_RS_AR1,beta:(Intercept),19.4042703475976,19.4042703475976,PASS,abs <= 0.00011940427
+B_participant_RS_AR1,se:(Intercept),0.346538815227697,0.346538815227697,PASS,abs <= 0.00013465388
+B_participant_RS_AR1,wald_p:(Intercept),1.22248733474225e-278,1.22248733474225e-278,PASS,log10 abs<=.001
+B_participant_RS_AR1,beta:TIME,0.417062205452628,0.417062205452628,PASS,abs <= 0.00010041706
+B_participant_RS_AR1,se:TIME,0.0514820292760337,0.0514820292760337,PASS,abs <= 0.0001051482
+B_participant_RS_AR1,wald_p:TIME,2.03615891314503e-15,2.03615891314503e-15,PASS,log10 abs<=.001
+B_participant_RS_AR1,beta:GROUP1,1.0281591573063,1.0281591573063,PASS,abs <= 0.00010102816
+B_participant_RS_AR1,se:GROUP1,0.490079892383715,0.490079892383715,PASS,abs <= 0.00014900799
+B_participant_RS_AR1,wald_p:GROUP1,0.0375015689301743,0.0375015689301743,PASS,log10 abs<=.001
+B_participant_RS_AR1,beta:TIME:GROUP1,0.640011437327382,0.640011437327382,PASS,abs <= 0.00010064001
+B_participant_RS_AR1,se:TIME:GROUP1,0.0728065840206554,0.0728065840206554,PASS,abs <= 0.00010728066
+B_participant_RS_AR1,wald_p:TIME:GROUP1,9.03817581341818e-18,9.03817581341818e-18,PASS,log10 abs<=.001
+B_participant_RS_AR1,R2_marginal,0.223648967702193,0.223648967702193,PASS,abs <= 0.0001223649
+B_participant_RS_AR1,R2_conditional,0.905726306386069,0.905726306386069,PASS,abs <= 0.00019057263
+A_participant_RS_CAR1_full,n,960.0,960.0,PASS,exact
+A_participant_RS_CAR1_full,participants,160.0,160.0,PASS,exact
+A_participant_RS_CAR1_full,k,9.0,9.0,PASS,exact
+A_participant_RS_CAR1_full,logLik,-1713.07979159536,-1713.07979159536,PASS,abs <= 0.0018130798
+A_participant_RS_CAR1_full,AIC,3444.15958319073,3444.15958319073,PASS,abs <= 0.0035441596
+A_participant_RS_CAR1_full,BIC,3487.96198275089,3487.96198275089,PASS,abs <= 0.003587962
+A_participant_RS_CAR1_full,BIC_n,960.0,960.0,PASS,exact
+A_participant_RS_CAR1_full,observed_clusters,20.0,20.0,PASS,exact
+A_participant_RS_CAR1_full,modeled_clusters,0.0,0.0,PASS,exact
+A_participant_RS_CAR1_full,residual_variance,1.52419990905645,1.52419990905645,PASS,abs <= 0.00025241999
+A_participant_RS_CAR1_full,cov:PID:(Intercept):variance,8.18874833880849,8.18874833880849,PASS,abs <= 0.00091887483
+A_participant_RS_CAR1_full,cov:PID:(Intercept):TIME,0.361911046130251,0.361911046130251,PASS,abs <= 0.0001361911
+A_participant_RS_CAR1_full,cov:PID:TIME:variance,0.0952395970936596,0.0952395970936596,PASS,abs <= 0.00010952396
+A_participant_RS_CAR1_full,phi,0.513802212275515,0.513802212275515,PASS,abs <= 0.00015138022
+A_participant_RS_CAR1_full,beta:(Intercept),19.4042887042785,19.4042887042785,PASS,abs <= 0.00011940429
+A_participant_RS_CAR1_full,se:(Intercept),0.345085660779138,0.345085660779138,PASS,abs <= 0.00013450857
+A_participant_RS_CAR1_full,wald_p:(Intercept),8.40923299409493e-280,8.40923299409493e-280,PASS,log10 abs<=.001
+A_participant_RS_CAR1_full,beta:TIME,0.417057272677759,0.417057272677759,PASS,abs <= 0.00010041706
+A_participant_RS_CAR1_full,se:TIME,0.0512660045358901,0.0512660045358901,PASS,abs <= 0.0001051266
+A_participant_RS_CAR1_full,wald_p:TIME,1.57152677355117e-15,1.57152677355117e-15,PASS,log10 abs<=.001
+A_participant_RS_CAR1_full,beta:GROUP1,1.0281215404248,1.0281215404248,PASS,abs <= 0.00010102812
+A_participant_RS_CAR1_full,se:GROUP1,0.488024821654338,0.488024821654338,PASS,abs <= 0.00014880248
+A_participant_RS_CAR1_full,wald_p:GROUP1,0.0367233883376889,0.0367233883376889,PASS,log10 abs<=.001
+A_participant_RS_CAR1_full,beta:TIME:GROUP1,0.640020949817264,0.640020949817264,PASS,abs <= 0.00010064002
+A_participant_RS_CAR1_full,se:TIME:GROUP1,0.0725010789033362,0.0725010789033362,PASS,abs <= 0.00010725011
+A_participant_RS_CAR1_full,wald_p:TIME:GROUP1,6.68103817722194e-18,6.68103817722194e-18,PASS,log10 abs<=.001
+A_participant_RS_CAR1_full,R2_marginal,0.225731277700852,0.225731277700852,PASS,abs <= 0.00012257313
+A_participant_RS_CAR1_full,R2_conditional,0.904793097253046,0.904793097253046,PASS,abs <= 0.00019047931
+A_participant_RS_CAR1_reduced,n,960.0,960.0,PASS,exact
+A_participant_RS_CAR1_reduced,participants,160.0,160.0,PASS,exact
+A_participant_RS_CAR1_reduced,k,8.0,8.0,PASS,exact
+A_participant_RS_CAR1_reduced,logLik,-1744.88498320164,-1744.88498320164,PASS,abs <= 0.001844885
+A_participant_RS_CAR1_reduced,AIC,3505.76996640328,3505.76996640328,PASS,abs <= 0.00360577
+A_participant_RS_CAR1_reduced,BIC,3544.70543267897,3544.70543267897,PASS,abs <= 0.0036447054
+A_participant_RS_CAR1_reduced,BIC_n,960.0,960.0,PASS,exact
+A_participant_RS_CAR1_reduced,observed_clusters,20.0,20.0,PASS,exact
+A_participant_RS_CAR1_reduced,modeled_clusters,0.0,0.0,PASS,exact
+A_participant_RS_CAR1_reduced,residual_variance,1.43343771823897,1.43343771823897,PASS,abs <= 0.00024334377
+A_participant_RS_CAR1_reduced,cov:PID:(Intercept):variance,8.30851794039816,8.30851794039816,PASS,abs <= 0.00093085179
+A_participant_RS_CAR1_reduced,cov:PID:(Intercept):TIME,0.380560434906447,0.380560434906447,PASS,abs <= 0.00013805604
+A_participant_RS_CAR1_reduced,cov:PID:TIME:variance,0.203949874289769,0.203949874289769,PASS,abs <= 0.00012039499
+A_participant_RS_CAR1_reduced,phi,0.484020353159904,0.484020353159904,PASS,abs <= 0.00014840204
+A_participant_RS_CAR1_reduced,beta:(Intercept),19.5166993860652,19.5166993860652,PASS,abs <= 0.0001195167
+A_participant_RS_CAR1_reduced,se:(Intercept),0.344858951567803,0.344858951567803,PASS,abs <= 0.0001344859
+A_participant_RS_CAR1_reduced,wald_p:(Intercept),9.22993197474743e-282,9.22993197474743e-282,PASS,log10 abs<=.001
+A_participant_RS_CAR1_reduced,beta:TIME,0.737087130239474,0.737087130239474,PASS,abs <= 0.00010073709
+A_participant_RS_CAR1_reduced,se:TIME,0.0441959661768816,0.0441959661768816,PASS,abs <= 0.0001044196
+A_participant_RS_CAR1_reduced,wald_p:TIME,8.25616730895308e-54,8.25616730895308e-54,PASS,log10 abs<=.001
+A_participant_RS_CAR1_reduced,beta:GROUP1,0.803393522317857,0.803393522317857,PASS,abs <= 0.00010080339
+A_participant_RS_CAR1_reduced,se:GROUP1,0.487190365321919,0.487190365321919,PASS,abs <= 0.00014871904
+A_participant_RS_CAR1_reduced,wald_p:GROUP1,0.101127519554173,0.101127519554173,PASS,log10 abs<=.001
+A_participant_RS_CAR1_reduced,R2_marginal,0.114518893579793,0.114518893579793,PASS,abs <= 0.00011145189
+A_participant_RS_CAR1_reduced,R2_conditional,0.906078585503018,0.906078585503018,PASS,abs <= 0.00019060786
+A_participant_RS_CAR1_focal,LR_raw,63.6103832125491,63.6103832125491,PASS,abs <= 0.00016361038
+A_participant_RS_CAR1_focal,df,1.0,1.0,PASS,exact
+A_participant_RS_CAR1_focal,LR,63.6103832125491,63.6103832125491,PASS,abs <= 0.00016361038
+A_participant_RS_CAR1_focal,p,1.51627857964053e-15,1.51627857964053e-15,PASS,log10 abs<=.001
+A_participant_RS_CAR1_focal,log10_p,-14.8192210002304,-14.8192210002304,PASS,log10 abs<=.001
+B_participant_RS_CAR1,n,960.0,960.0,PASS,exact
+B_participant_RS_CAR1,participants,160.0,160.0,PASS,exact
+B_participant_RS_CAR1,k,9.0,9.0,PASS,exact
+B_participant_RS_CAR1,logLik,-1717.47216644003,-1717.47216644003,PASS,abs <= 0.0018174722
+B_participant_RS_CAR1,AIC,3452.94433288007,3452.94433288007,PASS,abs <= 0.0035529443
+B_participant_RS_CAR1,BIC,3496.70915409753,3496.70915409753,PASS,abs <= 0.0035967092
+B_participant_RS_CAR1,BIC_n,956.0,956.0,PASS,exact
+B_participant_RS_CAR1,observed_clusters,20.0,20.0,PASS,exact
+B_participant_RS_CAR1,modeled_clusters,0.0,0.0,PASS,exact
+B_participant_RS_CAR1,residual_variance,1.52332399924762,1.52332399924762,PASS,abs <= 0.0002523324
+B_participant_RS_CAR1,cov:PID:(Intercept):variance,8.30982525339943,8.30982525339943,PASS,abs <= 0.00093098253
+B_participant_RS_CAR1,cov:PID:(Intercept):TIME,0.362715588119282,0.362715588119282,PASS,abs <= 0.00013627156
+B_participant_RS_CAR1,cov:PID:TIME:variance,0.0979535795076278,0.0979535795076278,PASS,abs <= 0.00010979536
+B_participant_RS_CAR1,phi,0.513533555233036,0.513533555233036,PASS,abs <= 0.00015135336
+B_participant_RS_CAR1,beta:(Intercept),19.4042705380697,19.4042705380697,PASS,abs <= 0.00011940427
+B_participant_RS_CAR1,se:(Intercept),0.346538754582353,0.346538754582353,PASS,abs <= 0.00013465388
+B_participant_RS_CAR1,wald_p:(Intercept),1.22234357710847e-278,1.22234357710847e-278,PASS,log10 abs<=.001
+B_participant_RS_CAR1,beta:TIME,0.417062154264561,0.417062154264561,PASS,abs <= 0.00010041706
+B_participant_RS_CAR1,se:TIME,0.0514821333562029,0.0514821333562029,PASS,abs <= 0.00010514821
+B_participant_RS_CAR1,wald_p:TIME,2.03642762201074e-15,2.03642762201074e-15,PASS,log10 abs<=.001
+B_participant_RS_CAR1,beta:GROUP1,1.02815876699179,1.02815876699179,PASS,abs <= 0.00010102816
+B_participant_RS_CAR1,se:GROUP1,0.490079806618248,0.490079806618248,PASS,abs <= 0.00014900798
+B_participant_RS_CAR1,wald_p:GROUP1,0.0375016074210903,0.0375016074210903,PASS,log10 abs<=.001
+B_participant_RS_CAR1,beta:TIME:GROUP1,0.640011536039755,0.640011536039755,PASS,abs <= 0.00010064001
+B_participant_RS_CAR1,se:TIME:GROUP1,0.0728067312122429,0.0728067312122429,PASS,abs <= 0.00010728067
+B_participant_RS_CAR1,wald_p:TIME:GROUP1,9.03937997664974e-18,9.03937997664974e-18,PASS,log10 abs<=.001
+B_participant_RS_CAR1,R2_marginal,0.223648823459489,0.223648823459489,PASS,abs <= 0.00012236488
+B_participant_RS_CAR1,R2_conditional,0.905725883729617,0.905725883729617,PASS,abs <= 0.00019057259
+A_cluster_RI_independent_full,n,960.0,960.0,PASS,exact
+A_cluster_RI_independent_full,participants,160.0,160.0,PASS,exact
+A_cluster_RI_independent_full,k,7.0,7.0,PASS,exact
+A_cluster_RI_independent_full,logLik,-1784.77806992464,-1784.77806992464,PASS,abs <= 0.0018847781
+A_cluster_RI_independent_full,AIC,3583.55613984927,3583.55613984927,PASS,abs <= 0.0036835561
+A_cluster_RI_independent_full,BIC,3617.6246728405,3617.6246728405,PASS,abs <= 0.0037176247
+A_cluster_RI_independent_full,BIC_n,960.0,960.0,PASS,exact
+A_cluster_RI_independent_full,observed_clusters,20.0,20.0,PASS,exact
+A_cluster_RI_independent_full,modeled_clusters,20.0,20.0,PASS,exact
+A_cluster_RI_independent_full,residual_variance,1.42563454347672,1.42563454347672,PASS,abs <= 0.00024256345
+A_cluster_RI_independent_full,singular,0.0,0.0,PASS,exact
+A_cluster_RI_independent_full,cov:PID:(Intercept):variance,3.71382706017019,3.71382706017019,PASS,abs <= 0.00047138271
+A_cluster_RI_independent_full,cov:SCHOOL:(Intercept):variance,7.21949666171015,7.21949666171015,PASS,abs <= 0.00082194967
+A_cluster_RI_independent_full,beta:(Intercept),19.3749048025764,19.3749048025764,PASS,abs <= 0.0001193749
+A_cluster_RI_independent_full,se:(Intercept),0.645547971284676,0.645547971284676,PASS,abs <= 0.0001645548
+A_cluster_RI_independent_full,beta:TIME,0.425811267684574,0.425811267684574,PASS,abs <= 0.00010042581
+A_cluster_RI_independent_full,se:TIME,0.0319109759831575,0.0319109759831575,PASS,abs <= 0.0001031911
+A_cluster_RI_independent_full,beta:GROUP1,1.08754616179604,1.08754616179604,PASS,abs <= 0.00010108755
+A_cluster_RI_independent_full,se:GROUP1,0.33393816836037,0.33393816836037,PASS,abs <= 0.00013339382
+A_cluster_RI_independent_full,beta:TIME:GROUP1,0.62313952076914,0.62313952076914,PASS,abs <= 0.00010062314
+A_cluster_RI_independent_full,se:TIME:GROUP1,0.0451289350239435,0.0451289350239435,PASS,abs <= 0.00010451289
+A_cluster_RI_independent_full,R2_marginal,0.226660257020036,0.226660257020036,PASS,abs <= 0.00012266603
+A_cluster_RI_independent_full,R2_conditional,0.910793464322473,0.910793464322473,PASS,abs <= 0.00019107935
+A_cluster_RI_independent_reduced,n,960.0,960.0,PASS,exact
+A_cluster_RI_independent_reduced,participants,160.0,160.0,PASS,exact
+A_cluster_RI_independent_reduced,k,6.0,6.0,PASS,exact
+A_cluster_RI_independent_reduced,logLik,-1870.2821169682,-1870.2821169682,PASS,abs <= 0.0019702821
+A_cluster_RI_independent_reduced,AIC,3752.5642339364,3752.5642339364,PASS,abs <= 0.0038525642
+A_cluster_RI_independent_reduced,BIC,3781.76583364317,3781.76583364317,PASS,abs <= 0.0038817658
+A_cluster_RI_independent_reduced,BIC_n,960.0,960.0,PASS,exact
+A_cluster_RI_independent_reduced,observed_clusters,20.0,20.0,PASS,exact
+A_cluster_RI_independent_reduced,modeled_clusters,20.0,20.0,PASS,exact
+A_cluster_RI_independent_reduced,residual_variance,1.7653990184522,1.7653990184522,PASS,abs <= 0.0002765399
+A_cluster_RI_independent_reduced,singular,0.0,0.0,PASS,exact
+A_cluster_RI_independent_reduced,cov:PID:(Intercept):variance,3.65720349925384,3.65720349925384,PASS,abs <= 0.00046572035
+A_cluster_RI_independent_reduced,cov:SCHOOL:(Intercept):variance,7.2195633471648,7.2195633471648,PASS,abs <= 0.00082195633
+A_cluster_RI_independent_reduced,beta:(Intercept),18.5959804016096,18.5959804016096,PASS,abs <= 0.00011859598
+A_cluster_RI_independent_reduced,se:(Intercept),0.643670527933121,0.643670527933121,PASS,abs <= 0.00016436705
+A_cluster_RI_independent_reduced,beta:TIME,0.737381028069141,0.737381028069141,PASS,abs <= 0.00010073738
+A_cluster_RI_independent_reduced,se:TIME,0.0251097520785691,0.0251097520785691,PASS,abs <= 0.00010251098
+A_cluster_RI_independent_reduced,beta:GROUP1,2.64539496371795,2.64539496371795,PASS,abs <= 0.00010264539
+A_cluster_RI_independent_reduced,se:GROUP1,0.314302269678249,0.314302269678249,PASS,abs <= 0.00013143023
+A_cluster_RI_independent_reduced,R2_marginal,0.20892790248339,0.20892790248339,PASS,abs <= 0.00012089279
+A_cluster_RI_independent_reduced,R2_conditional,0.889531752754376,0.889531752754376,PASS,abs <= 0.00018895318
+A_cluster_RI_independent_focal,LR_raw,171.008094087126,171.008094087126,PASS,abs <= 0.00027100809
+A_cluster_RI_independent_focal,df,1.0,1.0,PASS,exact
+A_cluster_RI_independent_focal,LR,171.008094087126,171.008094087126,PASS,abs <= 0.00027100809
+A_cluster_RI_independent_focal,p,4.45648451357882e-39,4.45648451357882e-39,PASS,log10 abs<=.001
+A_cluster_RI_independent_focal,log10_p,-38.3510075983248,-38.3510075983248,PASS,log10 abs<=.001
+B_cluster_RI_independent,n,960.0,960.0,PASS,exact
+B_cluster_RI_independent,participants,160.0,160.0,PASS,exact
+B_cluster_RI_independent,k,7.0,7.0,PASS,exact
+B_cluster_RI_independent,logLik,-1789.60994886678,-1789.60994886678,PASS,abs <= 0.0018896099
+B_cluster_RI_independent,AIC,3593.21989773355,3593.21989773355,PASS,abs <= 0.0036932199
+B_cluster_RI_independent,BIC,3627.28843072479,3627.28843072479,PASS,abs <= 0.0037272884
+B_cluster_RI_independent,BIC_n,960.0,960.0,PASS,exact
+B_cluster_RI_independent,observed_clusters,20.0,20.0,PASS,exact
+B_cluster_RI_independent,modeled_clusters,20.0,20.0,PASS,exact
+B_cluster_RI_independent,residual_variance,1.42920649336088,1.42920649336088,PASS,abs <= 0.00024292065
+B_cluster_RI_independent,singular,0.0,0.0,PASS,exact
+B_cluster_RI_independent,cov:PID:(Intercept):variance,3.7416753803677,3.7416753803677,PASS,abs <= 0.00047416754
+B_cluster_RI_independent,cov:SCHOOL:(Intercept):variance,7.62191915811041,7.62191915811041,PASS,abs <= 0.00086219192
+B_cluster_RI_independent,beta:(Intercept),19.3749048025627,19.3749048025627,PASS,abs <= 0.0001193749
+B_cluster_RI_independent,se:(Intercept),0.661229763258281,0.661229763258281,PASS,abs <= 0.00016612298
+B_cluster_RI_independent,beta:TIME,0.425811267684635,0.425811267684635,PASS,abs <= 0.00010042581
+B_cluster_RI_independent,se:TIME,0.0319509277012741,0.0319509277012741,PASS,abs <= 0.00010319509
+B_cluster_RI_independent,beta:GROUP1,1.08754616179705,1.08754616179705,PASS,abs <= 0.00010108755
+B_cluster_RI_independent,se:GROUP1,0.335048778280134,0.335048778280134,PASS,abs <= 0.00013350488
+B_cluster_RI_independent,beta:TIME:GROUP1,0.623139520769068,0.623139520769068,PASS,abs <= 0.00010062314
+B_cluster_RI_independent,se:TIME:GROUP1,0.0451854352855442,0.0451854352855442,PASS,abs <= 0.00010451854
+B_cluster_RI_independent,R2_marginal,0.220669749376836,0.220669749376836,PASS,abs <= 0.00012206697
+B_cluster_RI_independent,R2_conditional,0.91293354349129,0.91293354349129,PASS,abs <= 0.00019129335
+A_cluster_RI_AR1_full,n,960.0,960.0,PASS,exact
+A_cluster_RI_AR1_full,participants,160.0,160.0,PASS,exact
+A_cluster_RI_AR1_full,k,8.0,8.0,PASS,exact
+A_cluster_RI_AR1_full,logLik,-1673.37571752502,-1673.37571752502,PASS,abs <= 0.0017733757
+A_cluster_RI_AR1_full,AIC,3362.75143505004,3362.75143505004,PASS,abs <= 0.0034627514
+A_cluster_RI_AR1_full,BIC,3401.68690132574,3401.68690132574,PASS,abs <= 0.0035016869
+A_cluster_RI_AR1_full,BIC_n,960.0,960.0,PASS,exact
+A_cluster_RI_AR1_full,observed_clusters,20.0,20.0,PASS,exact
+A_cluster_RI_AR1_full,modeled_clusters,20.0,20.0,PASS,exact
+A_cluster_RI_AR1_full,residual_variance,3.08345518337864,3.08345518337864,PASS,abs <= 0.00040834552
+A_cluster_RI_AR1_full,cov:PID:(Intercept):variance,2.17562175255099,2.17562175255099,PASS,abs <= 0.00031756218
+A_cluster_RI_AR1_full,cov:SCHOOL:(Intercept):variance,7.28010169984902,7.28010169984902,PASS,abs <= 0.00082801017
+A_cluster_RI_AR1_full,phi,0.74275484214282,0.74275484214282,PASS,abs <= 0.00017427548
+A_cluster_RI_AR1_full,beta:(Intercept),19.4207862808926,19.4207862808926,PASS,abs <= 0.00011942079
+A_cluster_RI_AR1_full,se:(Intercept),0.65577708520628,0.65577708520628,PASS,abs <= 0.00016557771
+A_cluster_RI_AR1_full,wald_p:(Intercept),1.26927063918439e-130,1.26927063918439e-130,PASS,log10 abs<=.001
+A_cluster_RI_AR1_full,beta:TIME,0.413105905579345,0.413105905579345,PASS,abs <= 0.00010041311
+A_cluster_RI_AR1_full,se:TIME,0.0488874672870536,0.0488874672870536,PASS,abs <= 0.00010488875
+A_cluster_RI_AR1_full,wald_p:TIME,1.3716157991627e-16,1.3716157991627e-16,PASS,log10 abs<=.001
+A_cluster_RI_AR1_full,beta:GROUP1,0.993871030642644,0.993871030642644,PASS,abs <= 0.00010099387
+A_cluster_RI_AR1_full,se:GROUP1,0.359208760084649,0.359208760084649,PASS,abs <= 0.00013592088
+A_cluster_RI_AR1_full,wald_p:GROUP1,0.00643110043188919,0.00643110043188919,PASS,log10 abs<=.001
+A_cluster_RI_AR1_full,beta:TIME:GROUP1,0.647640867724804,0.647640867724804,PASS,abs <= 0.00010064764
+A_cluster_RI_AR1_full,se:TIME:GROUP1,0.0691373192674227,0.0691373192674227,PASS,abs <= 0.00010691373
+A_cluster_RI_AR1_full,wald_p:TIME:GROUP1,7.41615647071341e-20,7.41615647071341e-20,PASS,log10 abs<=.001
+A_cluster_RI_AR1_full,R2_marginal,0.223080120556243,0.223080120556243,PASS,abs <= 0.00012230801
+A_cluster_RI_AR1_full,R2_conditional,0.808950992810224,0.808950992810224,PASS,abs <= 0.0001808951
+A_cluster_RI_AR1_reduced,n,960.0,960.0,PASS,exact
+A_cluster_RI_AR1_reduced,participants,160.0,160.0,PASS,exact
+A_cluster_RI_AR1_reduced,k,7.0,7.0,PASS,exact
+A_cluster_RI_AR1_reduced,logLik,-1710.35741637114,-1710.35741637114,PASS,abs <= 0.0018103574
+A_cluster_RI_AR1_reduced,AIC,3434.71483274229,3434.71483274229,PASS,abs <= 0.0035347148
+A_cluster_RI_AR1_reduced,BIC,3468.78336573352,3468.78336573352,PASS,abs <= 0.0035687834
+A_cluster_RI_AR1_reduced,BIC_n,960.0,960.0,PASS,exact
+A_cluster_RI_AR1_reduced,observed_clusters,20.0,20.0,PASS,exact
+A_cluster_RI_AR1_reduced,modeled_clusters,20.0,20.0,PASS,exact
+A_cluster_RI_AR1_reduced,residual_variance,5.78513558463631,5.78513558463631,PASS,abs <= 0.00067851356
+A_cluster_RI_AR1_reduced,cov:PID:(Intercept):variance,6.09147238117588e-07,6.09147238117588e-07,PASS,abs <= 0.00010000006
+A_cluster_RI_AR1_reduced,cov:SCHOOL:(Intercept):variance,7.28053615478098,7.28053615478098,PASS,abs <= 0.00082805362
+A_cluster_RI_AR1_reduced,phi,0.853505376173648,0.853505376173648,PASS,abs <= 0.00018535054
+A_cluster_RI_AR1_reduced,beta:(Intercept),18.6162533757901,18.6162533757901,PASS,abs <= 0.00011861625
+A_cluster_RI_AR1_reduced,se:(Intercept),0.653513625242809,0.653513625242809,PASS,abs <= 0.00016535136
+A_cluster_RI_AR1_reduced,wald_p:(Intercept),9.73045637215762e-124,9.73045637215762e-124,PASS,log10 abs<=.001
+A_cluster_RI_AR1_reduced,beta:TIME,0.736872786597772,0.736872786597772,PASS,abs <= 0.00010073687
+A_cluster_RI_AR1_reduced,se:TIME,0.0398361953463333,0.0398361953463333,PASS,abs <= 0.00010398362
+A_cluster_RI_AR1_reduced,wald_p:TIME,7.38442767404959e-64,7.38442767404959e-64,PASS,log10 abs<=.001
+A_cluster_RI_AR1_reduced,beta:GROUP1,2.60175654615298,2.60175654615298,PASS,abs <= 0.00010260176
+A_cluster_RI_AR1_reduced,se:GROUP1,0.322471193747569,0.322471193747569,PASS,abs <= 0.00013224712
+A_cluster_RI_AR1_reduced,wald_p:GROUP1,3.00288477375137e-13,3.00288477375137e-13,PASS,log10 abs<=.001
+A_cluster_RI_AR1_reduced,R2_marginal,0.200635214673245,0.200635214673245,PASS,abs <= 0.00012006352
+A_cluster_RI_AR1_reduced,R2_conditional,0.646062327193821,0.646062327193821,PASS,abs <= 0.00016460623
+A_cluster_RI_AR1_focal,LR_raw,73.9633976922478,73.9633976922478,PASS,abs <= 0.0001739634
+A_cluster_RI_AR1_focal,df,1.0,1.0,PASS,exact
+A_cluster_RI_AR1_focal,LR,73.9633976922478,73.9633976922478,PASS,abs <= 0.0001739634
+A_cluster_RI_AR1_focal,p,7.95790073305294e-18,7.95790073305294e-18,PASS,log10 abs<=.001
+A_cluster_RI_AR1_focal,log10_p,-17.0992014825503,-17.0992014825503,PASS,log10 abs<=.001
+B_cluster_RI_AR1,n,960.0,960.0,PASS,exact
+B_cluster_RI_AR1,participants,160.0,160.0,PASS,exact
+B_cluster_RI_AR1,k,8.0,8.0,PASS,exact
+B_cluster_RI_AR1,logLik,-1677.35056231535,-1677.35056231535,PASS,abs <= 0.0017773506
+B_cluster_RI_AR1,AIC,3370.70112463069,3370.70112463069,PASS,abs <= 0.0034707011
+B_cluster_RI_AR1,BIC,3409.6031879351,3409.6031879351,PASS,abs <= 0.0035096032
+B_cluster_RI_AR1,BIC_n,956.0,956.0,PASS,exact
+B_cluster_RI_AR1,observed_clusters,20.0,20.0,PASS,exact
+B_cluster_RI_AR1,modeled_clusters,20.0,20.0,PASS,exact
+B_cluster_RI_AR1,residual_variance,3.14792282716381,3.14792282716381,PASS,abs <= 0.00041479228
+B_cluster_RI_AR1,cov:PID:(Intercept):variance,2.15135532750864,2.15135532750864,PASS,abs <= 0.00031513553
+B_cluster_RI_AR1,cov:SCHOOL:(Intercept):variance,7.68652656202458,7.68652656202458,PASS,abs <= 0.00086865266
+B_cluster_RI_AR1,phi,0.747642549007517,0.747642549007517,PASS,abs <= 0.00017476425
+B_cluster_RI_AR1,beta:(Intercept),19.4211588896758,19.4211588896758,PASS,abs <= 0.00011942116
+B_cluster_RI_AR1,se:(Intercept),0.670156907995908,0.670156907995908,PASS,abs <= 0.00016701569
+B_cluster_RI_AR1,wald_p:(Intercept),1.00002750787876e-126,1.00002750787876e-126,PASS,log10 abs<=.001
+B_cluster_RI_AR1,beta:TIME,0.413030952494933,0.413030952494933,PASS,abs <= 0.00010041303
+B_cluster_RI_AR1,se:TIME,0.0490569549774767,0.0490569549774767,PASS,abs <= 0.0001049057
+B_cluster_RI_AR1,wald_p:TIME,1.74571205078299e-16,1.74571205078299e-16,PASS,log10 abs<=.001
+B_cluster_RI_AR1,beta:GROUP1,0.993084310459912,0.993084310459912,PASS,abs <= 0.00010099308
+B_cluster_RI_AR1,se:GROUP1,0.359955422888487,0.359955422888487,PASS,abs <= 0.00013599554
+B_cluster_RI_AR1,wald_p:GROUP1,0.00658068275525227,0.00658068275525227,PASS,log10 abs<=.001
+B_cluster_RI_AR1,beta:TIME:GROUP1,0.647785409179934,0.647785409179934,PASS,abs <= 0.00010064779
+B_cluster_RI_AR1,se:TIME:GROUP1,0.0693770110578739,0.0693770110578739,PASS,abs <= 0.0001069377
+B_cluster_RI_AR1,wald_p:TIME:GROUP1,9.59965216076164e-20,9.59965216076164e-20,PASS,log10 abs<=.001
+B_cluster_RI_AR1,R2_marginal,0.217052773596585,0.217052773596585,PASS,abs <= 0.00012170528
+B_cluster_RI_AR1,R2_conditional,0.810203718581193,0.810203718581193,PASS,abs <= 0.00018102037
+A_cluster_RI_CAR1_full,n,960.0,960.0,PASS,exact
+A_cluster_RI_CAR1_full,participants,160.0,160.0,PASS,exact
+A_cluster_RI_CAR1_full,k,8.0,8.0,PASS,exact
+A_cluster_RI_CAR1_full,logLik,-1673.37571752468,-1673.37571752468,PASS,abs <= 0.0017733757
+A_cluster_RI_CAR1_full,AIC,3362.75143504935,3362.75143504935,PASS,abs <= 0.0034627514
+A_cluster_RI_CAR1_full,BIC,3401.68690132505,3401.68690132505,PASS,abs <= 0.0035016869
+A_cluster_RI_CAR1_full,BIC_n,960.0,960.0,PASS,exact
+A_cluster_RI_CAR1_full,observed_clusters,20.0,20.0,PASS,exact
+A_cluster_RI_CAR1_full,modeled_clusters,20.0,20.0,PASS,exact
+A_cluster_RI_CAR1_full,residual_variance,3.0834673556799,3.0834673556799,PASS,abs <= 0.00040834674
+A_cluster_RI_CAR1_full,cov:PID:(Intercept):variance,2.17560931129006,2.17560931129006,PASS,abs <= 0.00031756093
+A_cluster_RI_CAR1_full,cov:SCHOOL:(Intercept):variance,7.28007221320701,7.28007221320701,PASS,abs <= 0.00082800722
+A_cluster_RI_CAR1_full,phi,0.742755861199538,0.742755861199538,PASS,abs <= 0.00017427559
+A_cluster_RI_CAR1_full,beta:(Intercept),19.4207863584986,19.4207863584986,PASS,abs <= 0.00011942079
+A_cluster_RI_CAR1_full,se:(Intercept),0.655775959730411,0.655775959730411,PASS,abs <= 0.0001655776
+A_cluster_RI_CAR1_full,wald_p:(Intercept),1.26835762154015e-130,1.26835762154015e-130,PASS,log10 abs<=.001
+A_cluster_RI_CAR1_full,beta:TIME,0.413105889884601,0.413105889884601,PASS,abs <= 0.00010041311
+A_cluster_RI_CAR1_full,se:TIME,0.0488875158007012,0.0488875158007012,PASS,abs <= 0.00010488875
+A_cluster_RI_CAR1_full,wald_p:TIME,1.37170968651064e-16,1.37170968651064e-16,PASS,log10 abs<=.001
+A_cluster_RI_CAR1_full,beta:GROUP1,0.993870866863284,0.993870866863284,PASS,abs <= 0.00010099387
+A_cluster_RI_CAR1_full,se:GROUP1,0.359208772276874,0.359208772276874,PASS,abs <= 0.00013592088
+A_cluster_RI_CAR1_full,wald_p:GROUP1,0.00643111070226891,0.00643111070226891,PASS,log10 abs<=.001
+A_cluster_RI_CAR1_full,beta:TIME:GROUP1,0.647640897990954,0.647640897990954,PASS,abs <= 0.00010064764
+A_cluster_RI_CAR1_full,se:TIME:GROUP1,0.0691373878760807,0.0691373878760807,PASS,abs <= 0.00010691374
+A_cluster_RI_CAR1_full,wald_p:TIME:GROUP1,7.41671706847946e-20,7.41671706847946e-20,PASS,log10 abs<=.001
+A_cluster_RI_CAR1_full,R2_marginal,0.223080527549977,0.223080527549977,PASS,abs <= 0.00012230805
+A_cluster_RI_CAR1_full,R2_conditional,0.808949885340393,0.808949885340393,PASS,abs <= 0.00018089499
+A_cluster_RI_CAR1_reduced,n,960.0,960.0,PASS,exact
+A_cluster_RI_CAR1_reduced,participants,160.0,160.0,PASS,exact
+A_cluster_RI_CAR1_reduced,k,7.0,7.0,PASS,exact
+A_cluster_RI_CAR1_reduced,logLik,-1710.35741656004,-1710.35741656004,PASS,abs <= 0.0018103574
+A_cluster_RI_CAR1_reduced,AIC,3434.71483312008,3434.71483312008,PASS,abs <= 0.0035347148
+A_cluster_RI_CAR1_reduced,BIC,3468.78336611131,3468.78336611131,PASS,abs <= 0.0035687834
+A_cluster_RI_CAR1_reduced,BIC_n,960.0,960.0,PASS,exact
+A_cluster_RI_CAR1_reduced,observed_clusters,20.0,20.0,PASS,exact
+A_cluster_RI_CAR1_reduced,modeled_clusters,20.0,20.0,PASS,exact
+A_cluster_RI_CAR1_reduced,residual_variance,5.78513546078768,5.78513546078768,PASS,abs <= 0.00067851355
+A_cluster_RI_CAR1_reduced,cov:PID:(Intercept):variance,9.15689814431575e-07,9.15689814431575e-07,PASS,abs <= 0.00010000009
+A_cluster_RI_CAR1_reduced,cov:SCHOOL:(Intercept):variance,7.28053607983477,7.28053607983477,PASS,abs <= 0.00082805361
+A_cluster_RI_CAR1_reduced,phi,0.853505374146561,0.853505374146561,PASS,abs <= 0.00018535054
+A_cluster_RI_CAR1_reduced,beta:(Intercept),18.6162533756839,18.6162533756839,PASS,abs <= 0.00011861625
+A_cluster_RI_CAR1_reduced,se:(Intercept),0.653513624199825,0.653513624199825,PASS,abs <= 0.00016535136
+A_cluster_RI_CAR1_reduced,wald_p:(Intercept),9.73045013480651e-124,9.73045013480651e-124,PASS,log10 abs<=.001
+A_cluster_RI_CAR1_reduced,beta:TIME,0.736872786598579,0.736872786598579,PASS,abs <= 0.00010073687
+A_cluster_RI_CAR1_reduced,se:TIME,0.0398361951154288,0.0398361951154288,PASS,abs <= 0.00010398362
+A_cluster_RI_CAR1_reduced,wald_p:TIME,7.3844173882136e-64,7.3844173882136e-64,PASS,log10 abs<=.001
+A_cluster_RI_CAR1_reduced,beta:GROUP1,2.60175654639344,2.60175654639344,PASS,abs <= 0.00010260176
+A_cluster_RI_CAR1_reduced,se:GROUP1,0.322471201533741,0.322471201533741,PASS,abs <= 0.00013224712
+A_cluster_RI_CAR1_reduced,wald_p:GROUP1,3.00288802303295e-13,3.00288802303295e-13,PASS,log10 abs<=.001
+A_cluster_RI_CAR1_reduced,R2_marginal,0.200635213366128,0.200635213366128,PASS,abs <= 0.00012006352
+A_cluster_RI_CAR1_reduced,R2_conditional,0.646062337110981,0.646062337110981,PASS,abs <= 0.00016460623
+A_cluster_RI_CAR1_focal,LR_raw,73.9633980707267,73.9633980707267,PASS,abs <= 0.0001739634
+A_cluster_RI_CAR1_focal,df,1.0,1.0,PASS,exact
+A_cluster_RI_CAR1_focal,LR,73.9633980707267,73.9633980707267,PASS,abs <= 0.0001739634
+A_cluster_RI_CAR1_focal,p,7.95789920726007e-18,7.95789920726007e-18,PASS,log10 abs<=.001
+A_cluster_RI_CAR1_focal,log10_p,-17.0992015658189,-17.0992015658189,PASS,log10 abs<=.001
+B_cluster_RI_CAR1,n,960.0,960.0,PASS,exact
+B_cluster_RI_CAR1,participants,160.0,160.0,PASS,exact
+B_cluster_RI_CAR1,k,8.0,8.0,PASS,exact
+B_cluster_RI_CAR1,logLik,-1677.35056231494,-1677.35056231494,PASS,abs <= 0.0017773506
+B_cluster_RI_CAR1,AIC,3370.70112462989,3370.70112462989,PASS,abs <= 0.0034707011
+B_cluster_RI_CAR1,BIC,3409.6031879343,3409.6031879343,PASS,abs <= 0.0035096032
+B_cluster_RI_CAR1,BIC_n,956.0,956.0,PASS,exact
+B_cluster_RI_CAR1,observed_clusters,20.0,20.0,PASS,exact
+B_cluster_RI_CAR1,modeled_clusters,20.0,20.0,PASS,exact
+B_cluster_RI_CAR1,residual_variance,3.14792322147922,3.14792322147922,PASS,abs <= 0.00041479232
+B_cluster_RI_CAR1,cov:PID:(Intercept):variance,2.151362608007,2.151362608007,PASS,abs <= 0.00031513626
+B_cluster_RI_CAR1,cov:SCHOOL:(Intercept):variance,7.68646294728812,7.68646294728812,PASS,abs <= 0.00086864629
+B_cluster_RI_CAR1,phi,0.747642624004892,0.747642624004892,PASS,abs <= 0.00017476426
+B_cluster_RI_CAR1,beta:(Intercept),19.4211588953991,19.4211588953991,PASS,abs <= 0.00011942116
+B_cluster_RI_CAR1,se:(Intercept),0.670154607051516,0.670154607051516,PASS,abs <= 0.00016701546
+B_cluster_RI_CAR1,wald_p:(Intercept),9.9862172737351e-127,9.9862172737351e-127,PASS,log10 abs<=.001
+B_cluster_RI_CAR1,beta:TIME,0.413030951349868,0.413030951349868,PASS,abs <= 0.00010041303
+B_cluster_RI_CAR1,se:TIME,0.0490569543700593,0.0490569543700593,PASS,abs <= 0.0001049057
+B_cluster_RI_CAR1,wald_p:TIME,1.74571094367707e-16,1.74571094367707e-16,PASS,log10 abs<=.001
+B_cluster_RI_CAR1,beta:GROUP1,0.993084298370211,0.993084298370211,PASS,abs <= 0.00010099308
+B_cluster_RI_CAR1,se:GROUP1,0.359955691684325,0.359955691684325,PASS,abs <= 0.00013599557
+B_cluster_RI_CAR1,wald_p:GROUP1,0.00658072269000183,0.00658072269000183,PASS,log10 abs<=.001
+B_cluster_RI_CAR1,beta:TIME:GROUP1,0.647785411388107,0.647785411388107,PASS,abs <= 0.00010064779
+B_cluster_RI_CAR1,se:TIME:GROUP1,0.0693770101988561,0.0693770101988561,PASS,abs <= 0.0001069377
+B_cluster_RI_CAR1,wald_p:TIME:GROUP1,9.59964011340424e-20,9.59964011340424e-20,PASS,log10 abs<=.001
+B_cluster_RI_CAR1,R2_marginal,0.217053505350786,0.217053505350786,PASS,abs <= 0.00012170535
+B_cluster_RI_CAR1,R2_conditional,0.810203054590877,0.810203054590877,PASS,abs <= 0.00018102031
+A_cluster_DIAG_independent_full,n,960.0,960.0,PASS,exact
+A_cluster_DIAG_independent_full,participants,160.0,160.0,PASS,exact
+A_cluster_DIAG_independent_full,k,8.0,8.0,PASS,exact
+A_cluster_DIAG_independent_full,logLik,-1670.88260829198,-1670.88260829198,PASS,abs <= 0.0017708826
+A_cluster_DIAG_independent_full,AIC,3357.76521658396,3357.76521658396,PASS,abs <= 0.0034577652
+A_cluster_DIAG_independent_full,BIC,3396.70068285966,3396.70068285966,PASS,abs <= 0.0034967007
+A_cluster_DIAG_independent_full,BIC_n,960.0,960.0,PASS,exact
+A_cluster_DIAG_independent_full,observed_clusters,20.0,20.0,PASS,exact
+A_cluster_DIAG_independent_full,modeled_clusters,20.0,20.0,PASS,exact
+A_cluster_DIAG_independent_full,residual_variance,0.83086000701705,0.83086000701705,PASS,abs <= 0.000183086
+A_cluster_DIAG_independent_full,singular,0.0,0.0,PASS,exact
+A_cluster_DIAG_independent_full,cov:PID:TIME:variance,0.172916125459969,0.172916125459969,PASS,abs <= 0.00011729161
+A_cluster_DIAG_independent_full,cov:PID.1:(Intercept):variance,2.59890667236901,2.59890667236901,PASS,abs <= 0.00035989067
+A_cluster_DIAG_independent_full,cov:SCHOOL:(Intercept):variance,6.77622510801767,6.77622510801767,PASS,abs <= 0.00077762251
+A_cluster_DIAG_independent_full,beta:(Intercept),19.374904802567,19.374904802567,PASS,abs <= 0.0001193749
+A_cluster_DIAG_independent_full,se:(Intercept),0.613789657466903,0.613789657466903,PASS,abs <= 0.00016137897
+A_cluster_DIAG_independent_full,beta:TIME,0.42581126768448,0.42581126768448,PASS,abs <= 0.00010042581
+A_cluster_DIAG_independent_full,se:TIME,0.0524873604007046,0.0524873604007046,PASS,abs <= 0.00010524874
+A_cluster_DIAG_independent_full,beta:GROUP1,1.08754616179718,1.08754616179718,PASS,abs <= 0.00010108755
+A_cluster_DIAG_independent_full,se:GROUP1,0.275414190674562,0.275414190674562,PASS,abs <= 0.00012754142
+A_cluster_DIAG_independent_full,beta:TIME:GROUP1,0.623139520769245,0.623139520769245,PASS,abs <= 0.00010062314
+A_cluster_DIAG_independent_full,se:TIME:GROUP1,0.0742283369318395,0.0742283369318395,PASS,abs <= 0.00010742283
+A_cluster_DIAG_independent_full,R2_marginal,0.235011497065661,0.235011497065661,PASS,abs <= 0.00012350115
+A_cluster_DIAG_independent_full,R2_conditional,0.946094875783883,0.946094875783883,PASS,abs <= 0.00019460949
+A_cluster_DIAG_independent_reduced,n,960.0,960.0,PASS,exact
+A_cluster_DIAG_independent_reduced,participants,160.0,160.0,PASS,exact
+A_cluster_DIAG_independent_reduced,k,7.0,7.0,PASS,exact
+A_cluster_DIAG_independent_reduced,logLik,-1700.20863806348,-1700.20863806348,PASS,abs <= 0.0018002086
+A_cluster_DIAG_independent_reduced,AIC,3414.41727612696,3414.41727612696,PASS,abs <= 0.0035144173
+A_cluster_DIAG_independent_reduced,BIC,3448.4858091182,3448.4858091182,PASS,abs <= 0.0035484858
+A_cluster_DIAG_independent_reduced,BIC_n,960.0,960.0,PASS,exact
+A_cluster_DIAG_independent_reduced,observed_clusters,20.0,20.0,PASS,exact
+A_cluster_DIAG_independent_reduced,modeled_clusters,20.0,20.0,PASS,exact
+A_cluster_DIAG_independent_reduced,residual_variance,0.833471886611625,0.833471886611625,PASS,abs <= 0.00018334719
+A_cluster_DIAG_independent_reduced,singular,0.0,0.0,PASS,exact
+A_cluster_DIAG_independent_reduced,cov:PID:TIME:variance,0.267511062998541,0.267511062998541,PASS,abs <= 0.00012675111
+A_cluster_DIAG_independent_reduced,cov:PID.1:(Intercept):variance,2.5685199331378,2.5685199331378,PASS,abs <= 0.00035685199
+A_cluster_DIAG_independent_reduced,cov:SCHOOL:(Intercept):variance,6.74333264482937,6.74333264482937,PASS,abs <= 0.00077433326
+A_cluster_DIAG_independent_reduced,beta:(Intercept),19.2571855752609,19.2571855752609,PASS,abs <= 0.00011925719
+A_cluster_DIAG_independent_reduced,se:(Intercept),0.611922560754594,0.611922560754594,PASS,abs <= 0.00016119226
+A_cluster_DIAG_independent_reduced,beta:TIME,0.737381028068937,0.737381028068937,PASS,abs <= 0.00010073738
+A_cluster_DIAG_independent_reduced,se:TIME,0.0443803185508346,0.0443803185508346,PASS,abs <= 0.00010443803
+A_cluster_DIAG_independent_reduced,beta:GROUP1,1.32298461639859,1.32298461639859,PASS,abs <= 0.00010132298
+A_cluster_DIAG_independent_reduced,se:GROUP1,0.272034632624571,0.272034632624571,PASS,abs <= 0.00012720346
+A_cluster_DIAG_independent_reduced,R2_marginal,0.13851832116957,0.13851832116957,PASS,abs <= 0.00011385183
+A_cluster_DIAG_independent_reduced,R2_conditional,0.943002958105524,0.943002958105524,PASS,abs <= 0.0001943003
+A_cluster_DIAG_independent_focal,LR_raw,58.6520595429997,58.6520595429997,PASS,abs <= 0.00015865206
+A_cluster_DIAG_independent_focal,df,1.0,1.0,PASS,exact
+A_cluster_DIAG_independent_focal,LR,58.6520595429997,58.6520595429997,PASS,abs <= 0.00015865206
+A_cluster_DIAG_independent_focal,p,1.88171049986377e-14,1.88171049986377e-14,PASS,log10 abs<=.001
+A_cluster_DIAG_independent_focal,log10_p,-13.7254471917392,-13.7254471917392,PASS,log10 abs<=.001
+B_cluster_DIAG_independent,n,960.0,960.0,PASS,exact
+B_cluster_DIAG_independent,participants,160.0,160.0,PASS,exact
+B_cluster_DIAG_independent,k,8.0,8.0,PASS,exact
+B_cluster_DIAG_independent,logLik,-1674.89546028865,-1674.89546028865,PASS,abs <= 0.0017748955
+B_cluster_DIAG_independent,AIC,3365.7909205773,3365.7909205773,PASS,abs <= 0.0034657909
+B_cluster_DIAG_independent,BIC,3404.726386853,3404.726386853,PASS,abs <= 0.0035047264
+B_cluster_DIAG_independent,BIC_n,960.0,960.0,PASS,exact
+B_cluster_DIAG_independent,observed_clusters,20.0,20.0,PASS,exact
+B_cluster_DIAG_independent,modeled_clusters,20.0,20.0,PASS,exact
+B_cluster_DIAG_independent,residual_variance,0.83102766160155,0.83102766160155,PASS,abs <= 0.00018310277
+B_cluster_DIAG_independent,singular,0.0,0.0,PASS,exact
+B_cluster_DIAG_independent,cov:PID:TIME:variance,0.175554737752035,0.175554737752035,PASS,abs <= 0.00011755547
+B_cluster_DIAG_independent,cov:PID.1:(Intercept):variance,2.61894451774639,2.61894451774639,PASS,abs <= 0.00036189445
+B_cluster_DIAG_independent,cov:SCHOOL:(Intercept):variance,7.14807097334871,7.14807097334871,PASS,abs <= 0.0008148071
+B_cluster_DIAG_independent,beta:(Intercept),19.3749048025423,19.3749048025423,PASS,abs <= 0.0001193749
+B_cluster_DIAG_independent,se:(Intercept),0.628952786530985,0.628952786530985,PASS,abs <= 0.00016289528
+B_cluster_DIAG_independent,beta:TIME,0.425811267684948,0.425811267684948,PASS,abs <= 0.00010042581
+B_cluster_DIAG_independent,se:TIME,0.0528017557355687,0.0528017557355687,PASS,abs <= 0.00010528018
+B_cluster_DIAG_independent,beta:GROUP1,1.08754616179969,1.08754616179969,PASS,abs <= 0.00010108755
+B_cluster_DIAG_independent,se:GROUP1,0.276326108133229,0.276326108133229,PASS,abs <= 0.00012763261
+B_cluster_DIAG_independent,beta:TIME:GROUP1,0.623139520768791,0.623139520768791,PASS,abs <= 0.00010062314
+B_cluster_DIAG_independent,se:TIME:GROUP1,0.0746729590783534,0.0746729590783534,PASS,abs <= 0.0001074673
+B_cluster_DIAG_independent,R2_marginal,0.228831886100629,0.228831886100629,PASS,abs <= 0.00012288319
+B_cluster_DIAG_independent,R2_conditional,0.947501716077511,0.947501716077511,PASS,abs <= 0.00019475017
+A_cluster_DIAG_AR1_full,n,960.0,960.0,PASS,exact
+A_cluster_DIAG_AR1_full,participants,160.0,160.0,PASS,exact
+A_cluster_DIAG_AR1_full,k,9.0,9.0,PASS,exact
+A_cluster_DIAG_AR1_full,logLik,-1651.89772876185,-1651.89772876185,PASS,abs <= 0.0017518977
+A_cluster_DIAG_AR1_full,AIC,3321.79545752371,3321.79545752371,PASS,abs <= 0.0034217955
+A_cluster_DIAG_AR1_full,BIC,3365.59785708386,3365.59785708386,PASS,abs <= 0.0034655979
+A_cluster_DIAG_AR1_full,BIC_n,960.0,960.0,PASS,exact
+A_cluster_DIAG_AR1_full,observed_clusters,20.0,20.0,PASS,exact
+A_cluster_DIAG_AR1_full,modeled_clusters,20.0,20.0,PASS,exact
+A_cluster_DIAG_AR1_full,residual_variance,1.20382731260742,1.20382731260742,PASS,abs <= 0.00022038273
+A_cluster_DIAG_AR1_full,cov:PID:(Intercept):variance,2.281343445661,2.281343445661,PASS,abs <= 0.00032813434
+A_cluster_DIAG_AR1_full,cov:PID:(Intercept):TIME,0.0,0.0,PASS,abs <= 0.0001
+A_cluster_DIAG_AR1_full,cov:PID:TIME:variance,0.140907942560726,0.140907942560726,PASS,abs <= 0.00011409079
+A_cluster_DIAG_AR1_full,cov:SCHOOL:(Intercept):variance,6.83639041017519,6.83639041017519,PASS,abs <= 0.00078363904
+A_cluster_DIAG_AR1_full,phi,0.399240941465151,0.399240941465151,PASS,abs <= 0.00013992409
+A_cluster_DIAG_AR1_full,beta:(Intercept),19.3968129489621,19.3968129489621,PASS,abs <= 0.00011939681
+A_cluster_DIAG_AR1_full,se:(Intercept),0.619440965210744,0.619440965210744,PASS,abs <= 0.0001619441
+A_cluster_DIAG_AR1_full,wald_p:(Intercept),5.06283227673307e-141,5.06283227673307e-141,PASS,log10 abs<=.001
+A_cluster_DIAG_AR1_full,beta:TIME,0.419136195380893,0.419136195380893,PASS,abs <= 0.00010041914
+A_cluster_DIAG_AR1_full,se:TIME,0.0537753885288969,0.0537753885288969,PASS,abs <= 0.00010537754
+A_cluster_DIAG_AR1_full,wald_p:TIME,2.02074119939848e-14,2.02074119939848e-14,PASS,log10 abs<=.001
+A_cluster_DIAG_AR1_full,beta:GROUP1,1.04337655441622,1.04337655441622,PASS,abs <= 0.00010104338
+A_cluster_DIAG_AR1_full,se:GROUP1,0.284455204465225,0.284455204465225,PASS,abs <= 0.00012844552
+A_cluster_DIAG_AR1_full,wald_p:GROUP1,0.000347287804954638,0.000347287804954638,PASS,log10 abs<=.001
+A_cluster_DIAG_AR1_full,beta:TIME:GROUP1,0.636011901824656,0.636011901824656,PASS,abs <= 0.00010063601
+A_cluster_DIAG_AR1_full,se:TIME:GROUP1,0.0760498837794482,0.0760498837794482,PASS,abs <= 0.00010760499
+A_cluster_DIAG_AR1_full,wald_p:TIME:GROUP1,2.71147756978285e-16,2.71147756978285e-16,PASS,log10 abs<=.001
+A_cluster_DIAG_AR1_full,R2_marginal,0.237502688794436,0.237502688794436,PASS,abs <= 0.00012375027
+A_cluster_DIAG_AR1_full,R2_conditional,0.920959449510987,0.920959449510987,PASS,abs <= 0.00019209594
+A_cluster_DIAG_AR1_reduced,n,960.0,960.0,PASS,exact
+A_cluster_DIAG_AR1_reduced,participants,160.0,160.0,PASS,exact
+A_cluster_DIAG_AR1_reduced,k,8.0,8.0,PASS,exact
+A_cluster_DIAG_AR1_reduced,logLik,-1681.32755126145,-1681.32755126145,PASS,abs <= 0.0017813276
+A_cluster_DIAG_AR1_reduced,AIC,3378.6551025229,3378.6551025229,PASS,abs <= 0.0034786551
+A_cluster_DIAG_AR1_reduced,BIC,3417.59056879859,3417.59056879859,PASS,abs <= 0.0035175906
+A_cluster_DIAG_AR1_reduced,BIC_n,960.0,960.0,PASS,exact
+A_cluster_DIAG_AR1_reduced,observed_clusters,20.0,20.0,PASS,exact
+A_cluster_DIAG_AR1_reduced,modeled_clusters,20.0,20.0,PASS,exact
+A_cluster_DIAG_AR1_reduced,residual_variance,1.25916858268006,1.25916858268006,PASS,abs <= 0.00022591686
+A_cluster_DIAG_AR1_reduced,cov:PID:(Intercept):variance,2.1116730714544,2.1116730714544,PASS,abs <= 0.00031116731
+A_cluster_DIAG_AR1_reduced,cov:PID:(Intercept):TIME,0.0,0.0,PASS,abs <= 0.0001
+A_cluster_DIAG_AR1_reduced,cov:PID:TIME:variance,0.231990866407558,0.231990866407558,PASS,abs <= 0.00012319909
+A_cluster_DIAG_AR1_reduced,cov:SCHOOL:(Intercept):variance,6.77225655352304,6.77225655352304,PASS,abs <= 0.00077722566
+A_cluster_DIAG_AR1_reduced,phi,0.419859514209509,0.419859514209509,PASS,abs <= 0.00014198595
+A_cluster_DIAG_AR1_reduced,beta:(Intercept),19.1686129660698,19.1686129660698,PASS,abs <= 0.00011916861
+A_cluster_DIAG_AR1_reduced,se:(Intercept),0.614529424594866,0.614529424594866,PASS,abs <= 0.00016145294
+A_cluster_DIAG_AR1_reduced,wald_p:(Intercept),2.45550297089845e-140,2.45550297089845e-140,PASS,log10 abs<=.001
+A_cluster_DIAG_AR1_reduced,beta:TIME,0.737128822222182,0.737128822222182,PASS,abs <= 0.00010073713
+A_cluster_DIAG_AR1_reduced,se:TIME,0.0452088384046582,0.0452088384046582,PASS,abs <= 0.00010452088
+A_cluster_DIAG_AR1_reduced,wald_p:TIME,8.23394181052562e-52,8.23394181052562e-52,PASS,log10 abs<=.001
+A_cluster_DIAG_AR1_reduced,beta:GROUP1,1.49973213929525,1.49973213929525,PASS,abs <= 0.00010149973
+A_cluster_DIAG_AR1_reduced,se:GROUP1,0.271698234070393,0.271698234070393,PASS,abs <= 0.00012716982
+A_cluster_DIAG_AR1_reduced,wald_p:GROUP1,1.61065685207328e-07,1.61065685207328e-07,PASS,log10 abs<=.001
+A_cluster_DIAG_AR1_reduced,R2_marginal,0.149062516657756,0.149062516657756,PASS,abs <= 0.00011490625
+A_cluster_DIAG_AR1_reduced,R2_conditional,0.912673057125592,0.912673057125592,PASS,abs <= 0.00019126731
+A_cluster_DIAG_AR1_focal,LR_raw,58.8596449991901,58.8596449991901,PASS,abs <= 0.00015885964
+A_cluster_DIAG_AR1_focal,df,1.0,1.0,PASS,exact
+A_cluster_DIAG_AR1_focal,LR,58.8596449991901,58.8596449991901,PASS,abs <= 0.00015885964
+A_cluster_DIAG_AR1_focal,p,1.69329703240317e-14,1.69329703240317e-14,PASS,log10 abs<=.001
+A_cluster_DIAG_AR1_focal,log10_p,-13.7712668527483,-13.7712668527483,PASS,log10 abs<=.001
+B_cluster_DIAG_AR1,n,960.0,960.0,PASS,exact
+B_cluster_DIAG_AR1,participants,160.0,160.0,PASS,exact
+B_cluster_DIAG_AR1,k,9.0,9.0,PASS,exact
+B_cluster_DIAG_AR1,logLik,-1655.85627437426,-1655.85627437426,PASS,abs <= 0.0017558563
+B_cluster_DIAG_AR1,AIC,3329.71254874852,3329.71254874852,PASS,abs <= 0.0034297125
+B_cluster_DIAG_AR1,BIC,3373.47736996598,3373.47736996598,PASS,abs <= 0.0034734774
+B_cluster_DIAG_AR1,BIC_n,956.0,956.0,PASS,exact
+B_cluster_DIAG_AR1,observed_clusters,20.0,20.0,PASS,exact
+B_cluster_DIAG_AR1,modeled_clusters,20.0,20.0,PASS,exact
+B_cluster_DIAG_AR1,residual_variance,1.20807499280564,1.20807499280564,PASS,abs <= 0.0002208075
+B_cluster_DIAG_AR1,cov:PID:(Intercept):variance,2.2953540879531,2.2953540879531,PASS,abs <= 0.00032953541
+B_cluster_DIAG_AR1,cov:PID:(Intercept):TIME,0.0,0.0,PASS,abs <= 0.0001
+B_cluster_DIAG_AR1,cov:PID:TIME:variance,0.143158458630408,0.143158458630408,PASS,abs <= 0.00011431585
+B_cluster_DIAG_AR1,cov:SCHOOL:(Intercept):variance,7.21215351893082,7.21215351893082,PASS,abs <= 0.00082121535
+B_cluster_DIAG_AR1,phi,0.401068321096177,0.401068321096177,PASS,abs <= 0.00014010683
+B_cluster_DIAG_AR1,beta:(Intercept),19.3969279092734,19.3969279092734,PASS,abs <= 0.00011939693
+B_cluster_DIAG_AR1,se:(Intercept),0.633348651609127,0.633348651609127,PASS,abs <= 0.00016333487
+B_cluster_DIAG_AR1,wald_p:(Intercept),8.08566037173077e-137,8.08566037173077e-137,PASS,log10 abs<=.001
+B_cluster_DIAG_AR1,beta:TIME,0.419103257440588,0.419103257440588,PASS,abs <= 0.0001004191
+B_cluster_DIAG_AR1,se:TIME,0.0539658888217634,0.0539658888217634,PASS,abs <= 0.00010539659
+B_cluster_DIAG_AR1,wald_p:TIME,2.48455941603239e-14,2.48455941603239e-14,PASS,log10 abs<=.001
+B_cluster_DIAG_AR1,beta:GROUP1,1.04314285798694,1.04314285798694,PASS,abs <= 0.00010104314
+B_cluster_DIAG_AR1,se:GROUP1,0.284685224585188,0.284685224585188,PASS,abs <= 0.00012846852
+B_cluster_DIAG_AR1,wald_p:GROUP1,0.000352000223298119,0.000352000223298119,PASS,log10 abs<=.001
+B_cluster_DIAG_AR1,beta:TIME:GROUP1,0.636075420195599,0.636075420195599,PASS,abs <= 0.00010063608
+B_cluster_DIAG_AR1,se:TIME:GROUP1,0.0763192918772562,0.0763192918772562,PASS,abs <= 0.00010763193
+B_cluster_DIAG_AR1,wald_p:TIME:GROUP1,3.39004477900872e-16,3.39004477900872e-16,PASS,log10 abs<=.001
+B_cluster_DIAG_AR1,R2_marginal,0.231205836543097,0.231205836543097,PASS,abs <= 0.00012312058
+B_cluster_DIAG_AR1,R2_conditional,0.922782577331339,0.922782577331339,PASS,abs <= 0.00019227826
+A_cluster_DIAG_CAR1_full,n,960.0,960.0,PASS,exact
+A_cluster_DIAG_CAR1_full,participants,160.0,160.0,PASS,exact
+A_cluster_DIAG_CAR1_full,k,9.0,9.0,PASS,exact
+A_cluster_DIAG_CAR1_full,logLik,-1651.89772872987,-1651.89772872987,PASS,abs <= 0.0017518977
+A_cluster_DIAG_CAR1_full,AIC,3321.79545745975,3321.79545745975,PASS,abs <= 0.0034217955
+A_cluster_DIAG_CAR1_full,BIC,3365.5978570199,3365.5978570199,PASS,abs <= 0.0034655979
+A_cluster_DIAG_CAR1_full,BIC_n,960.0,960.0,PASS,exact
+A_cluster_DIAG_CAR1_full,observed_clusters,20.0,20.0,PASS,exact
+A_cluster_DIAG_CAR1_full,modeled_clusters,20.0,20.0,PASS,exact
+A_cluster_DIAG_CAR1_full,residual_variance,1.2038162406897,1.2038162406897,PASS,abs <= 0.00022038162
+A_cluster_DIAG_CAR1_full,cov:PID:(Intercept):variance,2.28140696304848,2.28140696304848,PASS,abs <= 0.0003281407
+A_cluster_DIAG_CAR1_full,cov:PID:(Intercept):TIME,0.0,0.0,PASS,abs <= 0.0001
+A_cluster_DIAG_CAR1_full,cov:PID:TIME:variance,0.140905355241357,0.140905355241357,PASS,abs <= 0.00011409054
+A_cluster_DIAG_CAR1_full,cov:SCHOOL:(Intercept):variance,6.83637386926469,6.83637386926469,PASS,abs <= 0.00078363739
+A_cluster_DIAG_CAR1_full,phi,0.399235318831334,0.399235318831334,PASS,abs <= 0.00013992353
+A_cluster_DIAG_CAR1_full,beta:(Intercept),19.3968125954573,19.3968125954573,PASS,abs <= 0.00011939681
+A_cluster_DIAG_CAR1_full,se:(Intercept),0.619440807479905,0.619440807479905,PASS,abs <= 0.00016194408
+A_cluster_DIAG_CAR1_full,wald_p:(Intercept),5.06230519392429e-141,5.06230519392429e-141,PASS,log10 abs<=.001
+A_cluster_DIAG_CAR1_full,beta:TIME,0.419136296707975,0.419136296707975,PASS,abs <= 0.00010041914
+A_cluster_DIAG_CAR1_full,se:TIME,0.0537749761705738,0.0537749761705738,PASS,abs <= 0.0001053775
+A_cluster_DIAG_CAR1_full,wald_p:TIME,2.01982470766646e-14,2.01982470766646e-14,PASS,log10 abs<=.001
+A_cluster_DIAG_CAR1_full,beta:GROUP1,1.04337727299695,1.04337727299695,PASS,abs <= 0.00010104338
+A_cluster_DIAG_CAR1_full,se:GROUP1,0.284457437131763,0.284457437131763,PASS,abs <= 0.00012844574
+A_cluster_DIAG_CAR1_full,wald_p:GROUP1,0.000347320300818561,0.000347320300818561,PASS,log10 abs<=.001
+A_cluster_DIAG_CAR1_full,beta:TIME:GROUP1,0.636011706422895,0.636011706422895,PASS,abs <= 0.00010063601
+A_cluster_DIAG_CAR1_full,se:TIME:GROUP1,0.076049300616715,0.076049300616715,PASS,abs <= 0.00010760493
+A_cluster_DIAG_CAR1_full,wald_p:TIME:GROUP1,2.71017658307863e-16,2.71017658307863e-16,PASS,log10 abs<=.001
+A_cluster_DIAG_CAR1_full,R2_marginal,0.237502505625421,0.237502505625421,PASS,abs <= 0.00012375025
+A_cluster_DIAG_CAR1_full,R2_conditional,0.920960240428759,0.920960240428759,PASS,abs <= 0.00019209602
+A_cluster_DIAG_CAR1_reduced,n,960.0,960.0,PASS,exact
+A_cluster_DIAG_CAR1_reduced,participants,160.0,160.0,PASS,exact
+A_cluster_DIAG_CAR1_reduced,k,8.0,8.0,PASS,exact
+A_cluster_DIAG_CAR1_reduced,logLik,-1681.32755128193,-1681.32755128193,PASS,abs <= 0.0017813276
+A_cluster_DIAG_CAR1_reduced,AIC,3378.65510256387,3378.65510256387,PASS,abs <= 0.0034786551
+A_cluster_DIAG_CAR1_reduced,BIC,3417.59056883956,3417.59056883956,PASS,abs <= 0.0035175906
+A_cluster_DIAG_CAR1_reduced,BIC_n,960.0,960.0,PASS,exact
+A_cluster_DIAG_CAR1_reduced,observed_clusters,20.0,20.0,PASS,exact
+A_cluster_DIAG_CAR1_reduced,modeled_clusters,20.0,20.0,PASS,exact
+A_cluster_DIAG_CAR1_reduced,residual_variance,1.25914964892761,1.25914964892761,PASS,abs <= 0.00022591496
+A_cluster_DIAG_CAR1_reduced,cov:PID:(Intercept):variance,2.11168791027566,2.11168791027566,PASS,abs <= 0.00031116879
+A_cluster_DIAG_CAR1_reduced,cov:PID:(Intercept):TIME,0.0,0.0,PASS,abs <= 0.0001
+A_cluster_DIAG_CAR1_reduced,cov:PID:TIME:variance,0.231996391973964,0.231996391973964,PASS,abs <= 0.00012319964
+A_cluster_DIAG_CAR1_reduced,cov:SCHOOL:(Intercept):variance,6.77199451663252,6.77199451663252,PASS,abs <= 0.00077719945
+A_cluster_DIAG_CAR1_reduced,phi,0.419851982149894,0.419851982149894,PASS,abs <= 0.0001419852
+A_cluster_DIAG_CAR1_reduced,beta:(Intercept),19.1686191555921,19.1686191555921,PASS,abs <= 0.00011916862
+A_cluster_DIAG_CAR1_reduced,se:(Intercept),0.614518707530512,0.614518707530512,PASS,abs <= 0.00016145187
+A_cluster_DIAG_CAR1_reduced,wald_p:(Intercept),2.4364225471416e-140,2.4364225471416e-140,PASS,log10 abs<=.001
+A_cluster_DIAG_CAR1_reduced,beta:TIME,0.737128827098528,0.737128827098528,PASS,abs <= 0.00010073713
+A_cluster_DIAG_CAR1_reduced,se:TIME,0.0452091144017824,0.0452091144017824,PASS,abs <= 0.00010452091
+A_cluster_DIAG_CAR1_reduced,wald_p:TIME,8.24400167506573e-52,8.24400167506573e-52,PASS,log10 abs<=.001
+A_cluster_DIAG_CAR1_reduced,beta:GROUP1,1.49971977719195,1.49971977719195,PASS,abs <= 0.00010149972
+A_cluster_DIAG_CAR1_reduced,se:GROUP1,0.271698304058211,0.271698304058211,PASS,abs <= 0.00012716983
+A_cluster_DIAG_CAR1_reduced,wald_p:GROUP1,1.61100950557324e-07,1.61100950557324e-07,PASS,log10 abs<=.001
+A_cluster_DIAG_CAR1_reduced,R2_marginal,0.149064197912005,0.149064197912005,PASS,abs <= 0.00011490642
+A_cluster_DIAG_CAR1_reduced,R2_conditional,0.912673009129302,0.912673009129302,PASS,abs <= 0.0001912673
+A_cluster_DIAG_CAR1_focal,LR_raw,58.8596451041221,58.8596451041221,PASS,abs <= 0.00015885965
+A_cluster_DIAG_CAR1_focal,df,1.0,1.0,PASS,exact
+A_cluster_DIAG_CAR1_focal,LR,58.8596451041221,58.8596451041221,PASS,abs <= 0.00015885965
+A_cluster_DIAG_CAR1_focal,p,1.69329694210065e-14,1.69329694210065e-14,PASS,log10 abs<=.001
+A_cluster_DIAG_CAR1_focal,log10_p,-13.771266875909,-13.771266875909,PASS,log10 abs<=.001
+B_cluster_DIAG_CAR1,n,960.0,960.0,PASS,exact
+B_cluster_DIAG_CAR1,participants,160.0,160.0,PASS,exact
+B_cluster_DIAG_CAR1,k,9.0,9.0,PASS,exact
+B_cluster_DIAG_CAR1,logLik,-1655.85627428074,-1655.85627428074,PASS,abs <= 0.0017558563
+B_cluster_DIAG_CAR1,AIC,3329.71254856148,3329.71254856148,PASS,abs <= 0.0034297125
+B_cluster_DIAG_CAR1,BIC,3373.47736977895,3373.47736977895,PASS,abs <= 0.0034734774
+B_cluster_DIAG_CAR1,BIC_n,956.0,956.0,PASS,exact
+B_cluster_DIAG_CAR1,observed_clusters,20.0,20.0,PASS,exact
+B_cluster_DIAG_CAR1,modeled_clusters,20.0,20.0,PASS,exact
+B_cluster_DIAG_CAR1,residual_variance,1.2080587014942,1.2080587014942,PASS,abs <= 0.00022080587
+B_cluster_DIAG_CAR1,cov:PID:(Intercept):variance,2.29543314193897,2.29543314193897,PASS,abs <= 0.00032954331
+B_cluster_DIAG_CAR1,cov:PID:(Intercept):TIME,0.0,0.0,PASS,abs <= 0.0001
+B_cluster_DIAG_CAR1,cov:PID:TIME:variance,0.143161224115182,0.143161224115182,PASS,abs <= 0.00011431612
+B_cluster_DIAG_CAR1,cov:SCHOOL:(Intercept):variance,7.21139410660873,7.21139410660873,PASS,abs <= 0.00082113941
+B_cluster_DIAG_CAR1,phi,0.401062348018152,0.401062348018152,PASS,abs <= 0.00014010623
+B_cluster_DIAG_CAR1,beta:(Intercept),19.3969275332805,19.3969275332805,PASS,abs <= 0.00011939693
+B_cluster_DIAG_CAR1,se:(Intercept),0.633319284244238,0.633319284244238,PASS,abs <= 0.00016333193
+B_cluster_DIAG_CAR1,wald_p:(Intercept),7.92550388773601e-137,7.92550388773601e-137,PASS,log10 abs<=.001
+B_cluster_DIAG_CAR1,beta:TIME,0.419103365123495,0.419103365123495,PASS,abs <= 0.0001004191
+B_cluster_DIAG_CAR1,se:TIME,0.0539660539376132,0.0539660539376132,PASS,abs <= 0.00010539661
+B_cluster_DIAG_CAR1,wald_p:TIME,2.48495617596496e-14,2.48495617596496e-14,PASS,log10 abs<=.001
+B_cluster_DIAG_CAR1,beta:GROUP1,1.04314362236298,1.04314362236298,PASS,abs <= 0.00010104314
+B_cluster_DIAG_CAR1,se:GROUP1,0.284687936046472,0.284687936046472,PASS,abs <= 0.00012846879
+B_cluster_DIAG_CAR1,wald_p:GROUP1,0.000352040593592845,0.000352040593592845,PASS,log10 abs<=.001
+B_cluster_DIAG_CAR1,beta:TIME:GROUP1,0.636075212537121,0.636075212537121,PASS,abs <= 0.00010063608
+B_cluster_DIAG_CAR1,se:TIME:GROUP1,0.0763195253863305,0.0763195253863305,PASS,abs <= 0.00010763195
+B_cluster_DIAG_CAR1,wald_p:TIME:GROUP1,3.39078861941391e-16,3.39078861941391e-16,PASS,log10 abs<=.001
+B_cluster_DIAG_CAR1,R2_marginal,0.231215764757479,0.231215764757479,PASS,abs <= 0.00012312158
+B_cluster_DIAG_CAR1,R2_conditional,0.922780306022744,0.922780306022744,PASS,abs <= 0.00019227803
+A_cluster_RS_independent_full,n,960.0,960.0,PASS,exact
+A_cluster_RS_independent_full,participants,160.0,160.0,PASS,exact
+A_cluster_RS_independent_full,k,9.0,9.0,PASS,exact
+A_cluster_RS_independent_full,logLik,-1670.53298954124,-1670.53298954124,PASS,abs <= 0.001770533
+A_cluster_RS_independent_full,AIC,3359.06597908247,3359.06597908247,PASS,abs <= 0.003459066
+A_cluster_RS_independent_full,BIC,3402.86837864263,3402.86837864263,PASS,abs <= 0.0035028684
+A_cluster_RS_independent_full,BIC_n,960.0,960.0,PASS,exact
+A_cluster_RS_independent_full,observed_clusters,20.0,20.0,PASS,exact
+A_cluster_RS_independent_full,modeled_clusters,20.0,20.0,PASS,exact
+A_cluster_RS_independent_full,residual_variance,0.834439976422266,0.834439976422266,PASS,abs <= 0.000183444
+A_cluster_RS_independent_full,singular,0.0,0.0,PASS,exact
+A_cluster_RS_independent_full,cov:PID:(Intercept):variance,2.53886206073958,2.53886206073958,PASS,abs <= 0.00035388621
+A_cluster_RS_independent_full,cov:PID:TIME:variance,0.168914237195891,0.168914237195891,PASS,abs <= 0.00011689142
+A_cluster_RS_independent_full,cov:PID:(Intercept):TIME,0.0590594064571988,0.0590594064571988,PASS,abs <= 0.00010590594
+A_cluster_RS_independent_full,cov:SCHOOL:(Intercept):variance,6.72306786545574,6.72306786545574,PASS,abs <= 0.00077230679
+A_cluster_RS_independent_full,beta:(Intercept),19.3749048025772,19.3749048025772,PASS,abs <= 0.0001193749
+A_cluster_RS_independent_full,se:(Intercept),0.611025992995317,0.611025992995317,PASS,abs <= 0.0001611026
+A_cluster_RS_independent_full,beta:TIME,0.425811267684385,0.425811267684385,PASS,abs <= 0.00010042581
+A_cluster_RS_independent_full,se:TIME,0.0520332251502434,0.0520332251502434,PASS,abs <= 0.00010520332
+A_cluster_RS_independent_full,beta:GROUP1,1.08754616179541,1.08754616179541,PASS,abs <= 0.00010108755
+A_cluster_RS_independent_full,se:GROUP1,0.272761327328355,0.272761327328355,PASS,abs <= 0.00012727613
+A_cluster_RS_independent_full,beta:TIME:GROUP1,0.623139520769268,0.623139520769268,PASS,abs <= 0.00010062314
+A_cluster_RS_independent_full,se:TIME:GROUP1,0.0735860927014873,0.0735860927014873,PASS,abs <= 0.00010735861
+A_cluster_RS_independent_full,R2_marginal,0.232761541421486,0.232761541421486,PASS,abs <= 0.00012327615
+A_cluster_RS_independent_full,R2_conditional,0.946380913110449,0.946380913110449,PASS,abs <= 0.00019463809
+A_cluster_RS_independent_reduced,n,960.0,960.0,PASS,exact
+A_cluster_RS_independent_reduced,participants,160.0,160.0,PASS,exact
+A_cluster_RS_independent_reduced,k,8.0,8.0,PASS,exact
+A_cluster_RS_independent_reduced,logLik,-1700.15818596571,-1700.15818596571,PASS,abs <= 0.0018001582
+A_cluster_RS_independent_reduced,AIC,3416.31637193141,3416.31637193141,PASS,abs <= 0.0035163164
+A_cluster_RS_independent_reduced,BIC,3455.25183820711,3455.25183820711,PASS,abs <= 0.0035552518
+A_cluster_RS_independent_reduced,BIC_n,960.0,960.0,PASS,exact
+A_cluster_RS_independent_reduced,observed_clusters,20.0,20.0,PASS,exact
+A_cluster_RS_independent_reduced,modeled_clusters,20.0,20.0,PASS,exact
+A_cluster_RS_independent_reduced,residual_variance,0.834438428694423,0.834438428694423,PASS,abs <= 0.00018344384
+A_cluster_RS_independent_reduced,singular,0.0,0.0,PASS,exact
+A_cluster_RS_independent_reduced,cov:PID:(Intercept):variance,2.54639200938194,2.54639200938194,PASS,abs <= 0.0003546392
+A_cluster_RS_independent_reduced,cov:PID:TIME:variance,0.26598904218639,0.26598904218639,PASS,abs <= 0.0001265989
+A_cluster_RS_independent_reduced,cov:PID:(Intercept):TIME,0.0321048674284939,0.0321048674284939,PASS,abs <= 0.00010321049
+A_cluster_RS_independent_reduced,cov:SCHOOL:(Intercept):variance,6.72306020407219,6.72306020407219,PASS,abs <= 0.00077230602
+A_cluster_RS_independent_reduced,beta:(Intercept),19.2883877211693,19.2883877211693,PASS,abs <= 0.00011928839
+A_cluster_RS_independent_reduced,se:(Intercept),0.610978994286202,0.610978994286202,PASS,abs <= 0.0001610979
+A_cluster_RS_independent_reduced,beta:TIME,0.737381028069521,0.737381028069521,PASS,abs <= 0.00010073738
+A_cluster_RS_independent_reduced,se:TIME,0.0442769154097103,0.0442769154097103,PASS,abs <= 0.00010442769
+A_cluster_RS_independent_reduced,beta:GROUP1,1.2605803246277,1.2605803246277,PASS,abs <= 0.00010126058
+A_cluster_RS_independent_reduced,se:GROUP1,0.271996902345233,0.271996902345233,PASS,abs <= 0.00012719969
+A_cluster_RS_independent_reduced,R2_marginal,0.135160239019924,0.135160239019924,PASS,abs <= 0.00011351602
+A_cluster_RS_independent_reduced,R2_conditional,0.943188574631256,0.943188574631256,PASS,abs <= 0.00019431886
+A_cluster_RS_independent_focal,LR_raw,59.2503928489423,59.2503928489423,PASS,abs <= 0.00015925039
+A_cluster_RS_independent_focal,df,1.0,1.0,PASS,exact
+A_cluster_RS_independent_focal,LR,59.2503928489423,59.2503928489423,PASS,abs <= 0.00015925039
+A_cluster_RS_independent_focal,p,1.38832619536978e-14,1.38832619536978e-14,PASS,log10 abs<=.001
+A_cluster_RS_independent_focal,log10_p,-13.85750848186,-13.85750848186,PASS,log10 abs<=.001
+B_cluster_RS_independent,n,960.0,960.0,PASS,exact
+B_cluster_RS_independent,participants,160.0,160.0,PASS,exact
+B_cluster_RS_independent,k,9.0,9.0,PASS,exact
+B_cluster_RS_independent,logLik,-1674.5684781209,-1674.5684781209,PASS,abs <= 0.0017745685
+B_cluster_RS_independent,AIC,3367.13695624179,3367.13695624179,PASS,abs <= 0.003467137
+B_cluster_RS_independent,BIC,3410.93935580195,3410.93935580195,PASS,abs <= 0.0035109394
+B_cluster_RS_independent,BIC_n,960.0,960.0,PASS,exact
+B_cluster_RS_independent,observed_clusters,20.0,20.0,PASS,exact
+B_cluster_RS_independent,modeled_clusters,20.0,20.0,PASS,exact
+B_cluster_RS_independent,residual_variance,0.834439075763805,0.834439075763805,PASS,abs <= 0.00018344391
+B_cluster_RS_independent,singular,0.0,0.0,PASS,exact
+B_cluster_RS_independent,cov:PID:(Intercept):variance,2.56052983545231,2.56052983545231,PASS,abs <= 0.00035605298
+B_cluster_RS_independent,cov:PID:TIME:variance,0.17165464695557,0.17165464695557,PASS,abs <= 0.00011716546
+B_cluster_RS_independent,cov:PID:(Intercept):TIME,0.0580273737561169,0.0580273737561169,PASS,abs <= 0.00010580274
+B_cluster_RS_independent,cov:SCHOOL:(Intercept):variance,7.09408480014483,7.09408480014483,PASS,abs <= 0.00080940848
+B_cluster_RS_independent,beta:(Intercept),19.3749048025864,19.3749048025864,PASS,abs <= 0.0001193749
+B_cluster_RS_independent,se:(Intercept),0.626238334931112,0.626238334931112,PASS,abs <= 0.00016262383
+B_cluster_RS_independent,beta:TIME,0.425811267684358,0.425811267684358,PASS,abs <= 0.00010042581
+B_cluster_RS_independent,se:TIME,0.0523613502328236,0.0523613502328236,PASS,abs <= 0.00010523614
+B_cluster_RS_independent,beta:GROUP1,1.0875461617944,1.0875461617944,PASS,abs <= 0.00010108755
+B_cluster_RS_independent,se:GROUP1,0.273752487220496,0.273752487220496,PASS,abs <= 0.00012737525
+B_cluster_RS_independent,beta:TIME:GROUP1,0.623139520769316,0.623139520769316,PASS,abs <= 0.00010062314
+B_cluster_RS_independent,se:TIME:GROUP1,0.074050131643427,0.074050131643427,PASS,abs <= 0.00010740501
+B_cluster_RS_independent,R2_marginal,0.226749172397361,0.226749172397361,PASS,abs <= 0.00012267492
+B_cluster_RS_independent,R2_conditional,0.94776598238802,0.94776598238802,PASS,abs <= 0.0001947766
+A_cluster_RS_AR1_full,n,960.0,960.0,PASS,exact
+A_cluster_RS_AR1_full,participants,160.0,160.0,PASS,exact
+A_cluster_RS_AR1_full,k,10.0,10.0,PASS,exact
+A_cluster_RS_AR1_full,logLik,-1647.9521623673,-1647.9521623673,PASS,abs <= 0.0017479522
+A_cluster_RS_AR1_full,AIC,3315.90432473459,3315.90432473459,PASS,abs <= 0.0034159043
+A_cluster_RS_AR1_full,BIC,3364.57365757921,3364.57365757921,PASS,abs <= 0.0034645737
+A_cluster_RS_AR1_full,BIC_n,960.0,960.0,PASS,exact
+A_cluster_RS_AR1_full,observed_clusters,20.0,20.0,PASS,exact
+A_cluster_RS_AR1_full,modeled_clusters,20.0,20.0,PASS,exact
+A_cluster_RS_AR1_full,residual_variance,1.47659201024696,1.47659201024696,PASS,abs <= 0.0002476592
+A_cluster_RS_AR1_full,cov:PID:(Intercept):variance,1.65772342039456,1.65772342039456,PASS,abs <= 0.00026577234
+A_cluster_RS_AR1_full,cov:PID:(Intercept):TIME,0.235853479406576,0.235853479406576,PASS,abs <= 0.00012358535
+A_cluster_RS_AR1_full,cov:PID:TIME:variance,0.0986661928112273,0.0986661928112273,PASS,abs <= 0.00010986662
+A_cluster_RS_AR1_full,cov:SCHOOL:(Intercept):variance,6.63242854452044,6.63242854452044,PASS,abs <= 0.00076324285
+A_cluster_RS_AR1_full,phi,0.498675699695241,0.498675699695241,PASS,abs <= 0.00014986757
+A_cluster_RS_AR1_full,beta:(Intercept),19.4032704758445,19.4032704758445,PASS,abs <= 0.00011940327
+A_cluster_RS_AR1_full,se:(Intercept),0.607816920828329,0.607816920828329,PASS,abs <= 0.00016078169
+A_cluster_RS_AR1_full,wald_p:(Intercept),9.67743351710921e-145,9.67743351710921e-145,PASS,log10 abs<=.001
+A_cluster_RS_AR1_full,beta:TIME,0.417332276882646,0.417332276882646,PASS,abs <= 0.00010041733
+A_cluster_RS_AR1_full,se:TIME,0.0512711765976037,0.0512711765976037,PASS,abs <= 0.00010512712
+A_cluster_RS_AR1_full,wald_p:TIME,1.51802698308325e-15,1.51802698308325e-15,PASS,log10 abs<=.001
+A_cluster_RS_AR1_full,beta:GROUP1,1.03020683792144,1.03020683792144,PASS,abs <= 0.00010103021
+A_cluster_RS_AR1_full,se:GROUP1,0.269934972416678,0.269934972416678,PASS,abs <= 0.0001269935
+A_cluster_RS_AR1_full,wald_p:GROUP1,0.000203051255734504,0.000203051255734504,PASS,log10 abs<=.001
+A_cluster_RS_AR1_full,beta:TIME:GROUP1,0.639490624637837,0.639490624637837,PASS,abs <= 0.00010063949
+A_cluster_RS_AR1_full,se:TIME:GROUP1,0.0725083933031575,0.0725083933031575,PASS,abs <= 0.00010725084
+A_cluster_RS_AR1_full,wald_p:TIME:GROUP1,7.14245432684341e-18,7.14245432684341e-18,PASS,log10 abs<=.001
+A_cluster_RS_AR1_full,R2_marginal,0.233714884598242,0.233714884598242,PASS,abs <= 0.00012337149
+A_cluster_RS_AR1_full,R2_conditional,0.904519209115806,0.904519209115806,PASS,abs <= 0.00019045192
+A_cluster_RS_AR1_reduced,n,960.0,960.0,PASS,exact
+A_cluster_RS_AR1_reduced,participants,160.0,160.0,PASS,exact
+A_cluster_RS_AR1_reduced,k,9.0,9.0,PASS,exact
+A_cluster_RS_AR1_reduced,logLik,-1679.71261846777,-1679.71261846777,PASS,abs <= 0.0017797126
+A_cluster_RS_AR1_reduced,AIC,3377.42523693554,3377.42523693554,PASS,abs <= 0.0034774252
+A_cluster_RS_AR1_reduced,BIC,3421.22763649569,3421.22763649569,PASS,abs <= 0.0035212276
+A_cluster_RS_AR1_reduced,BIC_n,960.0,960.0,PASS,exact
+A_cluster_RS_AR1_reduced,observed_clusters,20.0,20.0,PASS,exact
+A_cluster_RS_AR1_reduced,modeled_clusters,20.0,20.0,PASS,exact
+A_cluster_RS_AR1_reduced,residual_variance,1.40061259182971,1.40061259182971,PASS,abs <= 0.00024006126
+A_cluster_RS_AR1_reduced,cov:PID:(Intercept):variance,1.74773028293832,1.74773028293832,PASS,abs <= 0.00027477303
+A_cluster_RS_AR1_reduced,cov:PID:(Intercept):TIME,0.201717254391129,0.201717254391129,PASS,abs <= 0.00012017173
+A_cluster_RS_AR1_reduced,cov:PID:TIME:variance,0.206331868196956,0.206331868196956,PASS,abs <= 0.00012063319
+A_cluster_RS_AR1_reduced,cov:SCHOOL:(Intercept):variance,6.63630485096385,6.63630485096385,PASS,abs <= 0.00076363049
+A_cluster_RS_AR1_reduced,phi,0.472207742369744,0.472207742369744,PASS,abs <= 0.00014722077
+A_cluster_RS_AR1_reduced,beta:(Intercept),19.3388524617882,19.3388524617882,PASS,abs <= 0.00011933885
+A_cluster_RS_AR1_reduced,se:(Intercept),0.607638095207056,0.607638095207056,PASS,abs <= 0.00016076381
+A_cluster_RS_AR1_reduced,wald_p:(Intercept),3.29701575870169e-144,3.29701575870169e-144,PASS,log10 abs<=.001
+A_cluster_RS_AR1_reduced,beta:TIME,0.73709482055035,0.73709482055035,PASS,abs <= 0.00010073709
+A_cluster_RS_AR1_reduced,se:TIME,0.0441903221612832,0.0441903221612832,PASS,abs <= 0.00010441903
+A_cluster_RS_AR1_reduced,wald_p:TIME,8.02333037360399e-54,8.02333037360399e-54,PASS,log10 abs<=.001
+A_cluster_RS_AR1_reduced,beta:GROUP1,1.15912132912186,1.15912132912186,PASS,abs <= 0.00010115912
+A_cluster_RS_AR1_reduced,se:GROUP1,0.269419483702764,0.269419483702764,PASS,abs <= 0.00012694195
+A_cluster_RS_AR1_reduced,wald_p:GROUP1,3.16661348810146e-05,3.16661348810146e-05,PASS,log10 abs<=.001
+A_cluster_RS_AR1_reduced,R2_marginal,0.131616597118317,0.131616597118317,PASS,abs <= 0.00011316166
+A_cluster_RS_AR1_reduced,R2_conditional,0.904114609691716,0.904114609691716,PASS,abs <= 0.00019041146
+A_cluster_RS_AR1_focal,LR_raw,63.5209122009437,63.5209122009437,PASS,abs <= 0.00016352091
+A_cluster_RS_AR1_focal,df,1.0,1.0,PASS,exact
+A_cluster_RS_AR1_focal,LR,63.5209122009437,63.5209122009437,PASS,abs <= 0.00016352091
+A_cluster_RS_AR1_focal,p,1.58673385817984e-15,1.58673385817984e-15,PASS,log10 abs<=.001
+A_cluster_RS_AR1_focal,log10_p,-14.7994959110629,-14.7994959110629,PASS,log10 abs<=.001
+B_cluster_RS_AR1,n,960.0,960.0,PASS,exact
+B_cluster_RS_AR1,participants,160.0,160.0,PASS,exact
+B_cluster_RS_AR1,k,10.0,10.0,PASS,exact
+B_cluster_RS_AR1,logLik,-1652.0394070746,-1652.0394070746,PASS,abs <= 0.0017520394
+B_cluster_RS_AR1,AIC,3324.07881414921,3324.07881414921,PASS,abs <= 0.0034240788
+B_cluster_RS_AR1,BIC,3372.70639327972,3372.70639327972,PASS,abs <= 0.0034727064
+B_cluster_RS_AR1,BIC_n,956.0,956.0,PASS,exact
+B_cluster_RS_AR1,observed_clusters,20.0,20.0,PASS,exact
+B_cluster_RS_AR1,modeled_clusters,20.0,20.0,PASS,exact
+B_cluster_RS_AR1,residual_variance,1.47602111281889,1.47602111281889,PASS,abs <= 0.00024760211
+B_cluster_RS_AR1,cov:PID:(Intercept):variance,1.67937954810002,1.67937954810002,PASS,abs <= 0.00026793795
+B_cluster_RS_AR1,cov:PID:(Intercept):TIME,0.23490396511199,0.23490396511199,PASS,abs <= 0.0001234904
+B_cluster_RS_AR1,cov:PID:TIME:variance,0.101359416919831,0.101359416919831,PASS,abs <= 0.00011013594
+B_cluster_RS_AR1,cov:SCHOOL:(Intercept):variance,6.99843531779993,6.99843531779993,PASS,abs <= 0.00079984353
+B_cluster_RS_AR1,phi,0.49848770901837,0.49848770901837,PASS,abs <= 0.00014984877
+B_cluster_RS_AR1,beta:(Intercept),19.4032578805131,19.4032578805131,PASS,abs <= 0.00011940326
+B_cluster_RS_AR1,se:(Intercept),0.621663139948236,0.621663139948236,PASS,abs <= 0.00016216631
+B_cluster_RS_AR1,wald_p:(Intercept),2.11276698974381e-140,2.11276698974381e-140,PASS,log10 abs<=.001
+B_cluster_RS_AR1,beta:TIME,0.417335696104241,0.417335696104241,PASS,abs <= 0.00010041734
+B_cluster_RS_AR1,se:TIME,0.0514871903783467,0.0514871903783467,PASS,abs <= 0.00010514872
+B_cluster_RS_AR1,wald_p:TIME,1.96772269106683e-15,1.96772269106683e-15,PASS,log10 abs<=.001
+B_cluster_RS_AR1,beta:GROUP1,1.03023261666895,1.03023261666895,PASS,abs <= 0.00010103023
+B_cluster_RS_AR1,se:GROUP1,0.270345311334607,0.270345311334607,PASS,abs <= 0.00012703453
+B_cluster_RS_AR1,wald_p:GROUP1,0.00020733275102854,0.00020733275102854,PASS,log10 abs<=.001
+B_cluster_RS_AR1,beta:TIME:GROUP1,0.639484030922995,0.639484030922995,PASS,abs <= 0.00010063948
+B_cluster_RS_AR1,se:TIME:GROUP1,0.0728138829215434,0.0728138829215434,PASS,abs <= 0.00010728139
+B_cluster_RS_AR1,wald_p:TIME:GROUP1,9.6539384790995e-18,9.6539384790995e-18,PASS,log10 abs<=.001
+B_cluster_RS_AR1,R2_marginal,0.227721602319142,0.227721602319142,PASS,abs <= 0.00012277216
+B_cluster_RS_AR1,R2_conditional,0.907003815854215,0.907003815854215,PASS,abs <= 0.00019070038
+A_cluster_RS_CAR1_full,n,960.0,960.0,PASS,exact
+A_cluster_RS_CAR1_full,participants,160.0,160.0,PASS,exact
+A_cluster_RS_CAR1_full,k,10.0,10.0,PASS,exact
+A_cluster_RS_CAR1_full,logLik,-1647.95216236551,-1647.95216236551,PASS,abs <= 0.0017479522
+A_cluster_RS_CAR1_full,AIC,3315.90432473101,3315.90432473101,PASS,abs <= 0.0034159043
+A_cluster_RS_CAR1_full,BIC,3364.57365757563,3364.57365757563,PASS,abs <= 0.0034645737
+A_cluster_RS_CAR1_full,BIC_n,960.0,960.0,PASS,exact
+A_cluster_RS_CAR1_full,observed_clusters,20.0,20.0,PASS,exact
+A_cluster_RS_CAR1_full,modeled_clusters,20.0,20.0,PASS,exact
+A_cluster_RS_CAR1_full,residual_variance,1.47658659860016,1.47658659860016,PASS,abs <= 0.00024765866
+A_cluster_RS_CAR1_full,cov:PID:(Intercept):variance,1.65773042193344,1.65773042193344,PASS,abs <= 0.00026577304
+A_cluster_RS_CAR1_full,cov:PID:(Intercept):TIME,0.235851314960039,0.235851314960039,PASS,abs <= 0.00012358513
+A_cluster_RS_CAR1_full,cov:PID:TIME:variance,0.0986685007270758,0.0986685007270758,PASS,abs <= 0.00010986685
+A_cluster_RS_CAR1_full,cov:SCHOOL:(Intercept):variance,6.63246498825362,6.63246498825362,PASS,abs <= 0.0007632465
+A_cluster_RS_CAR1_full,phi,0.49867516239594,0.49867516239594,PASS,abs <= 0.00014986752
+A_cluster_RS_CAR1_full,beta:(Intercept),19.4032704398434,19.4032704398434,PASS,abs <= 0.00011940327
+A_cluster_RS_CAR1_full,se:(Intercept),0.607818446443449,0.607818446443449,PASS,abs <= 0.00016078184
+A_cluster_RS_CAR1_full,wald_p:(Intercept),9.68832924135538e-145,9.68832924135538e-145,PASS,log10 abs<=.001
+A_cluster_RS_CAR1_full,beta:TIME,0.417332286655143,0.417332286655143,PASS,abs <= 0.00010041733
+A_cluster_RS_CAR1_full,se:TIME,0.0512714099921509,0.0512714099921509,PASS,abs <= 0.00010512714
+A_cluster_RS_CAR1_full,wald_p:TIME,1.51845376245094e-15,1.51845376245094e-15,PASS,log10 abs<=.001
+A_cluster_RS_CAR1_full,beta:GROUP1,1.03020691160491,1.03020691160491,PASS,abs <= 0.00010103021
+A_cluster_RS_CAR1_full,se:GROUP1,0.269935064219618,0.269935064219618,PASS,abs <= 0.00012699351
+A_cluster_RS_CAR1_full,wald_p:GROUP1,0.000203052018388988,0.000203052018388988,PASS,log10 abs<=.001
+A_cluster_RS_CAR1_full,beta:TIME:GROUP1,0.639490605792301,0.639490605792301,PASS,abs <= 0.00010063949
+A_cluster_RS_CAR1_full,se:TIME:GROUP1,0.0725087233728905,0.0725087233728905,PASS,abs <= 0.00010725087
+A_cluster_RS_CAR1_full,wald_p:TIME:GROUP1,7.14480306798485e-18,7.14480306798485e-18,PASS,log10 abs<=.001
+A_cluster_RS_CAR1_full,R2_marginal,0.233714154575711,0.233714154575711,PASS,abs <= 0.00012337142
+A_cluster_RS_CAR1_full,R2_conditional,0.904519857786319,0.904519857786319,PASS,abs <= 0.00019045199
+A_cluster_RS_CAR1_reduced,n,960.0,960.0,PASS,exact
+A_cluster_RS_CAR1_reduced,participants,160.0,160.0,PASS,exact
+A_cluster_RS_CAR1_reduced,k,9.0,9.0,PASS,exact
+A_cluster_RS_CAR1_reduced,logLik,-1679.71261847025,-1679.71261847025,PASS,abs <= 0.0017797126
+A_cluster_RS_CAR1_reduced,AIC,3377.4252369405,3377.4252369405,PASS,abs <= 0.0034774252
+A_cluster_RS_CAR1_reduced,BIC,3421.22763650066,3421.22763650066,PASS,abs <= 0.0035212276
+A_cluster_RS_CAR1_reduced,BIC_n,960.0,960.0,PASS,exact
+A_cluster_RS_CAR1_reduced,observed_clusters,20.0,20.0,PASS,exact
+A_cluster_RS_CAR1_reduced,modeled_clusters,20.0,20.0,PASS,exact
+A_cluster_RS_CAR1_reduced,residual_variance,1.40060764987272,1.40060764987272,PASS,abs <= 0.00024006076
+A_cluster_RS_CAR1_reduced,cov:PID:(Intercept):variance,1.74774168263712,1.74774168263712,PASS,abs <= 0.00027477417
+A_cluster_RS_CAR1_reduced,cov:PID:(Intercept):TIME,0.201710622078109,0.201710622078109,PASS,abs <= 0.00012017106
+A_cluster_RS_CAR1_reduced,cov:PID:TIME:variance,0.206332075436881,0.206332075436881,PASS,abs <= 0.00012063321
+A_cluster_RS_CAR1_reduced,cov:SCHOOL:(Intercept):variance,6.63630561613827,6.63630561613827,PASS,abs <= 0.00076363056
+A_cluster_RS_CAR1_reduced,phi,0.472205994788898,0.472205994788898,PASS,abs <= 0.0001472206
+A_cluster_RS_CAR1_reduced,beta:(Intercept),19.3388464799491,19.3388464799491,PASS,abs <= 0.00011933885
+A_cluster_RS_CAR1_reduced,se:(Intercept),0.607638175490993,0.607638175490993,PASS,abs <= 0.00016076382
+A_cluster_RS_CAR1_reduced,wald_p:(Intercept),3.29766655512015e-144,3.29766655512015e-144,PASS,log10 abs<=.001
+A_cluster_RS_CAR1_reduced,beta:TIME,0.737094821687891,0.737094821687891,PASS,abs <= 0.00010073709
+A_cluster_RS_CAR1_reduced,se:TIME,0.0441903102989224,0.0441903102989224,PASS,abs <= 0.00010441903
+A_cluster_RS_CAR1_reduced,wald_p:TIME,8.02288177967523e-54,8.02288177967523e-54,PASS,log10 abs<=.001
+A_cluster_RS_CAR1_reduced,beta:GROUP1,1.15913329770097,1.15913329770097,PASS,abs <= 0.00010115913
+A_cluster_RS_CAR1_reduced,se:GROUP1,0.269419651211935,0.269419651211935,PASS,abs <= 0.00012694197
+A_cluster_RS_CAR1_reduced,wald_p:GROUP1,3.1660871219079e-05,3.1660871219079e-05,PASS,log10 abs<=.001
+A_cluster_RS_CAR1_reduced,R2_marginal,0.131617226813655,0.131617226813655,PASS,abs <= 0.00011316172
+A_cluster_RS_CAR1_reduced,R2_conditional,0.90411483583119,0.90411483583119,PASS,abs <= 0.00019041148
+A_cluster_RS_CAR1_focal,LR_raw,63.5209122094893,63.5209122094893,PASS,abs <= 0.00016352091
+A_cluster_RS_CAR1_focal,df,1.0,1.0,PASS,exact
+A_cluster_RS_CAR1_focal,LR,63.5209122094893,63.5209122094893,PASS,abs <= 0.00016352091
+A_cluster_RS_CAR1_focal,p,1.58673385129642e-15,1.58673385129642e-15,PASS,log10 abs<=.001
+A_cluster_RS_CAR1_focal,log10_p,-14.7994959129469,-14.7994959129469,PASS,log10 abs<=.001
+B_cluster_RS_CAR1,n,960.0,960.0,PASS,exact
+B_cluster_RS_CAR1,participants,160.0,160.0,PASS,exact
+B_cluster_RS_CAR1,k,10.0,10.0,PASS,exact
+B_cluster_RS_CAR1,logLik,-1652.03940707347,-1652.03940707347,PASS,abs <= 0.0017520394
+B_cluster_RS_CAR1,AIC,3324.07881414694,3324.07881414694,PASS,abs <= 0.0034240788
+B_cluster_RS_CAR1,BIC,3372.70639327745,3372.70639327745,PASS,abs <= 0.0034727064
+B_cluster_RS_CAR1,BIC_n,956.0,956.0,PASS,exact
+B_cluster_RS_CAR1,observed_clusters,20.0,20.0,PASS,exact
+B_cluster_RS_CAR1,modeled_clusters,20.0,20.0,PASS,exact
+B_cluster_RS_CAR1,residual_variance,1.47601190697404,1.47601190697404,PASS,abs <= 0.00024760119
+B_cluster_RS_CAR1,cov:PID:(Intercept):variance,1.67940334063,1.67940334063,PASS,abs <= 0.00026794033
+B_cluster_RS_CAR1,cov:PID:(Intercept):TIME,0.23489940349209,0.23489940349209,PASS,abs <= 0.00012348994
+B_cluster_RS_CAR1,cov:PID:TIME:variance,0.101361400240576,0.101361400240576,PASS,abs <= 0.00011013614
+B_cluster_RS_CAR1,cov:SCHOOL:(Intercept):variance,6.99847055052416,6.99847055052416,PASS,abs <= 0.00079984706
+B_cluster_RS_CAR1,phi,0.498485975036952,0.498485975036952,PASS,abs <= 0.0001498486
+B_cluster_RS_CAR1,beta:(Intercept),19.4032577643435,19.4032577643435,PASS,abs <= 0.00011940326
+B_cluster_RS_CAR1,se:(Intercept),0.621664702914307,0.621664702914307,PASS,abs <= 0.00016216647
+B_cluster_RS_CAR1,wald_p:(Intercept),2.11510634442823e-140,2.11510634442823e-140,PASS,log10 abs<=.001
+B_cluster_RS_CAR1,beta:TIME,0.417335727642453,0.417335727642453,PASS,abs <= 0.00010041734
+B_cluster_RS_CAR1,se:TIME,0.0514873491156614,0.0514873491156614,PASS,abs <= 0.00010514873
+B_cluster_RS_CAR1,wald_p:TIME,1.96808725795432e-15,1.96808725795432e-15,PASS,log10 abs<=.001
+B_cluster_RS_CAR1,beta:GROUP1,1.03023285443035,1.03023285443035,PASS,abs <= 0.00010103023
+B_cluster_RS_CAR1,se:GROUP1,0.270345983226398,0.270345983226398,PASS,abs <= 0.0001270346
+B_cluster_RS_CAR1,wald_p:GROUP1,0.000207339271601091,0.000207339271601091,PASS,log10 abs<=.001
+B_cluster_RS_CAR1,beta:TIME:GROUP1,0.639483970103904,0.639483970103904,PASS,abs <= 0.00010063948
+B_cluster_RS_CAR1,se:TIME:GROUP1,0.0728141074100065,0.0728141074100065,PASS,abs <= 0.00010728141
+B_cluster_RS_CAR1,wald_p:TIME:GROUP1,9.65612388960582e-18,9.65612388960582e-18,PASS,log10 abs<=.001
+B_cluster_RS_CAR1,R2_marginal,0.227720956893067,0.227720956893067,PASS,abs <= 0.0001227721
+B_cluster_RS_CAR1,R2_conditional,0.907004661006518,0.907004661006518,PASS,abs <= 0.00019070047
+48A_RI_DIAG,LR_raw,229.428977156251,229.428977156251,PASS,abs <= 0.00032942898
+48A_RI_DIAG,df,1.0,1.0,PASS,exact
+48A_RI_DIAG,LR,229.428977156251,229.428977156251,PASS,abs <= 0.00032942898
+48A_RI_DIAG,p,3.97048726510929e-52,3.97048726510929e-52,PASS,log10 abs<=.001
+48A_RI_DIAG,log10_p,-51.4011561925914,-51.4011561925914,PASS,log10 abs<=.001
+48A_RI_RS,LR_raw,230.082941491761,230.082941491761,PASS,abs <= 0.00033008294
+48A_RI_RS,df,2.0,2.0,PASS,exact
+48A_RI_RS,LR,230.082941491761,230.082941491761,PASS,abs <= 0.00033008294
+48A_RI_RS,p,5.74466764053258e-51,5.74466764053258e-51,PASS,log10 abs<=.001
+48A_RI_RS,log10_p,-50.2407350924862,-50.2407350924862,PASS,log10 abs<=.001
+48A_DIAG_RS,LR_raw,0.653964335510409,0.653964335510409,PASS,abs <= 0.00010065396
+48A_DIAG_RS,df,1.0,1.0,PASS,exact
+48A_DIAG_RS,LR,0.653964335510409,0.653964335510409,PASS,abs <= 0.00010065396
+48A_DIAG_RS,p,0.418698881847472,0.418698881847472,PASS,log10 abs<=.001
+48A_DIAG_RS,log10_p,-0.378098198908438,-0.378098198908438,PASS,log10 abs<=.001
+45A_cluster_RS_AR1,n,960.0,960.0,PASS,exact
+45A_cluster_RS_AR1,participants,160.0,160.0,PASS,exact
+45A_cluster_RS_AR1,k,10.0,10.0,PASS,exact
+45A_cluster_RS_AR1,logLik,-1647.9521623673,-1647.9521623673,PASS,abs <= 0.0017479522
+45A_cluster_RS_AR1,AIC,3315.90432473459,3315.90432473459,PASS,abs <= 0.0034159043
+45A_cluster_RS_AR1,BIC,3364.57365757921,3364.57365757921,PASS,abs <= 0.0034645737
+45A_cluster_RS_AR1,BIC_n,960.0,960.0,PASS,exact
+45A_cluster_RS_AR1,observed_clusters,20.0,20.0,PASS,exact
+45A_cluster_RS_AR1,modeled_clusters,20.0,20.0,PASS,exact
+45A_cluster_RS_AR1,residual_variance,1.47659201024696,1.47659201024696,PASS,abs <= 0.0002476592
+45A_cluster_RS_AR1,cov:PID:(Intercept):variance,1.65772342039456,1.65772342039456,PASS,abs <= 0.00026577234
+45A_cluster_RS_AR1,cov:PID:(Intercept):TIME,0.235853479406576,0.235853479406576,PASS,abs <= 0.00012358535
+45A_cluster_RS_AR1,cov:PID:TIME:variance,0.0986661928112273,0.0986661928112273,PASS,abs <= 0.00010986662
+45A_cluster_RS_AR1,cov:SCHOOL:(Intercept):variance,6.63242854452044,6.63242854452044,PASS,abs <= 0.00076324285
+45A_cluster_RS_AR1,phi,0.498675699695241,0.498675699695241,PASS,abs <= 0.00014986757
+45A_cluster_RS_AR1,beta:(Intercept),19.4032704758445,19.4032704758445,PASS,abs <= 0.00011940327
+45A_cluster_RS_AR1,se:(Intercept),0.607816920828329,0.607816920828329,PASS,abs <= 0.00016078169
+45A_cluster_RS_AR1,wald_p:(Intercept),9.67743351710921e-145,9.67743351710921e-145,PASS,log10 abs<=.001
+45A_cluster_RS_AR1,beta:TIME,0.417332276882646,0.417332276882646,PASS,abs <= 0.00010041733
+45A_cluster_RS_AR1,se:TIME,0.0512711765976037,0.0512711765976037,PASS,abs <= 0.00010512712
+45A_cluster_RS_AR1,wald_p:TIME,1.51802698308325e-15,1.51802698308325e-15,PASS,log10 abs<=.001
+45A_cluster_RS_AR1,beta:GROUP1,1.03020683792144,1.03020683792144,PASS,abs <= 0.00010103021
+45A_cluster_RS_AR1,se:GROUP1,0.269934972416678,0.269934972416678,PASS,abs <= 0.0001269935
+45A_cluster_RS_AR1,wald_p:GROUP1,0.000203051255734504,0.000203051255734504,PASS,log10 abs<=.001
+45A_cluster_RS_AR1,beta:TIME:GROUP1,0.639490624637837,0.639490624637837,PASS,abs <= 0.00010063949
+45A_cluster_RS_AR1,se:TIME:GROUP1,0.0725083933031575,0.0725083933031575,PASS,abs <= 0.00010725084
+45A_cluster_RS_AR1,wald_p:TIME:GROUP1,7.14245432684341e-18,7.14245432684341e-18,PASS,log10 abs<=.001
+45A_cluster_RS_AR1,R2_marginal,0.233714884598242,0.233714884598242,PASS,abs <= 0.00012337149
+45A_cluster_RS_AR1,R2_conditional,0.904519209115806,0.904519209115806,PASS,abs <= 0.00019045192
+45E_participant_RI,n,960.0,960.0,PASS,exact
+45E_participant_RI,participants,160.0,160.0,PASS,exact
+45E_participant_RI,k,6.0,6.0,PASS,exact
+45E_participant_RI,logLik,-1845.60953997332,-1845.60953997332,PASS,abs <= 0.0019456095
+45E_participant_RI,AIC,3703.21907994665,3703.21907994665,PASS,abs <= 0.0038032191
+45E_participant_RI,BIC,3732.39562742495,3732.39562742495,PASS,abs <= 0.0038323956
+45E_participant_RI,BIC_n,956.0,956.0,PASS,exact
+45E_participant_RI,observed_clusters,20.0,20.0,PASS,exact
+45E_participant_RI,modeled_clusters,0.0,0.0,PASS,exact
+45E_participant_RI,residual_variance,1.42920690666592,1.42920690666592,PASS,abs <= 0.00024292069
+45E_participant_RI,cov:PID:(Intercept):variance,11.0742676220882,11.0742676220882,PASS,abs <= 0.0012074268
+45E_participant_RI,beta:(Intercept),19.3749048025685,19.3749048025685,PASS,abs <= 0.0001193749
+45E_participant_RI,se:(Intercept),0.384429769452337,0.384429769452337,PASS,abs <= 0.00013844298
+45E_participant_RI,wald_p:(Intercept),3.42450823188969e-250,3.42450823188969e-250,PASS,log10 abs<=.001
+45E_participant_RI,beta:TIME,0.42581126768457,0.42581126768457,PASS,abs <= 0.00010042581
+45E_participant_RI,se:TIME,0.031950932321138,0.031950932321138,PASS,abs <= 0.00010319509
+45E_participant_RI,wald_p:TIME,9.91396355168232e-37,9.91396355168232e-37,PASS,log10 abs<=.001
+45E_participant_RI,beta:GROUP1,1.08754616179592,1.08754616179592,PASS,abs <= 0.00010108755
+45E_participant_RI,se:GROUP1,0.543665793739456,0.543665793739456,PASS,abs <= 0.00015436658
+45E_participant_RI,wald_p:GROUP1,0.0471707937527023,0.0471707937527023,PASS,log10 abs<=.001
+45E_participant_RI,beta:TIME:GROUP1,0.623139520769149,0.623139520769149,PASS,abs <= 0.00010062314
+45E_participant_RI,se:TIME:GROUP1,0.0451854418190183,0.0451854418190183,PASS,abs <= 0.00010451854
+45E_participant_RI,wald_p:TIME:GROUP1,5.82485187455192e-39,5.82485187455192e-39,PASS,log10 abs<=.001
+45E_participant_RI,R2_marginal,0.224628971574345,0.224628971574345,PASS,abs <= 0.0001224629
+45E_participant_RI,R2_conditional,0.911371385089307,0.911371385089307,PASS,abs <= 0.00019113714
+46A_AR1,n,960.0,960.0,PASS,exact
+46A_AR1,participants,160.0,160.0,PASS,exact
+46A_AR1,k,8.0,8.0,PASS,exact
+46A_AR1,logLik,-1705.88879399556,-1705.88879399556,PASS,abs <= 0.0018058888
+46A_AR1,AIC,3427.77758799113,3427.77758799113,PASS,abs <= 0.0035277776
+46A_AR1,BIC,3466.67965129554,3466.67965129554,PASS,abs <= 0.0035666797
+46A_AR1,BIC_n,956.0,956.0,PASS,exact
+46A_AR1,observed_clusters,20.0,20.0,PASS,exact
+46A_AR1,modeled_clusters,20.0,20.0,PASS,exact
+46A_AR1,residual_variance,3.63371153072023,3.63371153072023,PASS,abs <= 0.00046337115
+46A_AR1,cov:PID:(Intercept):variance,1.79548610577598,1.79548610577598,PASS,abs <= 0.00027954861
+46A_AR1,cov:SCHOOL:(Intercept):variance,7.68970989922974,7.68970989922974,PASS,abs <= 0.00086897099
+46A_AR1,phi,0.766931143024096,0.766931143024096,PASS,abs <= 0.00017669311
+46A_AR1,beta:(Intercept),19.6108506084025,19.6108506084025,PASS,abs <= 0.00011961085
+46A_AR1,se:(Intercept),0.668157607501118,0.668157607501118,PASS,abs <= 0.00016681576
+46A_AR1,wald_p:(Intercept),5.30995059180985e-129,5.30995059180985e-129,PASS,log10 abs<=.001
+46A_AR1,beta:TIME,0.186518413293416,0.186518413293416,PASS,abs <= 0.00010018652
+46A_AR1,se:TIME,0.0243552572247119,0.0243552572247119,PASS,abs <= 0.00010243553
+46A_AR1,wald_p:TIME,5.45558879520464e-14,5.45558879520464e-14,PASS,log10 abs<=.001
+46A_AR1,beta:GROUP1,1.31934247970628,1.31934247970628,PASS,abs <= 0.00010131934
+46A_AR1,se:GROUP1,0.351991742801257,0.351991742801257,PASS,abs <= 0.00013519917
+46A_AR1,wald_p:GROUP1,0.000260362867923334,0.000260362867923334,PASS,log10 abs<=.001
+46A_AR1,beta:TIME:GROUP1,0.28552815951795,0.28552815951795,PASS,abs <= 0.00010028553
+46A_AR1,se:TIME:GROUP1,0.0344435350822729,0.0344435350822729,PASS,abs <= 0.00010344435
+46A_AR1,wald_p:TIME:GROUP1,4.7933289958668e-16,4.7933289958668e-16,PASS,log10 abs<=.001
+46A_AR1,R2_marginal,0.191462221611668,0.191462221611668,PASS,abs <= 0.00011914622
+46A_AR1,R2_conditional,0.776048955269199,0.776048955269199,PASS,abs <= 0.0001776049
+46A_CAR1,n,960.0,960.0,PASS,exact
+46A_CAR1,participants,160.0,160.0,PASS,exact
+46A_CAR1,k,8.0,8.0,PASS,exact
+46A_CAR1,logLik,-1750.758776998,-1750.758776998,PASS,abs <= 0.0018507588
+46A_CAR1,AIC,3517.517553996,3517.517553996,PASS,abs <= 0.0036175176
+46A_CAR1,BIC,3556.41961730041,3556.41961730041,PASS,abs <= 0.0036564196
+46A_CAR1,BIC_n,956.0,956.0,PASS,exact
+46A_CAR1,observed_clusters,20.0,20.0,PASS,exact
+46A_CAR1,modeled_clusters,20.0,20.0,PASS,exact
+46A_CAR1,residual_variance,2.40668314216899,2.40668314216899,PASS,abs <= 0.00034066831
+46A_CAR1,cov:PID:(Intercept):variance,3.29362556692574,3.29362556692574,PASS,abs <= 0.00042936256
+46A_CAR1,cov:SCHOOL:(Intercept):variance,7.72207428252343,7.72207428252343,PASS,abs <= 0.00087220743
+46A_CAR1,phi,0.73724586601947,0.73724586601947,PASS,abs <= 0.00017372459
+46A_CAR1,beta:(Intercept),19.5867170017611,19.5867170017611,PASS,abs <= 0.00011958672
+46A_CAR1,se:(Intercept),0.673310656539056,0.673310656539056,PASS,abs <= 0.00016733107
+46A_CAR1,wald_p:(Intercept),2.10773400289406e-127,2.10773400289406e-127,PASS,log10 abs<=.001
+46A_CAR1,beta:TIME,0.203218291940579,0.203218291940579,PASS,abs <= 0.00010020322
+46A_CAR1,se:TIME,0.023680238671792,0.023680238671792,PASS,abs <= 0.00010236802
+46A_CAR1,wald_p:TIME,4.84164867965228e-17,4.84164867965228e-17,PASS,log10 abs<=.001
+46A_CAR1,beta:GROUP1,1.27266781870339,1.27266781870339,PASS,abs <= 0.00010127267
+46A_CAR1,se:GROUP1,0.366724763502236,0.366724763502236,PASS,abs <= 0.00013667248
+46A_CAR1,wald_p:GROUP1,0.000692676444270922,0.000692676444270922,PASS,log10 abs<=.001
+46A_CAR1,beta:TIME:GROUP1,0.313111952713839,0.313111952713839,PASS,abs <= 0.00010031311
+46A_CAR1,se:TIME:GROUP1,0.03348891468988,0.03348891468988,PASS,abs <= 0.00010334889
+46A_CAR1,wald_p:TIME:GROUP1,8.62711932735002e-20,8.62711932735002e-20,PASS,log10 abs<=.001
+46A_CAR1,R2_marginal,0.206656841653637,0.206656841653637,PASS,abs <= 0.00012066568
+46A_CAR1,R2_conditional,0.857750623988333,0.857750623988333,PASS,abs <= 0.00018577506
+48B_nlme_independent,n,960.0,960.0,PASS,exact
+48B_nlme_independent,participants,160.0,160.0,PASS,exact
+48B_nlme_independent,k,7.0,7.0,PASS,exact
+48B_nlme_independent,logLik,-1822.72662666624,-1822.72662666624,PASS,abs <= 0.0019227266
+48B_nlme_independent,AIC,3659.45325333247,3659.45325333247,PASS,abs <= 0.0037594533
+48B_nlme_independent,BIC,3693.49255872383,3693.49255872383,PASS,abs <= 0.0037934926
+48B_nlme_independent,BIC_n,956.0,956.0,PASS,exact
+48B_nlme_independent,observed_clusters,20.0,20.0,PASS,exact
+48B_nlme_independent,modeled_clusters,20.0,20.0,PASS,exact
+48B_nlme_independent,residual_variance,1.54729025343129,1.54729025343129,PASS,abs <= 0.00025472903
+48B_nlme_independent,cov:PID:(Intercept):variance,3.72197932232554,3.72197932232554,PASS,abs <= 0.00047219793
+48B_nlme_independent,cov:SCHOOL:(Intercept):variance,7.62205278440668,7.62205278440668,PASS,abs <= 0.00086220528
+48B_nlme_independent,beta:(Intercept),19.6284351859197,19.6284351859197,PASS,abs <= 0.00011962844
+48B_nlme_independent,se:(Intercept),0.659570138545199,0.659570138545199,PASS,abs <= 0.00016595701
+48B_nlme_independent,wald_p:(Intercept),1.6487936316853e-131,1.6487936316853e-131,PASS,log10 abs<=.001
+48B_nlme_independent,beta:TIME,0.202749446465053,0.202749446465053,PASS,abs <= 0.00010020275
+48B_nlme_independent,se:TIME,0.0161668363282181,0.0161668363282181,PASS,abs <= 0.00010161668
+48B_nlme_independent,wald_p:TIME,4.64631644989984e-33,4.64631644989984e-33,PASS,log10 abs<=.001
+48B_nlme_independent,beta:GROUP1,1.47221735596386,1.47221735596386,PASS,abs <= 0.00010147222
+48B_nlme_independent,se:GROUP1,0.328420853297103,0.328420853297103,PASS,abs <= 0.00013284209
+48B_nlme_independent,wald_p:GROUP1,1.52824103953475e-05,1.52824103953475e-05,PASS,log10 abs<=.001
+48B_nlme_independent,beta:TIME:GROUP1,0.293294401938734,0.293294401938734,PASS,abs <= 0.00010029329
+48B_nlme_independent,se:TIME:GROUP1,0.0228633591960321,0.0228633591960321,PASS,abs <= 0.00010228634
+48B_nlme_independent,wald_p:TIME:GROUP1,2.20292085499944e-34,2.20292085499944e-34,PASS,log10 abs<=.001
+48B_nlme_independent,R2_marginal,0.214680429051794,0.214680429051794,PASS,abs <= 0.00012146804
+48B_nlme_independent,R2_conditional,0.905741452737857,0.905741452737857,PASS,abs <= 0.00019057415
+48B_ind_AR1,LR_raw,233.675665341346,233.675665341346,PASS,abs <= 0.00033367567
+48B_ind_AR1,df,1.0,1.0,PASS,exact
+48B_ind_AR1,LR,233.675665341346,233.675665341346,PASS,abs <= 0.00033367567
+48B_ind_AR1,p,9.41387120101382e-53,9.41387120101382e-53,PASS,log10 abs<=.001
+48B_ind_AR1,log10_p,-52.0262317479321,-52.0262317479321,PASS,log10 abs<=.001
+48B_ind_CAR1,LR_raw,143.935699336469,143.935699336469,PASS,abs <= 0.0002439357
+48B_ind_CAR1,df,1.0,1.0,PASS,exact
+48B_ind_CAR1,LR,143.935699336469,143.935699336469,PASS,abs <= 0.0002439357
+48B_ind_CAR1,p,1.83492886538247e-33,1.83492886538247e-33,PASS,log10 abs<=.001
+48B_ind_CAR1,log10_p,-32.7363807673632,-32.7363807673632,PASS,log10 abs<=.001
+46B_AR1,n,760.0,760.0,PASS,exact
+46B_AR1,participants,160.0,160.0,PASS,exact
+46B_AR1,k,8.0,8.0,PASS,exact
+46B_AR1,logLik,-1431.88101090787,-1431.88101090787,PASS,abs <= 0.001531881
+46B_AR1,AIC,2879.76202181574,2879.76202181574,PASS,abs <= 0.002979762
+46B_AR1,BIC,2916.78635282518,2916.78635282518,PASS,abs <= 0.0030167864
+46B_AR1,BIC_n,756.0,756.0,PASS,exact
+46B_AR1,observed_clusters,20.0,20.0,PASS,exact
+46B_AR1,modeled_clusters,20.0,20.0,PASS,exact
+46B_AR1,residual_variance,4.14065385997622,4.14065385997622,PASS,abs <= 0.00051406539
+46B_AR1,cov:PID:(Intercept):variance,1.34246927509951,1.34246927509951,PASS,abs <= 0.00023424693
+46B_AR1,cov:SCHOOL:(Intercept):variance,7.69151326276678,7.69151326276678,PASS,abs <= 0.00086915133
+46B_AR1,phi,0.760604614501083,0.760604614501083,PASS,abs <= 0.00017606046
+46B_AR1,beta:(Intercept),19.5038291020293,19.5038291020293,PASS,abs <= 0.00011950383
+46B_AR1,se:(Intercept),0.67015707827037,0.67015707827037,PASS,abs <= 0.00016701571
+46B_AR1,wald_p:(Intercept),1.15214675115239e-116,1.15214675115239e-116,PASS,log10 abs<=.001
+46B_AR1,beta:TIME,0.202756835472418,0.202756835472418,PASS,abs <= 0.00010020276
+46B_AR1,se:TIME,0.0251744226403453,0.0251744226403453,PASS,abs <= 0.00010251744
+46B_AR1,wald_p:TIME,4.35103744393596e-15,4.35103744393596e-15,PASS,log10 abs<=.001
+46B_AR1,beta:GROUP1,1.24421824851024,1.24421824851024,PASS,abs <= 0.00010124422
+46B_AR1,se:GROUP1,0.359262671530105,0.359262671530105,PASS,abs <= 0.00013592627
+46B_AR1,wald_p:GROUP1,0.000709727377771612,0.000709727377771612,PASS,log10 abs<=.001
+46B_AR1,beta:TIME:GROUP1,0.295380718603863,0.295380718603863,PASS,abs <= 0.00010029538
+46B_AR1,se:TIME:GROUP1,0.0356020088836339,0.0356020088836339,PASS,abs <= 0.0001035602
+46B_AR1,wald_p:TIME:GROUP1,7.11879137640746e-16,7.11879137640746e-16,PASS,log10 abs<=.001
+46B_AR1,R2_marginal,0.215751233756967,0.215751233756967,PASS,abs <= 0.00012157512
+46B_AR1,R2_conditional,0.753518610831826,0.753518610831826,PASS,abs <= 0.00017535186
+48C_AR1_linear,n,960.0,960.0,PASS,exact
+48C_AR1_linear,participants,160.0,160.0,PASS,exact
+48C_AR1_linear,k,8.0,8.0,PASS,exact
+48C_AR1_linear,logLik,-1700.51530335577,-1700.51530335577,PASS,abs <= 0.0018005153
+48C_AR1_linear,AIC,3417.03060671154,3417.03060671154,PASS,abs <= 0.0035170306
+48C_AR1_linear,BIC,3455.96607298724,3455.96607298724,PASS,abs <= 0.0035559661
+48C_AR1_linear,BIC_n,960.0,960.0,PASS,exact
+48C_AR1_linear,observed_clusters,20.0,20.0,PASS,exact
+48C_AR1_linear,modeled_clusters,20.0,20.0,PASS,exact
+48C_AR1_linear,residual_variance,3.56151232884654,3.56151232884654,PASS,abs <= 0.00045615123
+48C_AR1_linear,cov:PID:(Intercept):variance,1.82701718417441,1.82701718417441,PASS,abs <= 0.00028270172
+48C_AR1_linear,cov:SCHOOL:(Intercept):variance,7.28316984313244,7.28316984313244,PASS,abs <= 0.00082831698
+48C_AR1_linear,phi,0.762602008049015,0.762602008049015,PASS,abs <= 0.0001762602
+48C_AR1_linear,beta:(Intercept),19.611073708067,19.611073708067,PASS,abs <= 0.00011961107
+48C_AR1_linear,se:(Intercept),0.653736020748551,0.653736020748551,PASS,abs <= 0.0001653736
+48C_AR1_linear,wald_p:(Intercept),5.64454073528148e-133,5.64454073528148e-133,PASS,log10 abs<=.001
+48C_AR1_linear,beta:TIME,0.186678760199872,0.186678760199872,PASS,abs <= 0.00010018668
+48C_AR1_linear,se:TIME,0.0242921737468872,0.0242921737468872,PASS,abs <= 0.00010242922
+48C_AR1_linear,wald_p:TIME,4.50094011119655e-14,4.50094011119655e-14,PASS,log10 abs<=.001
+48C_AR1_linear,beta:GROUP1,1.32057401719167,1.32057401719167,PASS,abs <= 0.00010132057
+48C_AR1_linear,se:GROUP1,0.351250955779843,0.351250955779843,PASS,abs <= 0.0001351251
+48C_AR1_linear,wald_p:GROUP1,0.000249821829087937,0.000249821829087937,PASS,log10 abs<=.001
+48C_AR1_linear,beta:TIME:GROUP1,0.285723094795272,0.285723094795272,PASS,abs <= 0.00010028572
+48C_AR1_linear,se:TIME:GROUP1,0.0343543215723714,0.0343543215723714,PASS,abs <= 0.00010343543
+48C_AR1_linear,wald_p:TIME:GROUP1,3.88217788920281e-16,3.88217788920281e-16,PASS,log10 abs<=.001
+48C_AR1_linear,R2_marginal,0.197139227369732,0.197139227369732,PASS,abs <= 0.00011971392
+48C_AR1_linear,R2_conditional,0.774347665636383,0.774347665636383,PASS,abs <= 0.00017743477
+48C_AR1_quadratic,n,960.0,960.0,PASS,exact
+48C_AR1_quadratic,participants,160.0,160.0,PASS,exact
+48C_AR1_quadratic,k,10.0,10.0,PASS,exact
+48C_AR1_quadratic,logLik,-1683.23123967465,-1683.23123967465,PASS,abs <= 0.0017832312
+48C_AR1_quadratic,AIC,3386.4624793493,3386.4624793493,PASS,abs <= 0.0034864625
+48C_AR1_quadratic,BIC,3435.13181219392,3435.13181219392,PASS,abs <= 0.0035351318
+48C_AR1_quadratic,BIC_n,960.0,960.0,PASS,exact
+48C_AR1_quadratic,observed_clusters,20.0,20.0,PASS,exact
+48C_AR1_quadratic,modeled_clusters,20.0,20.0,PASS,exact
+48C_AR1_quadratic,residual_variance,3.06468074773371,3.06468074773371,PASS,abs <= 0.00040646807
+48C_AR1_quadratic,cov:PID:(Intercept):variance,2.21238305111992,2.21238305111992,PASS,abs <= 0.00032123831
+48C_AR1_quadratic,cov:SCHOOL:(Intercept):variance,7.27878869393714,7.27878869393714,PASS,abs <= 0.00082787887
+48C_AR1_quadratic,phi,0.734250203837053,0.734250203837053,PASS,abs <= 0.00017342502
+48C_AR1_quadratic,beta:(Intercept),19.484292917997,19.484292917997,PASS,abs <= 0.00011948429
+48C_AR1_quadratic,se:(Intercept),0.656130515001801,0.656130515001801,PASS,abs <= 0.00016561305
+48C_AR1_quadratic,wald_p:(Intercept),5.05154965438603e-131,5.05154965438603e-131,PASS,log10 abs<=.001
+48C_AR1_quadratic,beta:TIME,0.323162594953637,0.323162594953637,PASS,abs <= 0.00010032316
+48C_AR1_quadratic,se:TIME,0.068842614555004,0.068842614555004,PASS,abs <= 0.00010688426
+48C_AR1_quadratic,wald_p:TIME,3.15054517647214e-06,3.15054517647214e-06,PASS,log10 abs<=.001
+48C_AR1_quadratic,beta:I(TIME^2),-0.0123613305662074,-0.0123613305662074,PASS,abs <= 0.00010001236
+48C_AR1_quadratic,se:I(TIME^2),0.00591213251487737,0.00591213251487737,PASS,abs <= 0.00010059121
+48C_AR1_quadratic,wald_p:I(TIME^2),0.0368588858146171,0.0368588858146171,PASS,log10 abs<=.001
+48C_AR1_quadratic,beta:GROUP1,1.11508869300787,1.11508869300787,PASS,abs <= 0.00010111509
+48C_AR1_quadratic,se:GROUP1,0.358549552384102,0.358549552384102,PASS,abs <= 0.00013585496
+48C_AR1_quadratic,wald_p:GROUP1,0.00227032791272296,0.00227032791272296,PASS,log10 abs<=.001
+48C_AR1_quadratic,beta:TIME:GROUP1,0.512474829311161,0.512474829311161,PASS,abs <= 0.00010051247
+48C_AR1_quadratic,se:TIME:GROUP1,0.0973581591729094,0.0973581591729094,PASS,abs <= 0.00010973582
+48C_AR1_quadratic,wald_p:TIME:GROUP1,1.81635328162914e-07,1.81635328162914e-07,PASS,log10 abs<=.001
+48C_AR1_quadratic,beta:I(TIME^2):GROUP1,-0.0205827305762042,-0.0205827305762042,PASS,abs <= 0.00010002058
+48C_AR1_quadratic,se:I(TIME^2):GROUP1,0.00836101798508648,0.00836101798508648,PASS,abs <= 0.0001008361
+48C_AR1_quadratic,wald_p:I(TIME^2):GROUP1,0.0140371244041922,0.0140371244041922,PASS,log10 abs<=.001
+48C_AR1_quadratic,R2_marginal,0.22109500797239,0.22109500797239,PASS,abs <= 0.0001221095
+48C_AR1_quadratic,R2_conditional,0.809881875025905,0.809881875025905,PASS,abs <= 0.00018098819
+48C_AR1_categorical,n,960.0,960.0,PASS,exact
+48C_AR1_categorical,participants,160.0,160.0,PASS,exact
+48C_AR1_categorical,k,16.0,16.0,PASS,exact
+48C_AR1_categorical,logLik,-1668.68389610116,-1668.68389610116,PASS,abs <= 0.0017686839
+48C_AR1_categorical,AIC,3369.36779220231,3369.36779220231,PASS,abs <= 0.0034693678
+48C_AR1_categorical,BIC,3447.2387247537,3447.2387247537,PASS,abs <= 0.0035472387
+48C_AR1_categorical,BIC_n,960.0,960.0,PASS,exact
+48C_AR1_categorical,observed_clusters,20.0,20.0,PASS,exact
+48C_AR1_categorical,modeled_clusters,20.0,20.0,PASS,exact
+48C_AR1_categorical,residual_variance,3.14635575826959,3.14635575826959,PASS,abs <= 0.00041463558
+48C_AR1_categorical,cov:PID:(Intercept):variance,2.11217588882205,2.11217588882205,PASS,abs <= 0.00031121759
+48C_AR1_categorical,cov:SCHOOL:(Intercept):variance,7.28139695775898,7.28139695775898,PASS,abs <= 0.0008281397
+48C_AR1_categorical,phi,0.751271539795113,0.751271539795113,PASS,abs <= 0.00017512715
+48C_AR1_categorical,beta:(Intercept),19.4414832564557,19.4414832564557,PASS,abs <= 0.00011944148
+48C_AR1_categorical,se:(Intercept),0.659728746312055,0.659728746312055,PASS,abs <= 0.00016597287
+48C_AR1_categorical,wald_p:(Intercept),2.38077534740848e-129,2.38077534740848e-129,PASS,log10 abs<=.001
+48C_AR1_categorical,beta:TIMEF1,0.265261752290339,0.265261752290339,PASS,abs <= 0.00010026526
+48C_AR1_categorical,se:TIMEF1,0.140756385561126,0.140756385561126,PASS,abs <= 0.00011407564
+48C_AR1_categorical,wald_p:TIMEF1,0.0598581789993971,0.0598581789993971,PASS,log10 abs<=.001
+48C_AR1_categorical,beta:TIMEF2,0.834129666020349,0.834129666020349,PASS,abs <= 0.00010083413
+48C_AR1_categorical,se:TIMEF2,0.186270830614132,0.186270830614132,PASS,abs <= 0.00011862708
+48C_AR1_categorical,wald_p:TIMEF2,8.64278838367115e-06,8.64278838367115e-06,PASS,log10 abs<=.001
+48C_AR1_categorical,beta:TIMEF4,1.11927909863954,1.11927909863954,PASS,abs <= 0.00010111928
+48C_AR1_categorical,se:TIMEF4,0.214194059721223,0.214194059721223,PASS,abs <= 0.00012141941
+48C_AR1_categorical,wald_p:TIMEF4,2.2239310491024e-07,2.2239310491024e-07,PASS,log10 abs<=.001
+48C_AR1_categorical,beta:TIMEF7,1.71555434088085,1.71555434088085,PASS,abs <= 0.00010171555
+48C_AR1_categorical,se:TIMEF7,0.232980725783189,0.232980725783189,PASS,abs <= 0.00012329807
+48C_AR1_categorical,wald_p:TIMEF7,4.5078029739825e-13,4.5078029739825e-13,PASS,log10 abs<=.001
+48C_AR1_categorical,beta:TIMEF10,2.05347343411382,2.05347343411382,PASS,abs <= 0.00010205347
+48C_AR1_categorical,se:TIMEF10,0.246153190553749,0.246153190553749,PASS,abs <= 0.00012461532
+48C_AR1_categorical,wald_p:TIMEF10,3.23443919058664e-16,3.23443919058664e-16,PASS,log10 abs<=.001
+48C_AR1_categorical,beta:GROUP1,0.948559601611522,0.948559601611522,PASS,abs <= 0.00010094856
+48C_AR1_categorical,se:GROUP1,0.364866254222934,0.364866254222934,PASS,abs <= 0.00013648663
+48C_AR1_categorical,wald_p:GROUP1,0.0103368672961174,0.0103368672961174,PASS,log10 abs<=.001
+48C_AR1_categorical,beta:TIMEF1:GROUP1,0.951807483249762,0.951807483249762,PASS,abs <= 0.00010095181
+48C_AR1_categorical,se:TIMEF1:GROUP1,0.199059589451161,0.199059589451161,PASS,abs <= 0.00011990596
+48C_AR1_categorical,wald_p:TIMEF1:GROUP1,2.07520759975367e-06,2.07520759975367e-06,PASS,log10 abs<=.001
+48C_AR1_categorical,beta:TIMEF2:GROUP1,1.40505671230214,1.40505671230214,PASS,abs <= 0.00010140506
+48C_AR1_categorical,se:TIMEF2:GROUP1,0.263426734929008,0.263426734929008,PASS,abs <= 0.00012634267
+48C_AR1_categorical,wald_p:TIMEF2:GROUP1,1.25708784293827e-07,1.25708784293827e-07,PASS,log10 abs<=.001
+48C_AR1_categorical,beta:TIMEF4:GROUP1,1.96249439100513,1.96249439100513,PASS,abs <= 0.00010196249
+48C_AR1_categorical,se:TIMEF4:GROUP1,0.302916144237504,0.302916144237504,PASS,abs <= 0.00013029161
+48C_AR1_categorical,wald_p:TIMEF4:GROUP1,1.62667725370043e-10,1.62667725370043e-10,PASS,log10 abs<=.001
+48C_AR1_categorical,beta:TIMEF7:GROUP1,2.60019996623326,2.60019996623326,PASS,abs <= 0.0001026002
+48C_AR1_categorical,se:TIMEF7:GROUP1,0.329484502174112,0.329484502174112,PASS,abs <= 0.00013294845
+48C_AR1_categorical,wald_p:TIMEF7:GROUP1,9.9369059504628e-15,9.9369059504628e-15,PASS,log10 abs<=.001
+48C_AR1_categorical,beta:TIMEF10:GROUP1,3.26145361985335,3.26145361985335,PASS,abs <= 0.00010326145
+48C_AR1_categorical,se:TIMEF10:GROUP1,0.34811318050252,0.34811318050252,PASS,abs <= 0.00013481132
+48C_AR1_categorical,wald_p:TIMEF10:GROUP1,7.48344558862341e-20,7.48344558862341e-20,PASS,log10 abs<=.001
+48C_AR1_categorical,R2_marginal,0.224405258006205,0.224405258006205,PASS,abs <= 0.00012244053
+48C_AR1_categorical,R2_conditional,0.805397856761971,0.805397856761971,PASS,abs <= 0.00018053979
+48C_AR1_lin_quad,LR_raw,34.5681273622358,34.5681273622358,PASS,abs <= 0.00013456813
+48C_AR1_lin_quad,df,2.0,2.0,PASS,exact
+48C_AR1_lin_quad,LR,34.5681273622358,34.5681273622358,PASS,abs <= 0.00013456813
+48C_AR1_lin_quad,p,3.11620857589808e-08,3.11620857589808e-08,PASS,log10 abs<=.001
+48C_AR1_lin_quad,log10_p,-7.50637348157392,-7.50637348157392,PASS,log10 abs<=.001
+48C_AR1_quad_cat,LR_raw,29.0946871469923,29.0946871469923,PASS,abs <= 0.00012909469
+48C_AR1_quad_cat,df,6.0,6.0,PASS,exact
+48C_AR1_quad_cat,LR,29.0946871469923,29.0946871469923,PASS,abs <= 0.00012909469
+48C_AR1_quad_cat,p,5.83773443493912e-05,5.83773443493912e-05,PASS,log10 abs<=.001
+48C_AR1_quad_cat,log10_p,-4.23375566543978,-4.23375566543978,PASS,log10 abs<=.001
+48C_AR1_lin_cat,LR_raw,63.6628145092282,63.6628145092282,PASS,abs <= 0.00016366281
+48C_AR1_lin_cat,df,8.0,8.0,PASS,exact
+48C_AR1_lin_cat,LR,63.6628145092282,63.6628145092282,PASS,abs <= 0.00016366281
+48C_AR1_lin_cat,p,8.86633714313173e-11,8.86633714313173e-11,PASS,log10 abs<=.001
+48C_AR1_lin_cat,log10_p,-10.0522557586426,-10.0522557586426,PASS,log10 abs<=.001
+48C_independent_linear,n,960.0,960.0,PASS,exact
+48C_independent_linear,participants,160.0,160.0,PASS,exact
+48C_independent_linear,k,7.0,7.0,PASS,exact
+48C_independent_linear,logLik,-1816.53226901015,-1816.53226901015,PASS,abs <= 0.0019165323
+48C_independent_linear,AIC,3647.06453802031,3647.06453802031,PASS,abs <= 0.0037470645
+48C_independent_linear,BIC,3681.13307101154,3681.13307101154,PASS,abs <= 0.0037811331
+48C_independent_linear,BIC_n,960.0,960.0,PASS,exact
+48C_independent_linear,observed_clusters,20.0,20.0,PASS,exact
+48C_independent_linear,modeled_clusters,20.0,20.0,PASS,exact
+48C_independent_linear,residual_variance,1.54342285993436,1.54342285993436,PASS,abs <= 0.00025434229
+48C_independent_linear,singular,0.0,0.0,PASS,exact
+48C_independent_linear,cov:PID:(Intercept):variance,3.69418499248097,3.69418499248097,PASS,abs <= 0.0004694185
+48C_independent_linear,cov:SCHOOL:(Intercept):variance,7.21961916318084,7.21961916318084,PASS,abs <= 0.00082196192
+48C_independent_linear,beta:(Intercept),19.628435185916,19.628435185916,PASS,abs <= 0.00011962844
+48C_independent_linear,se:(Intercept),0.64385180592402,0.64385180592402,PASS,abs <= 0.00016438518
+48C_independent_linear,beta:TIME,0.202749446465078,0.202749446465078,PASS,abs <= 0.00010020275
+48C_independent_linear,se:TIME,0.016146619489381,0.016146619489381,PASS,abs <= 0.00010161466
+48C_independent_linear,beta:GROUP1,1.47221735596564,1.47221735596564,PASS,abs <= 0.00010147222
+48C_independent_linear,se:GROUP1,0.327304719894165,0.327304719894165,PASS,abs <= 0.00013273047
+48C_independent_linear,beta:TIME:GROUP1,0.293294401938699,0.293294401938699,PASS,abs <= 0.00010029329
+48C_independent_linear,se:TIME:GROUP1,0.0228347682683603,0.0228347682683603,PASS,abs <= 0.00010228348
+48C_independent_linear,R2_marginal,0.220511734432267,0.220511734432267,PASS,abs <= 0.00012205117
+48C_independent_linear,R2_conditional,0.903423128869563,0.903423128869563,PASS,abs <= 0.00019034231
+48C_independent_quadratic,n,960.0,960.0,PASS,exact
+48C_independent_quadratic,participants,160.0,160.0,PASS,exact
+48C_independent_quadratic,k,9.0,9.0,PASS,exact
+48C_independent_quadratic,logLik,-1791.95389436909,-1791.95389436909,PASS,abs <= 0.0018919539
+48C_independent_quadratic,AIC,3601.90778873818,3601.90778873818,PASS,abs <= 0.0037019078
+48C_independent_quadratic,BIC,3645.71018829834,3645.71018829834,PASS,abs <= 0.0037457102
+48C_independent_quadratic,BIC_n,960.0,960.0,PASS,exact
+48C_independent_quadratic,observed_clusters,20.0,20.0,PASS,exact
+48C_independent_quadratic,modeled_clusters,20.0,20.0,PASS,exact
+48C_independent_quadratic,residual_variance,1.45144006296382,1.45144006296382,PASS,abs <= 0.00024514401
+48C_independent_quadratic,singular,0.0,0.0,PASS,exact
+48C_independent_quadratic,cov:PID:(Intercept):variance,3.70952756601599,3.70952756601599,PASS,abs <= 0.00047095276
+48C_independent_quadratic,cov:SCHOOL:(Intercept):variance,7.21958774376791,7.21958774376791,PASS,abs <= 0.00082195877
+48C_independent_quadratic,beta:(Intercept),19.4588414883047,19.4588414883047,PASS,abs <= 0.00011945884
+48C_independent_quadratic,se:(Intercept),0.647088802304008,0.647088802304008,PASS,abs <= 0.00016470888
+48C_independent_quadratic,beta:TIME,0.350059786485707,0.350059786485707,PASS,abs <= 0.00010035006
+48C_independent_quadratic,se:TIME,0.0598882733771273,0.0598882733771273,PASS,abs <= 0.00010598883
+48C_independent_quadratic,beta:I(TIME^2),-0.014811093969466,-0.014811093969466,PASS,abs <= 0.00010001481
+48C_independent_quadratic,se:I(TIME^2),0.00581192582893398,0.00581192582893398,PASS,abs <= 0.00010058119
+48C_independent_quadratic,beta:GROUP1,1.19935129762654,1.19935129762654,PASS,abs <= 0.00010119935
+48C_independent_quadratic,se:GROUP1,0.339836816365742,0.339836816365742,PASS,abs <= 0.00013398368
+48C_independent_quadratic,beta:TIME:GROUP1,0.530307878260012,0.530307878260012,PASS,abs <= 0.00010053031
+48C_independent_quadratic,se:TIME:GROUP1,0.0846948084370407,0.0846948084370407,PASS,abs <= 0.00010846948
+48C_independent_quadratic,beta:I(TIME^2):GROUP1,-0.0238301593040445,-0.0238301593040445,PASS,abs <= 0.00010002383
+48C_independent_quadratic,se:I(TIME^2):GROUP1,0.0082193043307849,0.0082193043307849,PASS,abs <= 0.00010082193
+48C_independent_quadratic,R2_marginal,0.225312233298195,0.225312233298195,PASS,abs <= 0.00012253122
+48C_independent_quadratic,R2_conditional,0.90917912589333,0.90917912589333,PASS,abs <= 0.00019091791
+48C_independent_categorical,n,960.0,960.0,PASS,exact
+48C_independent_categorical,participants,160.0,160.0,PASS,exact
+48C_independent_categorical,k,15.0,15.0,PASS,exact
+48C_independent_categorical,logLik,-1782.79005881461,-1782.79005881461,PASS,abs <= 0.0018827901
+48C_independent_categorical,AIC,3595.58011762922,3595.58011762922,PASS,abs <= 0.0036955801
+48C_independent_categorical,BIC,3668.58411689615,3668.58411689615,PASS,abs <= 0.0037685841
+48C_independent_categorical,BIC_n,960.0,960.0,PASS,exact
+48C_independent_categorical,observed_clusters,20.0,20.0,PASS,exact
+48C_independent_categorical,modeled_clusters,20.0,20.0,PASS,exact
+48C_independent_categorical,residual_variance,1.41856599533041,1.41856599533041,PASS,abs <= 0.0002418566
+48C_independent_categorical,singular,0.0,0.0,PASS,exact
+48C_independent_categorical,cov:PID:(Intercept):variance,3.71500685094813,3.71500685094813,PASS,abs <= 0.00047150069
+48C_independent_categorical,cov:SCHOOL:(Intercept):variance,7.21962181537591,7.21962181537591,PASS,abs <= 0.00082196218
+48C_independent_categorical,beta:(Intercept),19.4414832564373,19.4414832564373,PASS,abs <= 0.00011944148
+48C_independent_categorical,se:(Intercept),0.652035851274107,0.652035851274107,PASS,abs <= 0.00016520359
+48C_independent_categorical,beta:TIMEF1,0.265261752291013,0.265261752291013,PASS,abs <= 0.00010026526
+48C_independent_categorical,se:TIMEF1,0.188319276451615,0.188319276451615,PASS,abs <= 0.00011883193
+48C_independent_categorical,beta:TIMEF2,0.834129666021055,0.834129666021055,PASS,abs <= 0.00010083413
+48C_independent_categorical,se:TIMEF2,0.188319276451615,0.188319276451615,PASS,abs <= 0.00011883193
+48C_independent_categorical,beta:TIMEF4,1.11927909864023,1.11927909864023,PASS,abs <= 0.00010111928
+48C_independent_categorical,se:TIMEF4,0.188319276451615,0.188319276451615,PASS,abs <= 0.00011883193
+48C_independent_categorical,beta:TIMEF7,1.71555434088157,1.71555434088157,PASS,abs <= 0.00010171555
+48C_independent_categorical,se:TIMEF7,0.188319276451615,0.188319276451615,PASS,abs <= 0.00011883193
+48C_independent_categorical,beta:TIMEF10,2.05347343411454,2.05347343411454,PASS,abs <= 0.00010205347
+48C_independent_categorical,se:TIMEF10,0.188319276451615,0.188319276451615,PASS,abs <= 0.00011883193
+48C_independent_categorical,beta:GROUP1,0.948559601613982,0.948559601613982,PASS,abs <= 0.00010094856
+48C_independent_categorical,se:GROUP1,0.358244778268937,0.358244778268937,PASS,abs <= 0.00013582448
+48C_independent_categorical,beta:TIMEF1:GROUP1,0.951807483249134,0.951807483249134,PASS,abs <= 0.00010095181
+48C_independent_categorical,se:TIMEF1:GROUP1,0.266323674814163,0.266323674814163,PASS,abs <= 0.00012663237
+48C_independent_categorical,beta:TIMEF2:GROUP1,1.40505671230147,1.40505671230147,PASS,abs <= 0.00010140506
+48C_independent_categorical,se:TIMEF2:GROUP1,0.266323674814163,0.266323674814163,PASS,abs <= 0.00012663237
+48C_independent_categorical,beta:TIMEF4:GROUP1,1.96249439100447,1.96249439100447,PASS,abs <= 0.00010196249
+48C_independent_categorical,se:TIMEF4:GROUP1,0.266323674814163,0.266323674814163,PASS,abs <= 0.00012663237
+48C_independent_categorical,beta:TIMEF7:GROUP1,2.60019996623259,2.60019996623259,PASS,abs <= 0.0001026002
+48C_independent_categorical,se:TIMEF7:GROUP1,0.266323674814163,0.266323674814163,PASS,abs <= 0.00012663237
+48C_independent_categorical,beta:TIMEF10:GROUP1,3.26145361985267,3.26145361985267,PASS,abs <= 0.00010326145
+48C_independent_categorical,se:TIMEF10:GROUP1,0.266323674814163,0.266323674814163,PASS,abs <= 0.00012663237
+48C_independent_categorical,R2_marginal,0.227027309172666,0.227027309172666,PASS,abs <= 0.00012270273
+48C_independent_categorical,R2_conditional,0.911236501604691,0.911236501604691,PASS,abs <= 0.00019112365
+48C_independent_lin_quad,LR_raw,49.1567492821259,49.1567492821259,PASS,abs <= 0.00014915675
+48C_independent_lin_quad,df,2.0,2.0,PASS,exact
+48C_independent_lin_quad,LR,49.1567492821259,49.1567492821259,PASS,abs <= 0.00014915675
+48C_independent_lin_quad,p,2.11712996602397e-11,2.11712996602397e-11,PASS,log10 abs<=.001
+48C_independent_lin_quad,log10_p,-10.6742524807645,-10.6742524807645,PASS,log10 abs<=.001
+48C_independent_quad_cat,LR_raw,18.3276711089634,18.3276711089634,PASS,abs <= 0.00011832767
+48C_independent_quad_cat,df,6.0,6.0,PASS,exact
+48C_independent_quad_cat,LR,18.3276711089634,18.3276711089634,PASS,abs <= 0.00011832767
+48C_independent_quad_cat,p,0.00546343641750482,0.00546343641750482,PASS,log10 abs<=.001
+48C_independent_quad_cat,log10_p,-2.26253410679935,-2.26253410679935,PASS,log10 abs<=.001
+48C_independent_lin_cat,LR_raw,67.4844203910893,67.4844203910893,PASS,abs <= 0.00016748442
+48C_independent_lin_cat,df,8.0,8.0,PASS,exact
+48C_independent_lin_cat,LR,67.4844203910893,67.4844203910893,PASS,abs <= 0.00016748442
+48C_independent_lin_cat,p,1.55404692175107e-11,1.55404692175107e-11,PASS,log10 abs<=.001
+48C_independent_lin_cat,log10_p,-10.8085358725686,-10.8085358725686,PASS,log10 abs<=.001
+49A_DIAG,n,960.0,960.0,PASS,exact
+49A_DIAG,participants,160.0,160.0,PASS,exact
+49A_DIAG,k,8.0,8.0,PASS,exact
+49A_DIAG,logLik,-1473.64189596479,-1473.64189596479,PASS,abs <= 0.0015736419
+49A_DIAG,AIC,2963.28379192959,2963.28379192959,PASS,abs <= 0.0030632838
+49A_DIAG,BIC,3002.21925820528,3002.21925820528,PASS,abs <= 0.0031022193
+49A_DIAG,BIC_n,960.0,960.0,PASS,exact
+49A_DIAG,observed_clusters,20.0,20.0,PASS,exact
+49A_DIAG,modeled_clusters,20.0,20.0,PASS,exact
+49A_DIAG,residual_variance,0.745326929756045,0.745326929756045,PASS,abs <= 0.00017453269
+49A_DIAG,singular,1.0,1.0,PASS,exact
+49A_DIAG,cov:PID:TIME:variance,0.0,0.0,PASS,abs <= 0.0001
+49A_DIAG,cov:PID.1:(Intercept):variance,1.77346682910801,1.77346682910801,PASS,abs <= 0.00027734668
+49A_DIAG,cov:SCHOOL:(Intercept):variance,4.70006309374655,4.70006309374655,PASS,abs <= 0.00057000631
+49A_DIAG,beta:(Intercept),20.0620454683488,20.0620454683488,PASS,abs <= 0.00012006205
+49A_DIAG,se:(Intercept),0.511909764365675,0.511909764365675,PASS,abs <= 0.00015119098
+49A_DIAG,beta:TIME,0.500000000000029,0.500000000000029,PASS,abs <= 0.0001005
+49A_DIAG,se:TIME,0.0230732827832792,0.0230732827832792,PASS,abs <= 0.00010230733
+49A_DIAG,beta:GROUP1,0.100642123183959,0.100642123183959,PASS,abs <= 0.00010010064
+49A_DIAG,se:GROUP1,0.232587412238167,0.232587412238167,PASS,abs <= 0.00012325874
+49A_DIAG,beta:TIME:GROUP1,-2.57863571765222e-14,-2.57863571765222e-14,PASS,abs <= 0.0001
+49A_DIAG,se:TIME:GROUP1,0.0326305494405832,0.0326305494405832,PASS,abs <= 0.00010326305
+49A_DIAG,R2_marginal,0.0921182867593398,0.0921182867593398,PASS,abs <= 0.00010921183
+49A_DIAG,R2_conditional,0.906263733479268,0.906263733479268,PASS,abs <= 0.00019062637
+49B_RI,n,960.0,960.0,PASS,exact
+49B_RI,participants,160.0,160.0,PASS,exact
+49B_RI,k,7.0,7.0,PASS,exact
+49B_RI,logLik,-1473.64189596523,-1473.64189596523,PASS,abs <= 0.0015736419
+49B_RI,AIC,2961.28379193046,2961.28379193046,PASS,abs <= 0.0030612838
+49B_RI,BIC,2995.35232492169,2995.35232492169,PASS,abs <= 0.0030953523
+49B_RI,BIC_n,960.0,960.0,PASS,exact
+49B_RI,observed_clusters,20.0,20.0,PASS,exact
+49B_RI,modeled_clusters,20.0,20.0,PASS,exact
+49B_RI,residual_variance,0.745327204029358,0.745327204029358,PASS,abs <= 0.00017453272
+49B_RI,singular,0.0,0.0,PASS,exact
+49B_RI,cov:PID:(Intercept):variance,1.77346554533277,1.77346554533277,PASS,abs <= 0.00027734655
+49B_RI,cov:SCHOOL:(Intercept):variance,4.70001050541472,4.70001050541472,PASS,abs <= 0.00057000105
+49B_RI,beta:(Intercept),20.0620454683526,20.0620454683526,PASS,abs <= 0.00012006205
+49B_RI,se:(Intercept),0.51190718219722,0.51190718219722,PASS,abs <= 0.00015119072
+49B_RI,beta:TIME,0.500000000000064,0.500000000000064,PASS,abs <= 0.0001005
+49B_RI,se:TIME,0.0230732870286546,0.0230732870286546,PASS,abs <= 0.00010230733
+49B_RI,beta:GROUP1,0.100642123184149,0.100642123184149,PASS,abs <= 0.00010010064
+49B_RI,se:GROUP1,0.232587350965052,0.232587350965052,PASS,abs <= 0.00012325874
+49B_RI,beta:TIME:GROUP1,-5.43996593803186e-14,-5.43996593803186e-14,PASS,abs <= 0.0001
+49B_RI,se:TIME:GROUP1,0.0326305554444506,0.0326305554444506,PASS,abs <= 0.00010326306
+49B_RI,R2_marginal,0.0921189077096677,0.0921189077096677,PASS,abs <= 0.00010921189
+49B_RI,R2_conditional,0.906263067128183,0.906263067128183,PASS,abs <= 0.00019062631
+49B_RS,n,960.0,960.0,PASS,exact
+49B_RS,participants,160.0,160.0,PASS,exact
+49B_RS,k,9.0,9.0,PASS,exact
+49B_RS,logLik,-1473.64189606994,-1473.64189606994,PASS,abs <= 0.0015736419
+49B_RS,AIC,2965.28379213988,2965.28379213988,PASS,abs <= 0.0030652838
+49B_RS,BIC,3009.08619170003,3009.08619170003,PASS,abs <= 0.0031090862
+49B_RS,BIC_n,960.0,960.0,PASS,exact
+49B_RS,observed_clusters,20.0,20.0,PASS,exact
+49B_RS,modeled_clusters,20.0,20.0,PASS,exact
+49B_RS,residual_variance,0.74532143321263,0.74532143321263,PASS,abs <= 0.00017453214
+49B_RS,singular,1.0,1.0,PASS,exact
+49B_RS,cov:PID:(Intercept):variance,1.77355595496314,1.77355595496314,PASS,abs <= 0.0002773556
+49B_RS,cov:PID:TIME:variance,4.08850671269158e-13,4.08850671269158e-13,PASS,abs <= 0.0001
+49B_RS,cov:PID:(Intercept):TIME,8.51539513305221e-07,8.51539513305221e-07,PASS,abs <= 0.00010000009
+49B_RS,cov:SCHOOL:(Intercept):variance,4.69982089728085,4.69982089728085,PASS,abs <= 0.00056998209
+49B_RS,beta:(Intercept),20.062045468379,20.062045468379,PASS,abs <= 0.00012006205
+49B_RS,se:(Intercept),0.511898989170778,0.511898989170778,PASS,abs <= 0.0001511899
+49B_RS,beta:TIME,0.49999999999993,0.49999999999993,PASS,abs <= 0.0001005
+49B_RS,se:TIME,0.0230731977042597,0.0230731977042597,PASS,abs <= 0.00010230732
+49B_RS,beta:GROUP1,0.100642123181636,0.100642123181636,PASS,abs <= 0.00010010064
+49B_RS,se:GROUP1,0.232592047369387,0.232592047369387,PASS,abs <= 0.0001232592
+49B_RS,beta:TIME:GROUP1,8.45691770588735e-14,8.45691770588735e-14,PASS,abs <= 0.0001
+49B_RS,se:TIME:GROUP1,0.0326304291206796,0.0326304291206796,PASS,abs <= 0.00010326304
+49B_RS,R2_marginal,0.0921200745128666,0.0921200745128666,PASS,abs <= 0.00010921201
+49B_RS,R2_conditional,0.906262605613192,0.906262605613192,PASS,abs <= 0.00019062626
+49B_RI_DIAG,LR_raw,8.71295924298465e-10,8.71295924298465e-10,PASS,abs <= 0.0001
+49B_RI_DIAG,df,1.0,1.0,PASS,exact
+49B_RI_DIAG,LR,8.71295924298465e-10,8.71295924298465e-10,PASS,abs <= 0.0001
+49B_RI_DIAG,p,0.499988224132592,0.499988224132592,PASS,log10 abs<=.001
+49B_RI_DIAG,log10_p,-0.301040224172901,-0.301040224172901,PASS,log10 abs<=.001
+49B_RI_RS,LR_raw,-2.09417521546129e-07,-2.09417521546129e-07,PASS,abs <= 0.0001
+49B_RI_RS,df,2.0,2.0,PASS,exact
+49B_RI_RS,LR,0.0,0.0,PASS,abs <= 0.0001
+49B_RI_RS,p,1.0,1.0,PASS,log10 abs<=.001
+49B_RI_RS,log10_p,0.0,0.0,PASS,log10 abs<=.001
+50C_filtered,n,800.0,800.0,PASS,exact
+50C_filtered,participants,160.0,160.0,PASS,exact
+50C_filtered,k,10.0,10.0,PASS,exact
+50C_filtered,logLik,-1399.41631091321,-1399.41631091321,PASS,abs <= 0.0014994163
+50C_filtered,AIC,2818.83262182641,2818.83262182641,PASS,abs <= 0.0029188326
+50C_filtered,BIC,2865.67873910309,2865.67873910309,PASS,abs <= 0.0029656787
+50C_filtered,BIC_n,800.0,800.0,PASS,exact
+50C_filtered,observed_clusters,20.0,20.0,PASS,exact
+50C_filtered,modeled_clusters,20.0,20.0,PASS,exact
+50C_filtered,residual_variance,1.29078408988118,1.29078408988118,PASS,abs <= 0.00022907841
+50C_filtered,cov:PID:(Intercept):variance,1.92489813226687,1.92489813226687,PASS,abs <= 0.00029248981
+50C_filtered,cov:PID:(Intercept):TIME,0.161168810078387,0.161168810078387,PASS,abs <= 0.00011611688
+50C_filtered,cov:PID:TIME:variance,0.134782966227434,0.134782966227434,PASS,abs <= 0.0001134783
+50C_filtered,cov:SCHOOL:(Intercept):variance,6.79648028090526,6.79648028090526,PASS,abs <= 0.00077964803
+50C_filtered,phi,0.419591351684958,0.419591351684958,PASS,abs <= 0.00014195914
+50C_filtered,beta:(Intercept),19.3868237585581,19.3868237585581,PASS,abs <= 0.00011938682
+50C_filtered,se:(Intercept),0.616041173630418,0.616041173630418,PASS,abs <= 0.00016160412
+50C_filtered,wald_p:(Intercept),6.2541232429897e-132,6.2541232429897e-132,PASS,log10 abs<=.001
+50C_filtered,beta:TIME,0.428707524693464,0.428707524693464,PASS,abs <= 0.00010042871
+50C_filtered,se:TIME,0.0600268446911799,0.0600268446911799,PASS,abs <= 0.00010600268
+50C_filtered,wald_p:TIME,2.51750557627721e-12,2.51750557627721e-12,PASS,log10 abs<=.001
+50C_filtered,beta:GROUP1,1.04144610973217,1.04144610973217,PASS,abs <= 0.00010104145
+50C_filtered,se:GROUP1,0.275590475890014,0.275590475890014,PASS,abs <= 0.00012755905
+50C_filtered,wald_p:GROUP1,0.000232881767515562,0.000232881767515562,PASS,log10 abs<=.001
+50C_filtered,beta:TIME:GROUP1,0.636112827849844,0.636112827849844,PASS,abs <= 0.00010063611
+50C_filtered,se:TIME:GROUP1,0.0848907778687305,0.0848907778687305,PASS,abs <= 0.00010848908
+50C_filtered,wald_p:TIME:GROUP1,2.25042957573798e-13,2.25042957573798e-13,PASS,log10 abs<=.001
+50C_filtered,R2_marginal,0.188266955414768,0.188266955414768,PASS,abs <= 0.0001188267
+50C_filtered,R2_conditional,0.908615511638405,0.908615511638405,PASS,abs <= 0.00019086155

@@ -109,3 +109,27 @@
 ## Ask "nested?" before testing structures
 - Two structures differing in more than one component (e.g. RI-independent vs RS-AR(1)) have no LR test; a test
   fixture that expects one is wrong, not the app.
+
+## Forms that hold a transferred model (v1.3.3, STAT-47)
+- Never rebuild a model from widgets on Fit. Keep the loaded spec as a draft, populate controls under a binding guard,
+  and build the request as draft + explicit edits; compare the request with the fitted R object before showing results.
+
+## nlme converts corAR1 (v1.3.3)
+- `corAR1` with gaps in the integer covariate is silently turned into `corARMA(p = 1, q = 0)` (same model). Any
+  read-back of the fitted correlation class must accept that form, and only that form.
+
+## Deprecation warnings change result status
+- `lme4::nobars` now warns (moved to reformulas): an R warning downgrades a clean result to WARNING. Use
+  `formula(fit, fixed.only = TRUE)` for merMod and look up optional helpers with `getExportedValue()`.
+
+## Declared dependencies (v1.3.3, V133-EXP-04)
+- Scanning a script for `pkg::` declares every package a shared helper mentions. Declare what the analysis loaded
+  (result.engine.packages / family list) and write optional helper calls as `getExportedValue("pkg", "fun")`.
+
+## Cancellation must not wait for running work (v1.3.3)
+- A cancel flag checked only between batches waited ~6 minutes for 40-candidate nlme batches. Kill the workers of
+  in-flight batches, record nothing for them, set the contiguous done prefix, and make resume skip existing rows.
+
+## Low memory on this machine
+- Chrome / BlueStacks leave ~2-3 GB free: parallel pytest + repro runs failed with "paging file is too small" and
+  OpenBLAS allocation errors. Run heavy jobs one at a time and set OPENBLAS_NUM_THREADS=1 in helper .bat files.
