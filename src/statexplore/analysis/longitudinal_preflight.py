@@ -50,6 +50,7 @@ class PreflightReport:
     cluster_sizes: tuple[int, int] | None = None    # participants per cluster (min, max) on complete rows
     n_cluster_missing: int = 0        # rows excluded because the cluster is missing
     n_crossing: int = 0               # IDs seen in more than one cluster (global-ID policy refuses them)
+    id_key: str = "participant ID"    # v1.3.3: "composite (cluster, ID)" when a cluster is set (every count uses it)
 
     def observed_text(self, ds: Dataset) -> str:
         if not self.time:
@@ -66,7 +67,7 @@ class PreflightReport:
                      "participants with 1 observation", "participants with 2+ observations",
                      "participants with no observation", "participants with usable rows",
                      "usable: 2+ rows", "usable: 1 row", "intermittent gaps", "duplicate participant-time rows",
-                     "outcome range (min to max)", "observed time points", "absent inside range",
+                     "time range with observed outcome (first to last)", "observed time points", "absent inside range",
                      "complete model rows", "complete-row time range", "clusters", "participants per cluster"],
             rows=[[ds.var(self.outcome).display_name, ds.var(self.id).display_name,
                    ds.var(self.time).display_name if self.time else "—", self.n_records, self.n_participants,
@@ -78,7 +79,8 @@ class PreflightReport:
                    self.n_clusters if self.cluster else "not applicable",
                    (f"{self.cluster_sizes[0]}–{self.cluster_sizes[1]}" if self.cluster_sizes else "—")
                    if self.cluster else "not applicable"]],
-            notes="Outcome range = where the outcome is observed; complete model rows = rows complete on the outcome, "
+            notes="Time range with observed outcome = first to last time point at which the outcome is observed "
+                  "(a time range, not the range of outcome values); complete model rows = rows complete on the outcome, "
                   "time, every predictor, the ID and the cluster (the rows the model uses) with their own time range. "
                   "Usable = participants with complete model rows. Intermittent = "
                   "a participant missing an occasion inside their own observed span that others did observe; "
@@ -96,6 +98,14 @@ class PreflightReport:
         return f"{lab(lo)} to {lab(hi)}"
 
 
+PID_KEY = "__sx_participant_key"
+
+
+def _key_text(ds: Dataset, cluster: str, id_var: str, key: Any) -> str:
+    c, i = key
+    return f"({ds.var(cluster).display_name} {_label(ds, cluster, c)}, {ds.var(id_var).display_name} {_label(ds, id_var, i)})"
+
+
 def _label(ds: Dataset, name: str, code: Any) -> str:
     return ds.level_label(name, code)
 
@@ -110,6 +120,14 @@ def preflight(ds: Dataset, outcome: str, id_var: str, time: str | None = None,
     cols = list(dict.fromkeys([outcome, id_var] + ([time] if time else []) + ([cluster] if cluster else []) + predictors))
     f = ds.analysis_frame(cols)
     f = f[f[id_var].notna()]
+    raw_id = id_var
+    if cluster:
+        # V133-STAT-02: with a cluster the participant is the typed (cluster, ID) pair - in both ID policies - so
+        # locally reused IDs never merge; a row without a cluster has no participant key (excluded, counted below)
+        key = pd.Series([(c, i) if pd.notna(c) else None for c, i in zip(f[cluster], f[id_var])], index=f.index,
+                        dtype=object)
+        id_var = PID_KEY
+        f = f.assign(**{PID_KEY: key})
     obs = f[outcome].notna()
     complete = f[[outcome] + predictors + ([time] if time else []) + ([cluster] if cluster else [])].notna().all(axis=1)
     per_id = obs.groupby(f[id_var]).sum()
@@ -131,7 +149,10 @@ def preflight(ds: Dataset, outcome: str, id_var: str, time: str | None = None,
         rng = (seen[0], seen[-1]) if seen else None
         dup_mask = f.duplicated([id_var, time], keep=False) & tcol.notna()
         dups = int(f[dup_mask].groupby([id_var, time]).ngroups) if dup_mask.any() else 0
-        examples = list(f.loc[dup_mask, [id_var, time]].drop_duplicates().head(5).itertuples(index=False, name=None))
+        examples = list(f.loc[dup_mask, [id_var, time]].drop_duplicates(subset=[id_var, time]).head(5)
+                        .itertuples(index=False, name=None))
+        if cluster:
+            examples = [(_key_text(ds, cluster, raw_id, k), t) for k, t in examples]
     else:
         times, unobserved, rng, dups, examples = [], [], None, 0, []
         by = pd.DataFrame({"records": [len(f)], "observed": [int(obs.sum())], "missing": [int((~obs).sum())],
@@ -186,7 +207,7 @@ def preflight(ds: Dataset, outcome: str, id_var: str, time: str | None = None,
                     "the model (missing at random given the modelled outcomes and covariates) and the model is "
                     "correct; MAR itself cannot be verified from the data, and nothing guarantees unbiased "
                     "estimates in a given sample."))
-    rep = PreflightReport(outcome, id_var, time, len(f), int(f[id_var].nunique()), times, by, n_one, n_multi,
+    rep = PreflightReport(outcome, raw_id, time, len(f), int(f[id_var].nunique()), times, by, n_one, n_multi,
                           n_none, dups, examples, unobserved, rng, warnings, notes, seen_times, interior,
                           n_usable, n_usable_multi, n_usable - n_usable_multi, n_inter)
     fc = f[complete]
@@ -206,7 +227,12 @@ def preflight(ds: Dataset, outcome: str, id_var: str, time: str | None = None,
             rep.n_clusters = int(fc[cluster].nunique())
             per = fc.groupby(cluster)[id_var].nunique()
             rep.cluster_sizes = (int(per.min()), int(per.max()))
-        rep.n_crossing = int((f.dropna(subset=[cluster]).groupby(id_var)[cluster].nunique() > 1).sum())
+        rep.n_crossing = int((f.dropna(subset=[cluster]).groupby(raw_id)[cluster].nunique() > 1).sum())
+        rep.id_key = "composite (cluster, ID)"
+        if rep.n_crossing and getattr(spec, "id_policy", "global") == "global":
+            warnings.append(f"{rep.n_crossing} participant ID(s) occur in more than one "
+                            f"{ds.var(cluster).display_name}. With 'IDs unique across clusters' this is refused; if IDs "
+                            "are numbered within each cluster choose that policy (participant = (cluster, ID)).")
         if rep.n_cluster_missing:
             notes.append(f"{rep.n_cluster_missing} otherwise usable rows have no {ds.var(cluster).display_name}: they "
                          "are excluded (a missing cluster is never treated as a group of its own).")

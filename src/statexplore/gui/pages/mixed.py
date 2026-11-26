@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QApplication, QComboBox, QDialog, QDialogButtonBox, QFormLayout, QGroupBox, QHBoxLayout, QLabel, QLineEdit, QListWidget,
+    QApplication, QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFormLayout, QGroupBox, QHBoxLayout, QLabel, QLineEdit, QListWidget,
     QListWidgetItem, QMessageBox, QPushButton, QSpinBox, QSplitter, QTextBrowser, QVBoxLayout, QWidget,
 )
 
@@ -15,6 +15,7 @@ from ...analysis.measurement import TreatmentError, apply_treatments
 from ..result_view import render
 from ..widgets.layout import section_scroll
 from ..state import AppState
+from ..widgets.terms_editor import FixedTermsEditor
 from ..widgets.treatment_panel import TreatmentPanel
 from ..widgets.variable_selector import VariableSelector
 from .eda import CodeDialog
@@ -145,6 +146,13 @@ class MixedPage(QWidget):
                                   "appear in several clusters under the 'unique' setting are refused (crossed designs "
                                   "are not supported).")
         self.interactions = self._choice(mixed.INTERACTIONS, "time")
+        self.interactions.setToolTip("A preset fills the term list below (None, Time × each predictor, All two-way); "
+                                     "Custom = the individual terms ticked below. Undo restores the previous terms.")
+        self.terms_editor = FixedTermsEditor()
+        self.cluster_random_chk = QCheckBox("Random intercept for the cluster (untick = exploratory model without the "
+                                            "cluster variance; participants stay (cluster, ID) pairs)")
+        self.cluster_random_chk.setChecked(True)
+        self.cluster_random_chk.setEnabled(False)
         self.random = self._choice(mixed.RANDOM)
         self.residual = self._choice(mixed.RESIDUAL)
         self.method = QComboBox()
@@ -182,8 +190,9 @@ class MixedPage(QWidget):
                          ("", self.treatment_panel.outcome_box),
                          ("Estimator", self.estimator), ("Participant ID", self.idv), ("Time", self.time),
                          ("Time as", self.time_type), ("Cluster (optional)", self.cluster),
-                         ("Participant IDs", self.id_policy),
-                         ("Interactions", self.interactions), ("Random effects", self.random),
+                         ("Participant IDs", self.id_policy), ("", self.cluster_random_chk),
+                         ("Interaction preset", self.interactions), ("Fixed terms", self.terms_editor),
+                         ("Random effects", self.random),
                          ("Residual covariance", self.residual), ("Estimation", self.method),
                          ("Inference (Gaussian lme4)", self.inference), ("Event category (binary)", self.event_combo),
                          ("Reference category (multinomial)", self.reference_combo), ("Quadrature points (nAGQ)", self.nagq),
@@ -228,12 +237,55 @@ class MixedPage(QWidget):
         self.outcome.currentIndexChanged.connect(self._outcome_changed)
         for w in (self.idv, self.time):
             w.currentIndexChanged.connect(self._preflight)
+        # ---- v1.3.3 model draft (01 §1-2): explicit terms, lineage, dirty state ----
+        self._binding = True                               # until the form is complete (end of __init__)
+        self.draft: mixed.MixedSpec | None = None         # the model loaded by a transfer / reload / last fit
+        self.fitted_spec: mixed.MixedSpec | None = None   # the model the displayed results belong to
+        self._last_terms_ctx: tuple = (None, None, [])     # (time, time type, predictors) the term list was built for
+        self.interactions.currentIndexChanged.connect(self._preset_changed)
+        self.terms_editor.changed.connect(self._terms_edited)
+        for w in (self.time, self.time_type):
+            w.currentIndexChanged.connect(self._sync_terms)
+        self.pred_sel.changed.connect(self._sync_terms)
+        self.cluster.currentIndexChanged.connect(self._cluster_changed)
+        for w in (self.outcome, self.idv, self.time, self.time_type, self.cluster, self.id_policy, self.family,
+                  self.estimator, self.random, self.residual, self.method, self.inference, self.event_combo,
+                  self.reference_combo, self.gee_corstr):
+            w.currentIndexChanged.connect(self._update_lineage)
+        self.nagq.valueChanged.connect(self._update_lineage)
+        self.ntraj.valueChanged.connect(self._update_lineage)
+        self.cluster_random_chk.toggled.connect(self._update_lineage)
+        self.terms_editor.changed.connect(self._update_lineage)
+        self.pred_sel.changed.connect(self._update_lineage)
+        self.treatment_panel.changed.connect(self._update_lineage)
+        lin_box = QGroupBox("Model origin and state")
+        lin = QVBoxLayout(lin_box)
+        lin.setContentsMargins(4, 4, 4, 4)
+        self.lineage = QLabel("New model (no origin).")
+        self.lineage.setWordWrap(True)
+        self.lineage.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        lin.addWidget(self.lineage)
+        lrow = QHBoxLayout()
+        self.origin_btn = QPushButton("Return to origin")
+        self.origin_btn.setToolTip("Restore every setting of the transferred model (its origin); results are unchanged "
+                                   "until you click Fit model")
+        self.origin_btn.setEnabled(False)
+        self.origin_btn.clicked.connect(self.return_to_origin)
+        self.revert_btn = QPushButton("Revert to last fit")
+        self.revert_btn.setToolTip("Discard unfitted edits: restore the settings of the model the results belong to")
+        self.revert_btn.setEnabled(False)
+        self.revert_btn.clicked.connect(self.revert_to_fitted)
+        lrow.addWidget(self.origin_btn)
+        lrow.addWidget(self.revert_btn)
+        lrow.addStretch()
+        lin.addLayout(lrow)
+        ll.addWidget(lin_box)
         row = QHBoxLayout()
         self.fit_btn = QPushButton("Fit model")
         self.fit_btn.clicked.connect(self._fit)
         self.code_btn = QPushButton("View Code")
         self.code_btn.setEnabled(False)
-        self.code_btn.clicked.connect(lambda: self.current and CodeDialog(self.current, self).exec())
+        self.code_btn.clicked.connect(lambda: self.current and CodeDialog(self.current, self, dataset=self.state.dataset).exec())
         self.copy_btn = QPushButton("Copy tables")
         self.copy_btn.clicked.connect(self._copy_tables)
         row.addWidget(self.fit_btn)
@@ -287,11 +339,14 @@ class MixedPage(QWidget):
         note.setWordWrap(True)
         lay.addWidget(note)
         lay.addWidget(split, 1)
-        state.project_changed.connect(self._reload)
+        state.project_changed.connect(self._new_project)
         state.metadata_changed.connect(self._reload)
         state.busy_changed.connect(lambda b: self.fit_btn.setEnabled(not b))
         state.show_in_mixed.connect(self.fit_spec)
         self._reload()
+        self._binding = False
+        self._sync_terms()
+        self._update_lineage()
 
     @staticmethod
     def _choice(options: dict[str, str], default: str | None = None) -> QComboBox:
@@ -374,40 +429,235 @@ class MixedPage(QWidget):
         if key:
             self.family.setCurrentIndex(self.family.findData(key))
 
-    # ---------- form persistence (UI-48 / CD-12) ----------
+    # ---------- form persistence (UI-48 / CD-12; v1.3.3 keeps exact terms and lineage) ----------
     def form_state(self) -> dict:
-        return {"spec": self._spec().to_dict()}
+        return {"spec": self._spec().to_dict(),
+                "fitted": self.fitted_spec.to_dict() if self.fitted_spec is not None else None}
 
     def restore_form(self, st: dict) -> None:
-        s = st.get("spec") or {}
-        for combo, key in ((self.outcome, "outcome"), (self.idv, "id"), (self.time, "time"), (self.cluster, "cluster"),
-                           (self.id_policy, "id_policy"), (self.family, "family"), (self.estimator, "estimator"),
-                           (self.random, "random"), (self.residual, "residual"), (self.time_type, "time_type"),
-                           (self.interactions, "interactions"), (self.gee_corstr, "gee_corstr"),
-                           (self.inference, "inference")):
-            i = combo.findData(s.get(key))
-            if i >= 0:
-                combo.setCurrentIndex(i)
-        if s.get("method"):
-            self.method.setCurrentText(s["method"])
-        self.pred_sel.set_selected(list(s.get("predictors") or []))
+        sd = st.get("spec") or {}
+        if not sd:
+            return
+        try:
+            spec = mixed.MixedSpec(**{k: v for k, v in sd.items() if k in mixed.MixedSpec.__dataclass_fields__})
+        except TypeError:
+            return
+        self.load_spec(spec)
+        fd = st.get("fitted")
+        if isinstance(fd, dict):
+            self.fitted_spec = mixed.MixedSpec(**{k: v for k, v in fd.items() if k in mixed.MixedSpec.__dataclass_fields__})
+        self._update_lineage()
 
-    def _spec(self) -> mixed.MixedSpec:
+    def load_spec(self, s: "mixed.MixedSpec") -> None:
+        """Show an exact model in the form (transfer, reload, return to origin). Controls are populated under a binding
+        guard, so no signal handler or default changes the model while it is loaded (01 §2)."""
+        from copy import deepcopy
+
+        self._binding = True
+        try:
+            for combo, val in ((self.outcome, s.outcome), (self.idv, s.id), (self.time, s.time), (self.family, s.family),
+                               (self.estimator, s.estimator), (self.random, s.random), (self.residual, s.residual),
+                               (self.time_type, s.time_type), (self.gee_corstr, s.gee_corstr), (self.cluster, s.cluster),
+                               (self.id_policy, s.id_policy), (self.inference, s.inference)):
+                i = combo.findData(val)
+                if i >= 0:
+                    combo.setCurrentIndex(i)
+            self.method.setCurrentText(s.method)
+            self.pred_sel.set_selected(list(s.predictors))
+            self.max_fixed.setValue(max(self.max_fixed.value(), s.max_fixed))
+            self.ntraj.setValue(s.n_trajectories)
+            self.nagq.setValue(s.nagq)
+            self.treatment_panel.set_model(self.state.dataset, s.outcome, list(s.predictors))
+            self.treatment_panel.load_treatments(s.treatments)
+            for combo, val in ((self.event_combo, s.event), (self.reference_combo, s.reference)):
+                i = combo.findData(val)
+                combo.setCurrentIndex(i if i >= 0 else 0)
+            self.cluster_random_chk.setChecked(bool(s.cluster_random))
+            self.cluster_random_chk.setEnabled(bool(s.cluster))
+            # the preset that produces exactly these terms, else Custom (each actual term is listed either way)
+            self.interactions.setCurrentIndex(self.interactions.findData(mixed.matching_preset(s, mixed.fixed_terms(s))))
+            self.terms_editor.set_universe(mixed.term_universe(s), mixed.fixed_terms(s), self._term_name)
+            self.terms_editor.note.setText("")
+            self._last_terms_ctx = (s.time, s.time_type, list(s.predictors))
+            self.draft = deepcopy(s)
+        finally:
+            self._binding = False
+        self._update_engine()
+        self._update_lineage()
+
+    def _term_name(self, v: str) -> str:
+        ds = self.state.dataset
+        if ds is None:
+            return v
+        if v.endswith("^2") and v[:-2] in ds.variables:
+            return ds.var(v[:-2]).display_name + "²"
+        return ds.var(v).display_name if v in ds.variables else v
+
+    def _widget_spec(self) -> mixed.MixedSpec:
+        """The settings the controls show, without terms or lineage."""
+        treat = [t.to_dict() for t in self.treatment_panel.treatments()]
+        if self.draft is not None:          # encodings the panel cannot show (ordinal / nominal) stay with the model
+            treat += [t for t in self.draft.treatments if (t.get("treatment") if isinstance(t, dict) else "") != "continuous"]
+        cl = self.cluster.currentData()
         return mixed.MixedSpec(
             outcome=self.outcome.currentData(), id=self.idv.currentData(), time=self.time.currentData(),
-            time_type=self.time_type.currentData(), cluster=self.cluster.currentData(),
+            time_type=self.time_type.currentData(), cluster=cl,
             id_policy=self.id_policy.currentData() or "global",
             predictors=self.pred_sel.selected(),
-            interactions=self.interactions.currentData(), random=self.random.currentData(),
+            interactions="none", random=self.random.currentData(),
             residual=self.residual.currentData(), method=self.method.currentText(), n_trajectories=self.ntraj.value(),
-            treatments=[t.to_dict() for t in self.treatment_panel.treatments()],
+            treatments=treat,
             family=self.family.currentData(), estimator=self.estimator.currentData(),
             inference=self.inference.currentData(), event=self.event_combo.currentData(),
             reference=self.reference_combo.currentData(), nagq=self.nagq.value(),
-            gee_corstr=self.gee_corstr.currentData(), max_fixed=self.max_fixed.value())
+            gee_corstr=self.gee_corstr.currentData(), max_fixed=self.max_fixed.value(),
+            cluster_random=self.cluster_random_chk.isChecked() if cl else True)
+
+    def _spec(self) -> mixed.MixedSpec:
+        """The requested model = the draft with the user's edits. Terms are always the ticked terms; a transferred
+        model keeps its own term representation and lineage (origin, descriptor, shared sample) while it is edited."""
+        from copy import deepcopy
+
+        s = self._widget_spec()
+        terms = self.terms_editor.terms()
+        d = self.draft
+        if d is not None and mixed.term_set(mixed.fixed_terms(d)) == mixed.term_set(terms) \
+                and (d.time, d.time_type) == (s.time, s.time_type):
+            s.terms, s.interactions = deepcopy(d.terms), d.interactions
+        else:
+            key = mixed.matching_preset(s, terms)
+            s.terms, s.interactions = (None, key) if key != "custom" else ([list(t) for t in terms], "custom")
+        if d is not None:
+            for f in ("origin", "descriptor", "source", "sample_vars", "force_nlme", "conf", "seed"):
+                setattr(s, f, deepcopy(getattr(d, f)))
+        return s
+
+    # ---- term list maintenance (never silent: presets show what they add/remove, with Undo) ----
+    def _sync_terms(self, *_args) -> None:
+        """Predictors, time or time form changed: offer the matching terms. A preset re-materializes; a custom set keeps
+        its terms that are still possible, remaps time terms to the new time form and adds new main effects."""
+        if self._binding:
+            return
+        ws = self._widget_spec()
+        old_time, old_type, old_preds = self._last_terms_ctx
+        key = self.interactions.currentData()
+        if key != "custom":
+            new = mixed.preset_terms(ws, key)
+        else:
+            new = self.terms_editor.terms()
+            if old_time != ws.time:
+                new = [t for t in new if old_time not in t and f"{old_time}^2" not in t]
+                if ws.time:
+                    new.append([ws.time])
+            if old_type != ws.time_type:
+                new = mixed.remap_time_terms(new, ws.time, ws.time_type)
+                if ws.time_type == "quadratic" and ws.time and [mixed.time_sq(ws)] not in new:
+                    new.append([mixed.time_sq(ws)])
+            allowed = set(mixed.term_mains(ws))
+            new = [t for t in new if all(v in allowed for v in t)]
+            new += [[p] for p in ws.predictors if p not in old_preds and [p] not in new]
+        self.terms_editor.set_universe(mixed.term_universe(ws), new, self._term_name)
+        self._last_terms_ctx = (ws.time, ws.time_type, list(ws.predictors))
+        self._terms_edited(set_combo=False)
+
+    def _preset_changed(self, *_args) -> None:
+        if self._binding:
+            return
+        key = self.interactions.currentData()
+        if key == "custom":
+            self._terms_edited(set_combo=False)
+            return
+        ws = self._widget_spec()
+        cur, new = self.terms_editor.terms(), mixed.preset_terms(ws, key)
+        add = mixed.term_set(new) - mixed.term_set(cur)
+        rem = mixed.term_set(cur) - mixed.term_set(new)
+        fmt = lambda ts: ", ".join(sorted(mixed.term_label(sorted(t), self._term_name) for t in ts))  # noqa: E731
+        if rem and mixed.matching_preset(ws, cur) == "custom" and QMessageBox.question(
+                self, "Fixed terms", f"The preset '{mixed.INTERACTIONS[key]}' removes: {fmt(rem)}"
+                + (f" and adds: {fmt(add)}" if add else "") + ". Apply it? (Undo restores the current terms.)") \
+                != QMessageBox.Yes:
+            self.interactions.blockSignals(True)
+            self.interactions.setCurrentIndex(self.interactions.findData("custom"))
+            self.interactions.blockSignals(False)
+            return
+        self.terms_editor.set_universe(mixed.term_universe(ws), cur, self._term_name)
+        self.terms_editor.set_checked(new, remember=True)
+        self.terms_editor.note.setText("Preset applied" + (f": added {fmt(add)}" if add else "")
+                                       + (f"; removed {fmt(rem)}" if rem else "") + ("" if add or rem else ": no change")
+                                       + ".")
+        self._update_lineage()
+
+    def _terms_edited(self, set_combo: bool = True) -> None:
+        if self._binding:
+            return
+        ws = self._widget_spec()
+        terms = self.terms_editor.terms()
+        if set_combo is not False:
+            self.interactions.blockSignals(True)
+            self.interactions.setCurrentIndex(self.interactions.findData(mixed.matching_preset(ws, terms)))
+            self.interactions.blockSignals(False)
+        why = mixed.hierarchy_problems(ws, terms, self._term_name)
+        if why:
+            self.terms_editor.note.setText("⚠ Hierarchy: " + "; ".join(why)
+                                           + ". Fit is refused until the lower-order terms are ticked.")
+        elif set_combo is not False:
+            self.terms_editor.note.setText(f"{len(terms)} fixed terms ({mixed.INTERACTIONS[mixed.matching_preset(ws, terms)]}).")
+
+    def _cluster_changed(self, *_args) -> None:
+        self.cluster_random_chk.setEnabled(bool(self.cluster.currentData()))
+
+    # ---- lineage / dirty state ----
+    def _update_lineage(self, *_args) -> None:
+        if self._binding:
+            return
+        import html as _html
+
+        try:
+            cur = self._spec()
+        except Exception:
+            return
+        d = self.draft
+        lines = []
+        if d is not None and d.origin:
+            diff = mixed.spec_diff(d.origin, cur)
+            src = (d.source or "transferred model").split(" (")[0]
+            lines.append(f"<b>Origin:</b> {_html.escape(src)}. "
+                         + ("<b>Unchanged</b> from the origin (a fit is verified against it)." if not diff else
+                            "<b>Modified</b> from the origin — a new model; lineage kept, identity not claimed: "
+                            + _html.escape("; ".join(diff)) + "."))
+        else:
+            lines.append("New model (no origin).")
+        if self.fitted_spec is not None:
+            pending = mixed.spec_diff(self.fitted_spec, cur) + (
+                ["plot settings"] if cur.n_trajectories != self.fitted_spec.n_trajectories else [])
+            lines.append("<span style='color:#8d6e00'>⚠ Settings differ from the displayed results ("
+                         + _html.escape("; ".join(pending)) + "): click <b>Fit model</b> to refit.</span>" if pending else
+                         "Results shown belong to these settings.")
+        self.lineage.setText("<br>".join(lines))
+        self.origin_btn.setEnabled(bool(d is not None and d.origin))
+        self.revert_btn.setEnabled(self.fitted_spec is not None)
+
+    def return_to_origin(self) -> None:
+        d = self.draft
+        if d is None or not d.origin:
+            return
+        o = mixed.MixedSpec(**{k: v for k, v in d.origin.items() if k in mixed.MixedSpec.__dataclass_fields__})
+        o.origin = dict(d.origin)
+        self.load_spec(o)
+
+    def revert_to_fitted(self) -> None:
+        if self.fitted_spec is not None:
+            self.load_spec(self.fitted_spec)
+
+    def _new_project(self) -> None:
+        self.draft = None
+        self.fitted_spec = None
+        self._reload()
+        self._sync_terms()
+        self._update_lineage()
 
     def _update_engine(self, *_args) -> None:
-        if self.residual.currentData() == "unstructured" and self.random.currentData() != "none":
+        if not self._binding and self.residual.currentData() == "unstructured" and self.random.currentData() != "none":
             self.random.setCurrentIndex(self.random.findData("none"))
             self.time_type.setCurrentIndex(self.time_type.findData("categorical"))
         fam, est = self.family.currentData(), self.estimator.currentData()
@@ -453,7 +703,8 @@ class MixedPage(QWidget):
         except Exception as e:  # an incomplete selection must never break the form
             self.preflight_view.setHtml(f"<i>{_html.escape(str(e))}</i>")
             return
-        parts = [f"<p><b>{rep.n_records:,}</b> records · <b>{rep.n_participants:,}</b> participants · "
+        parts = [f"<p><b>{rep.n_records:,}</b> records · <b>{rep.n_participants:,}</b> participants"
+                 + (" (composite key: cluster, ID)" if rep.cluster else "") + " · "
                  f"{len(rep.time_points)} time points · {rep.n_multi_obs:,} participants with 2+ observations, "
                  f"{rep.n_one_obs:,} with one, {rep.n_no_obs:,} with none · duplicate participant-time rows: "
                  f"{rep.duplicates}</p>"]
@@ -494,43 +745,31 @@ class MixedPage(QWidget):
         return s
 
     def _fit(self) -> None:
+        """Fit the requested model = the draft with the user's edits (never a model rebuilt from widget defaults)."""
         s = self._validated()
         if s is None:
             return
+        self._run_fit(s, "<p>Fitting in R…</p>")
+
+    def _run_fit(self, s: "mixed.MixedSpec", msg: str) -> None:
         ds = self.state.dataset
-        self.output.setHtml("<p>Fitting in R…</p>")
-        self.state.run_r(lambda sess: mixed.run(sess, ds, s), self._done,
+        self.output.setHtml(msg)
+        self.state.run_r(lambda sess: mixed.run(sess, ds, s), lambda out: self._fit_done(out, s),
                          lambda m: self.output.setHtml(f"<p style='color:#c62828'>{m}</p>"))
 
     def fit_spec(self, s: "mixed.MixedSpec") -> None:
-        """Fit an exact specification (e.g. a discovery candidate): the form shows its main settings; the
-        result states that it is a refit and which formula and structure were used."""
+        """Fit an exact specification (e.g. a discovery candidate): the form shows ALL of it - every fixed term, the
+        structure, estimation, cluster and coding - before anything else happens, and becomes the editable draft."""
         ds = self.state.dataset
         if ds is None:
             return
-        for combo, val in ((self.outcome, s.outcome), (self.idv, s.id), (self.time, s.time), (self.family, s.family),
-                           (self.estimator, s.estimator), (self.random, s.random), (self.residual, s.residual),
-                           (self.time_type, s.time_type), (self.gee_corstr, s.gee_corstr), (self.cluster, s.cluster),
-                           (self.id_policy, s.id_policy)):
-            i = combo.findData(val)
-            if i >= 0:
-                combo.setCurrentIndex(i)
-        self.method.setCurrentText(s.method)
-        for combo, val in ((self.inference, s.inference), (self.interactions, s.interactions)):
-            i = combo.findData(val)
-            if i >= 0:
-                combo.setCurrentIndex(i)
-        # the form shows the transferred model's fixed effects (v1.2 left every predictor unchecked)
-        self.pred_sel.set_selected(list(s.predictors))
-        self.max_fixed.setValue(max(self.max_fixed.value(), s.max_fixed))
+        self.load_spec(s)
         try:
             mixed.validate(mixed.view(ds, s), s)
         except mixed.MixedInputError as e:
             self.output.setHtml(f"<p style='color:#c62828'>{e}</p>")
             return
-        self.output.setHtml(f"<p>Refitting {s.source} in R…</p>")
-        self.state.run_r(lambda sess: mixed.run(sess, ds, s), self._done,
-                         lambda m: self.output.setHtml(f"<p style='color:#c62828'>{m}</p>"))
+        self._run_fit(s, f"<p>Refitting {s.source} in R…</p>")
 
     def _compare(self, which: str) -> None:
         s = self._validated()
@@ -538,13 +777,27 @@ class MixedPage(QWidget):
             return
         ds = self.state.dataset
         try:
-            mixed.comparison_variants(s, which)
+            variants = mixed.comparison_variants(s, which)
         except mixed.MixedInputError as e:
             QMessageBox.information(self, "Mixed models", str(e))
             return
-        self.output.setHtml("<p>Fitting the alternative specifications in R…</p>")
+        changed = "" if s.family != "gaussian" or s.estimator != "mixed" else (
+            "Fixed-effect (time form) comparisons are ML fits" + (f" (your model is {s.method})" if s.method != "ML" else "")
+            + "; random effects, residual covariance, cluster and terms are kept." if which == "time" else
+            "Covariance comparisons are REML fits of the same fixed part.")
+        self.output.setHtml("<p>Fitting the alternative specifications in R: " + ", ".join(v[0] for v in variants)
+                            + (f". {changed}" if changed else "") + "</p>")
         self.state.run_r(lambda sess: mixed.compare_specs(sess, ds, s, which), self._done,
                          lambda m: self.output.setHtml(f"<p style='color:#c62828'>{m}</p>"))
+
+    def _fit_done(self, out, s: "mixed.MixedSpec") -> None:
+        from copy import deepcopy
+
+        self.fitted_spec = deepcopy(s)
+        if self.draft is None or not self.draft.origin:
+            self.draft = deepcopy(s)          # a new model becomes the draft its edits are compared with
+        self._done(out)
+        self._update_lineage()
 
     def _done(self, out) -> None:
         result, artifacts = out

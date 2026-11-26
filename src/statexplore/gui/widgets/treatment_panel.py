@@ -363,6 +363,17 @@ class TreatmentPanel(QGroupBox):
             self._acks.pop(name, None)
         self.changed.emit()
 
+    def load_treatments(self, items: list | None) -> None:
+        """Programmatic restore of a model's continuous treatments (transfer, project reload): exactly these, no
+        dialog; non-continuous encodings are not represented here (the caller keeps them)."""
+        self._acks = {}
+        for t in M.as_treatments(items):
+            if t.treatment == "continuous" and self.ds is not None and t.variable in self.ds.variables:
+                self._acks[t.variable] = (t, M.coding_fingerprint(self.ds, t.variable))
+        self._render_outcome()
+        self._render_predictors()
+        self.changed.emit()
+
     def treated(self) -> list[str]:
         """Variables treated as continuous in the CURRENT model (preconfigured others do not apply)."""
         return [n for n in self.model_variables() if n in self._acks]

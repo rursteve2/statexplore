@@ -23,7 +23,8 @@ RANDOM = {"intercept": "Random intercept", "slope": "Random intercept + time slo
           "slope_uncorrelated": "Random intercept + time slope (uncorrelated)", "none": "None (marginal model)"}
 RESIDUAL = {"independent": "Independent", "ar1": "AR(1) — observed-occasion index (gaps compressed)",
             "car1": "Continuous-time AR(1) — actual time values", "unstructured": "Unstructured (marginal, mmrm)"}
-INTERACTIONS = {"none": "None", "time": "Time × each predictor", "all": "All two-way"}
+INTERACTIONS = {"none": "None", "time": "Time × each predictor", "all": "All two-way",
+                "custom": "Custom (the individual terms listed below)"}
 FAMILIES = {"gaussian": "Gaussian (continuous)", "binomial": "Binary logistic", "ordinal": "Ordinal logistic (cumulative logit)",
             "multinomial": "Multinomial nominal (baseline-category logit)"}
 ESTIMATORS = {"mixed": "Mixed-effects model (subject-specific)", "gee": "GEE (population-average, geepack)"}
@@ -131,7 +132,13 @@ def spec_from_discovery(run: Any, row: dict[str, Any]) -> "MixedSpec":
                             "estimation, coding and rows)", **extra)
     # inference the model's engine supports (P1-01): term LR tests on ML lme4 fits; nlme / mmrm report their own df
     spec.inference = "lrt" if spec.engine == "lme4" and method == "ML" and fam == "gaussian" else "satterthwaite"
+    spec.origin = origin_dict(spec)
     return spec
+
+
+def origin_dict(s: MixedSpec) -> dict[str, Any]:
+    """The immutable origin record of a model (its own spec without lineage fields)."""
+    return {k: v for k, v in s.to_dict().items() if k != "origin"}
 
 
 def fam_is_gee(d: Any) -> bool:
@@ -174,6 +181,9 @@ class MixedSpec:
     id_policy: str = "global"           # global: IDs unique across clusters | local: IDs numbered within each cluster
     cluster_random: bool = True         # False: keep composite (cluster, ID) participants but no cluster variance
                                         # (an exploratory workflow-B candidate fitted without the cluster)
+    # ---- v1.3.3: lineage (01 §1-2). The immutable origin spec of a transferred model; a refit whose fit-relevant
+    # fields differ from it is a *modified* model (diff shown, never "verified"); equal -> verified against the origin.
+    origin: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -313,6 +323,20 @@ def validate(ds: Dataset, s: MixedSpec) -> None:
                               + s.predictors + list(s.sample_vars))
         if why:
             raise MixedInputError(why)
+    if s.terms:
+        allowed = set(term_mains(s)) | ({s.time} if s.time else set())
+        bad = sorted({v for t in s.terms for v in t if v not in allowed})
+        if bad:
+            raise MixedInputError(f"The fixed terms use variables that are not in the model ({', '.join(bad)}): add them "
+                                  "as predictors or remove the terms.")
+        if s.time and s.time_type != "quadratic" and any(time_sq(s) in t for t in s.terms):
+            raise MixedInputError("Squared-time terms need the quadratic time form.")
+        if len(term_set(s.terms)) != len(s.terms):
+            raise MixedInputError("A fixed term is listed twice.")
+        why = hierarchy_problems(s, s.terms)
+        if why:
+            raise MixedInputError("Hierarchy: every interaction needs its lower-order terms (" + "; ".join(why) + "). "
+                                  "Add the missing terms; a non-hierarchical model is not fitted silently.")
 
 
 def fixed_terms(s: MixedSpec) -> list[list[str]]:
@@ -330,7 +354,215 @@ def fixed_terms(s: MixedSpec) -> list[list[str]]:
         out += [[t[0], p] for t in base for p in s.predictors]
     elif s.interactions == "all":
         mains = [t[0] for t in base] + s.predictors
-        out += [[a, b] for i, a in enumerate(mains) for b in mains[i + 1:]]
+        # (poly(time, 2) + predictors)^2 never multiplies time by its own square
+        out += [[a, b] for i, a in enumerate(mains) for b in mains[i + 1:] if not (a == s.time and b == f"{s.time}^2")]
+    return out
+
+
+TermSet = frozenset  # a model term as the set of its variables ('<time>^2' = squared time)
+
+
+def term_set(terms: list[list[str]] | None) -> set[frozenset[str]]:
+    return {frozenset(t) for t in (terms or [])}
+
+
+def time_sq(s: MixedSpec) -> str:
+    return f"{s.time}^2"
+
+
+def term_mains(s: MixedSpec) -> list[str]:
+    """The main effects a model with this time form and these predictors can contain, in display order."""
+    out = ([s.time] + ([time_sq(s)] if s.time_type == "quadratic" else [])) if s.time else []
+    return out + list(s.predictors)
+
+
+def term_universe(s: MixedSpec, max_order: int = 3) -> list[list[str]]:
+    """Every term the editor offers: main effects, then two- and three-way products (never time with its own square)."""
+    from itertools import combinations
+
+    mains = term_mains(s)
+    out = [[m] for m in mains]
+    for k in range(2, max_order + 1):
+        for c in combinations(mains, k):
+            if s.time and s.time in c and time_sq(s) in c:
+                continue
+            out.append(list(c))
+    return out
+
+
+def preset_terms(s: MixedSpec, key: str) -> list[list[str]]:
+    from dataclasses import replace
+
+    return fixed_terms(replace(s, terms=None, interactions="none" if key == "custom" else key))
+
+
+def matching_preset(s: MixedSpec, terms: list[list[str]]) -> str:
+    want = term_set(terms)
+    for key in ("none", "time", "all"):
+        if term_set(preset_terms(s, key)) == want:
+            return key
+    return "custom"
+
+
+def hierarchy_problems(s: MixedSpec, terms: list[list[str]], name: Any = None) -> list[str]:
+    """Lower-order terms an interaction (or squared time) needs but the term set lacks."""
+    have = term_set(terms)
+    out = []
+    for t in terms:
+        if len(t) > 1:
+            for v in t:
+                sub = frozenset(x for x in t if x != v)
+                if sub not in have:
+                    out.append(f"{term_label(t, name)} needs {term_label(sorted(sub), name)}")
+        if s.time and time_sq(s) in t and frozenset([s.time] + [x for x in t if x != time_sq(s)]) not in have:
+            out.append(f"{term_label(t, name)} needs the linear time term with the same predictors")
+    return list(dict.fromkeys(out))
+
+
+def term_label(t: list[str] | tuple[str, ...], name: Any = None) -> str:
+    name = name or (lambda v: v)
+    return " × ".join(name(v) for v in t)
+
+
+def remap_time_terms(terms: list[list[str]], time: str | None, new_type: str) -> list[list[str]]:
+    """The same fixed part under another time form: going to quadratic adds the squared-time copy of every time term;
+    leaving it drops the squared-time terms. Linear / categorical time use the same time symbol."""
+    if not time:
+        return [list(t) for t in terms]
+    sq = f"{time}^2"
+    base = [list(t) for t in terms if sq not in t]
+    if new_type != "quadratic":
+        return base
+    out = []
+    for t in base:
+        out.append(t)
+        if time in t:
+            out.append([sq if v == time else v for v in t])
+    return out
+
+
+# fields that define the fitted model (everything else - trajectories, plot seed - is presentation only)
+FIT_FIELDS = ("outcome", "id", "time", "time_type", "predictors", "random", "residual", "cluster", "method", "family",
+              "estimator", "inference", "event", "reference", "nagq", "gee_corstr", "treatments", "sample_vars",
+              "id_policy", "cluster_random", "force_nlme", "conf")
+FIELD_TEXT = {"time_type": "time form", "method": "estimation", "random": "random effects",
+              "residual": "residual covariance", "id_policy": "participant ID policy", "cluster_random":
+              "cluster random intercept", "force_nlme": "engine (nlme forced)", "nagq": "quadrature points",
+              "gee_corstr": "GEE working correlation", "sample_vars": "shared-sample variables",
+              "conf": "confidence level"}
+
+
+def spec_diff(origin: MixedSpec | dict[str, Any] | None, s: MixedSpec) -> list[str]:
+    """Field-level differences between the origin's model and this one ([] = the same model). Terms are compared as
+    sets of variable sets; the predictor list as a set (its order does not change the model)."""
+    if origin is None:
+        return []
+    o = origin if isinstance(origin, MixedSpec) else MixedSpec(**{k: v for k, v in origin.items()
+                                                                  if k in MixedSpec.__dataclass_fields__})
+    out = []
+    for f in FIT_FIELDS:
+        a, b = getattr(o, f), getattr(s, f)
+        if f == "predictors" or f == "sample_vars":
+            a, b = sorted(a or []), sorted(b or [])
+        if f == "id_policy" and not (o.cluster or s.cluster):
+            continue
+        if f == "inference" and (o.engine != "lme4" and s.engine != "lme4"):
+            continue
+        if a != b:
+            out.append(f"{FIELD_TEXT.get(f, f)}: {a!r} → {b!r}")
+    ta, tb = term_set(fixed_terms(o)), term_set(fixed_terms(s))
+    if ta != tb:
+        add = sorted(term_label(sorted(t)) for t in tb - ta)
+        rem = sorted(term_label(sorted(t)) for t in ta - tb)
+        out.append("fixed terms: " + "; ".join(([f"added {', '.join(add)}"] if add else [])
+                                               + ([f"removed {', '.join(rem)}"] if rem else [])))
+    return out
+
+
+ENGINE_CLASSES = {"lme4": ("lmerModLmerTest", "lmerMod"), "nlme": ("lme",), "mmrm": ("mmrm",), "glmer": ("glmerMod",),
+                  "clmm": ("clmm",), "mblogit": ("mblogit", "mmblogit"), "geepack": ("geeglm",)}
+
+
+def _as_strs(x: Any) -> list[str]:
+    if x is None:
+        return []
+    return [str(v) for v in (x if isinstance(x, list) else [x])]
+
+
+def effective_terms(ds: Dataset, s: MixedSpec, labels: list[str]) -> set[frozenset[str]]:
+    """Fixed-effect term labels of the FITTED object mapped back to variables (poly(time, 2) = time + time^2)."""
+    import re
+
+    rev = {alias(ds.var(n).alias): n for n in ds.variables}
+    out: set[frozenset[str]] = set()
+    for lab in labels:
+        if "|" in lab:                                   # mmrm covariance term, not a fixed effect
+            continue
+        parts = re.split(r":(?![^()]*\))", lab)
+        options: list[list[str]] = [[]]
+        for p in parts:
+            p = p.strip()
+            if p.startswith("poly(") and s.time:
+                alts = [s.time, time_sq(s)]
+            elif p in ("I(sx_time^2)", "I(sx_time ^ 2)") and s.time:
+                alts = [time_sq(s)]
+            elif p in ("sx_time", "sx_tnum") and s.time:
+                alts = [s.time]
+            else:
+                alts = [rev.get(p, p.strip("`"))]
+            options = [o + [a] for o in options for a in alts]
+        out |= {frozenset(o) for o in options}
+    return out
+
+
+def effective_problems(ds: Dataset, s: MixedSpec, eff: dict[str, Any] | None) -> list[str]:
+    """Differences between the requested model and what R actually fitted (J4). [] = the fit is the requested model.
+    Fails closed: an unreadable fitted object is itself a problem."""
+    import re
+
+    if not isinstance(eff, dict):
+        return ["the fitted object could not be inspected"]
+    out = []
+    cls = (_as_strs(eff.get("class")) or [""])[0]
+    if cls not in ENGINE_CLASSES.get(s.engine, (cls,)):
+        out.append(f"engine: requested {s.engine}, fitted object is {cls or 'unknown'}")
+    want = term_set(fixed_terms(s))
+    got = effective_terms(ds, s, _as_strs(eff.get("fixed")))
+    if want != got:
+        miss = sorted(term_label(sorted(t)) for t in want - got)
+        extra = sorted(term_label(sorted(t)) for t in got - want)
+        out.append("fixed terms: " + "; ".join(([f"missing in the fit: {', '.join(miss)}"] if miss else [])
+                                               + ([f"not requested: {', '.join(extra)}"] if extra else [])))
+    method = (_as_strs(eff.get("method")) or [""])[0]
+    if s.family == "gaussian" and s.estimator == "mixed" and s.engine in ("lme4", "nlme") and method != s.method:
+        out.append(f"estimation: requested {s.method}, fitted {method or 'unknown'}")
+    if s.engine == "nlme":
+        cor = (_as_strs(eff.get("correlation")) or ["none"])[0]
+        want_cor = {"independent": "none", "ar1": "corAR1", "car1": "corCAR1"}[s.residual]
+        pq = [int(x) for x in _as_strs(eff.get("cor_pq"))]
+        if cor == "corARMA" and pq == [1, 0] and want_cor == "corAR1":
+            cor = "corAR1"                                   # nlme's equivalent form of corAR1 with index gaps
+        if cor != want_cor:
+            out.append(f"residual covariance: requested {s.residual}, fitted {cor}")
+    if s.estimator == "mixed" and s.engine != "mmrm":
+        groups = {re.sub(r"\.\d+$", "", g) for g in _as_strs(eff.get("groups"))}
+        if groups:
+            want_g = {"sx_id"} | ({"sx_cluster"} if s.cluster and s.cluster_random else set())
+            if groups != want_g:
+                out.append(f"grouping: requested {sorted(want_g)}, fitted {sorted(groups)}")
+        blocks = eff.get("blocks") if isinstance(eff.get("blocks"), list) else []
+        pid = [b for b in blocks if isinstance(b, dict) and str(b.get("group", "")).split(".")[0] == "sx_id"]
+        if pid:
+            cols = sorted({c for b in pid for c in _as_strs(b.get("columns"))})
+            corr = any(len(_as_strs(b.get("columns"))) > 1 and str(b.get("structure")) != "diagonal" for b in pid)
+            got_r = ("intercept" if cols == ["(Intercept)"] else
+                     ("slope" if corr else "slope_uncorrelated") if len(cols) == 2 else f"{cols}")
+            if got_r != s.random:
+                out.append(f"random effects: requested {s.random}, fitted {got_r}")
+    if s.estimator == "gee":
+        cs = (_as_strs(eff.get("corstr")) or [""])[0]
+        if cs and cs != s.gee_corstr:
+            out.append(f"GEE working correlation: requested {s.gee_corstr}, fitted {cs}")
     return out
 
 
@@ -359,7 +591,8 @@ def canonical_spec(ds: Dataset, s: MixedSpec) -> dict[str, Any]:
 def _fixed_rhs(ds: Dataset, s: MixedSpec) -> str:
     a = lambda n: alias(ds.var(n).alias)  # noqa: E731
     if s.terms:
-        name = lambda n: "sx_time" if n == s.time else a(n)  # noqa: E731
+        sq = time_sq(s) if s.time else None
+        name = lambda n: "sx_time" if n == s.time else "I(sx_time^2)" if n == sq else a(n)  # noqa: E731
         return " + ".join(":".join(name(v) for v in t) for t in s.terms)
     preds = [a(p) for p in s.predictors]
     terms: list[str] = []
@@ -599,12 +832,13 @@ def _build_gaussian(ds: Dataset, s: MixedSpec, plot_paths: list[str], L: list[st
     if s.time:
         L.append("sx_tabs[[length(sx_tabs) + 1]] <- sx_table(\"Outcome availability by time point\", sx_av, notes = "
                  "\"Observed = non-missing outcome. Time points with 0 observed values are structurally unobserved and "
-                 "are not part of the analysis range.\")")
+                 "contribute no rows; one inside the observed time range stays inside that range (it is not outside "
+                 "it), but no data exist there.\")")
     L += _safe_block("Trajectory plots and population-level trajectory table",
                      _trajectory(ds, s, plot_paths[:3] if s.time else []))
     L += _safe_block("Random-effect and residual-autocorrelation plots", _extra_plots(s, plot_paths[3:]))
     L.append("sx_result <- list(tables = sx_tabs, checks = sx_checks, n_used = nrow(sx_d), n_excluded = nrow(dat) - nrow(sx_d),")
-    L.append("  identity = sx_ident, diagnostics = sx_dg[c(\"status\", \"flags\", \"optimizer\", \"apvar\")], plot_issues = I(sx_plot_issues),")
+    L.append("  identity = sx_ident, effective = sx_effective(sx_fit), diagnostics = sx_dg[c(\"status\", \"flags\", \"optimizer\", \"apvar\")], plot_issues = I(sx_plot_issues),")
     L += ["  notes = paste0(\"Mixed and marginal models use every available observation: participants with missing \",",
           "    \"occasions still contribute (no imputation). Likelihood-based estimates are consistent when the \",",
           "    \"missingness is ignorable given the model (missing at random given the modelled outcomes and covariates) \",",
@@ -849,7 +1083,8 @@ def _build_generalized(ds: Dataset, s: MixedSpec, plot_paths: list[str], helpers
     if s.time:
         L.append("sx_tabs[[length(sx_tabs) + 1]] <- sx_table(\"Outcome availability by time point\", sx_av, notes = "
                  "\"Observed = non-missing outcome. Time points with 0 observed values are structurally unobserved and "
-                 "are not part of the analysis range.\")")
+                 "contribute no rows; one inside the observed time range stays inside that range (it is not outside "
+                 "it), but no data exist there.\")")
     miss = ("GEE uses every available observation without weighting: ordinary (unweighted) GEE is consistent when "
             "missingness does not depend on the outcomes (MCAR, or missingness explained by the covariates in the "
             "model); under MAR that depends on observed outcomes it can be biased, and weighted GEE or multiple "
@@ -865,7 +1100,7 @@ def _build_generalized(ds: Dataset, s: MixedSpec, plot_paths: list[str], helpers
         "sx_dg <- sx_diag(sx_fit, NULL)",
         f"sx_inference <- {r_str(inference)}",
         "sx_result <- list(tables = sx_tabs, checks = sx_checks, n_used = nrow(sx_d), n_excluded = nrow(dat) - nrow(sx_d),",
-        "  identity = sx_ident, plot_issues = I(sx_plot_issues), diagnostics = sx_dg[c(\"status\", \"flags\", \"optimizer\", \"apvar\")],",
+        "  identity = sx_ident, effective = sx_effective(sx_fit), plot_issues = I(sx_plot_issues), diagnostics = sx_dg[c(\"status\", \"flags\", \"optimizer\", \"apvar\")],",
         f"  notes = paste0(sx_inference, \" \", {r_str(miss)}))",
     ]
     if eng == "glmer":
@@ -1132,7 +1367,7 @@ def run(session: RSession, ds: Dataset, s: MixedSpec) -> tuple[AnalysisResult, d
                               "Likelihood-based: valid if missingness is ignorable given the model (MAR, correct "
                               "model); an assumption, not verifiable from the data."))
     result.seed = s.seed
-    if s.source:
+    if s.source and not (s.origin and spec_diff(s.origin, s)):
         result.messages.append(f"Refit: {s.source}.")
     record(result, ds)
     artifacts: dict[str, bytes] = {}
@@ -1191,11 +1426,50 @@ def run(session: RSession, ds: Dataset, s: MixedSpec) -> tuple[AnalysisResult, d
             key = f"plots/{p.name}"
             artifacts[key] = p.read_bytes()
             result.plots.append(key)
-    if s.descriptor:
-        from .descriptor import attach_check
-
-        attach_check(result, s.descriptor)
+    check_fitted(result, ds, s, raw.get("effective"))
+    attach_lineage(result, s)
     return result, artifacts
+
+
+def check_fitted(result: AnalysisResult, ds: Dataset, s: MixedSpec, eff: Any) -> None:
+    """J4: compare the fitted object with the request; a mismatch fails closed (no estimates shown as a valid fit)."""
+    from ..core.schema import Table
+
+    if result.status is Status.FAILED:
+        return
+    result.values["effective_spec"] = eff if isinstance(eff, dict) else None
+    probs = effective_problems(ds, s, eff)
+    if not probs:
+        result.values["fit_check"] = "fitted model = requested specification"
+        return
+    result.values["fit_check"] = "FITTED MODEL DIFFERS FROM THE REQUEST"
+    req = canonical_spec(ds, s)
+    result.tables = [Table(name="Requested vs fitted specification", columns=["difference"], rows=[[p] for p in probs],
+                           notes="Requested: " + "; ".join(f"{k} = {v}" for k, v in req.items() if k != "treatments")
+                                 + ". The estimates of this fit are withheld because it is not the requested model.")]
+    result.plots = []
+    result.messages.insert(0, "Check: the fitted model is not the requested model (" + "; ".join(probs) + "). No "
+                              "results are shown for it.")
+    result.status = Status.FAILED
+
+
+def attach_lineage(result: AnalysisResult, s: MixedSpec) -> None:
+    """Origin and identity (01 §1): an unchanged transferred model is verified against its origin; a changed one is a
+    *modified* model whose lineage and field-level differences are shown, never 'verified'."""
+    if not s.descriptor:
+        return
+    from .descriptor import ModelDescriptor, attach_check, provenance
+
+    diff = spec_diff(s.origin, s) if s.origin else []
+    result.values["spec_diff"] = diff
+    if not diff or s.descriptor.get("new_analysis"):
+        attach_check(result, s.descriptor)
+        return
+    desc = ModelDescriptor.from_dict(s.descriptor)
+    result.values["origin_model"] = desc.summary()
+    result.values["provenance"] = provenance(desc, result)
+    result.values["identity_check"] = "modified from the origin (a new model; no identity with the origin is claimed)"
+    result.messages.insert(0, f"Note: modified model derived from {desc.source}. Changes: " + "; ".join(diff) + ".")
 
 
 # ---- specification comparisons (§15.3, §14; v1.3.2 family-aware, STAT-17/19/23/33/34, UI-54) -----------------
@@ -1238,7 +1512,12 @@ def comparison_variants(base: MixedSpec, which: str) -> list[tuple[str, MixedSpe
         raise MixedInputError(why)
     gauss = base.family == "gaussian" and base.estimator != "gee"
     if which == "time":
-        return [(TIME_TYPES[t], replace(base, time_type=t, method="ML")) for t in ("continuous", "quadratic", "categorical")]
+        # V133-STAT-01: only the time form (and, for Gaussian fits, REML -> ML) changes; terms are remapped to the time
+        # form, and the random part, residual correlation, cluster and ID policy are kept exactly
+        def tv(t: str) -> MixedSpec:
+            terms = remap_time_terms(base.terms, base.time, t) if base.terms else None
+            return replace(base, time_type=t, method="ML" if gauss else base.method, terms=terms)
+        return [(TIME_TYPES[t], tv(t)) for t in ("continuous", "quadratic", "categorical")]
     if which == "random":
         kinds = ("intercept", "slope_uncorrelated", "slope") if gauss or base.family == "binomial" else ("intercept", "slope")
         return [(RANDOM[r], replace(base, random=r, method="REML" if gauss else base.method)) for r in kinds]
@@ -1292,10 +1571,10 @@ def compare_specs(session: RSession, ds: Dataset, base: MixedSpec, which: str) -
         L.append(f"# ---- variant {k}: {label} ----")
         L.append("sx_cmp[[" + str(k) + "]] <- tryCatch({")
         L.append(build(ds, v, [], helpers=False).replace("sx_result <- list(", "sx_unused <- list("))
-        L.append("  sx_dgv <- if (!is.null(sx_dg)) sx_dg else sx_diag(sx_fit, sx_run)")
+        L.append("  sx_dgv <- if (!is.null(sx_dg)) sx_dg else sx_diag(sx_fit, sx_run); sx_effv <- sx_effective(sx_fit)")
         if gee:
             L.append(f"  list(label = {r_str(label)}, engine = {r_str(v.engine)}, method = \"GEE (robust SE)\",")
-            L.append("    n = nrow(sx_d), rows = sx_ident$rows, fit = sx_fit, clean = sx_dgv$clean,")
+            L.append("    n = nrow(sx_d), rows = sx_ident$rows, fit = sx_fit, clean = sx_dgv$clean, eff = sx_effv,")
             L.append("    flags = paste(sx_dgv$flags, collapse = \"; \"), status = sx_dgv$status,")
             L.append("    QIC = if (is.null(sx_qic)) NA_real_ else unname(sx_qic[[\"QIC\"]]),")
             L.append("    QICu = if (is.null(sx_qic)) NA_real_ else unname(sx_qic[[\"QICu\"]]),")
@@ -1303,7 +1582,7 @@ def compare_specs(session: RSession, ds: Dataset, base: MixedSpec, which: str) -
         else:
             L.append(f"  list(label = {r_str(label)}, engine = {r_str(v.engine)}, method = {r_str(_estimation(v))},")
             L.append("    logLik = as.numeric(stats::logLik(sx_fit)), df = sx_ic(sx_fit)$k, AIC = sx_ic(sx_fit)$aic,")
-            L.append("    BIC = sx_ic(sx_fit)$bic, BIC_n = sx_ic(sx_fit)$n_bic, n = nrow(sx_d), rows = sx_ident$rows,")
+            L.append("    BIC = sx_ic(sx_fit)$bic, BIC_n = sx_ic(sx_fit)$n_bic, n = nrow(sx_d), rows = sx_ident$rows, eff = sx_effv,")
             L.append("    clean = sx_dgv$clean, status = sx_dgv$status, flags = paste(sx_dgv$flags, collapse = \"; \"),")
             L.append("    boundary = isTRUE(sx_dgv$singular) || isTRUE(sx_dgv$near_boundary))")
         L.append(f"}}, error = function(e) list(label = {r_str(label)}, error = conditionMessage(e)))")
@@ -1378,7 +1657,8 @@ def compare_specs(session: RSession, ds: Dataset, base: MixedSpec, which: str) -
         + r_str(_tests_note(base, which)) + ")",
         "sx_errors <- vapply(sx_cmp[!sx_ok], function(x) paste0(x$label, \": \", x$error), \"\")",
         "sx_n <- if (any(sx_ok)) max(vapply(sx_cmp[sx_ok], function(x) x$n, 0)) else 0",
-        "sx_result <- list(tables = sx_tabs, checks = sx_errors, n_used = sx_n, n_excluded = nrow(dat) - sx_n, state = sx_state)",
+        "sx_result <- list(tables = sx_tabs, checks = sx_errors, n_used = sx_n, n_excluded = nrow(dat) - sx_n, state = sx_state,",
+        "  effective = lapply(sx_cmp, function(x) if (is.null(x$error)) x$eff else NULL))",
     ]
     body = "\n".join(L) + "\n"
     pk = ["lme4", "lmerTest", "nlme", "mmrm"] + (["geepack"] if gee else ["ordinal"] if base.family == "ordinal" else [])
@@ -1392,6 +1672,39 @@ def compare_specs(session: RSession, ds: Dataset, base: MixedSpec, which: str) -
         result.tables.append(_parse_table(t, names, _internal_names(ds, base)))
     result.n_used = raw.get("n_used")
     state = str(_as_list(raw.get("state"))[0]) if raw.get("state") else ""
+    # J5: each variant is the requested one - read back from the fitted object, shown per row, fail closed otherwise
+    effs = raw.get("effective") if isinstance(raw.get("effective"), list) else []
+    bad = []
+    cmp_tab = next((t for t in result.tables if t.name.startswith("Specification comparison")), None)
+    for k, (label, v) in enumerate(variants):
+        eff = effs[k] if k < len(effs) else None
+        if not isinstance(eff, dict):
+            continue                                                  # failed variant: reported as failed already
+        probs = effective_problems(ds, v, eff)
+        if probs:
+            bad.append(f"{label}: " + "; ".join(probs))
+        if cmp_tab is not None and k < len(cmp_tab.rows):
+            if "fitted structure" not in cmp_tab.columns:
+                cmp_tab.columns = cmp_tab.columns[:3] + ["fitted structure"] + cmp_tab.columns[3:]
+                cmp_tab.rows = [r[:3] + [""] + r[3:] for r in cmp_tab.rows]
+            cmp_tab.rows[k][3] = fitted_text(ds, v, eff)
+    if cmp_tab is not None and "fitted structure" in cmp_tab.columns:
+        cmp_tab.notes = (cmp_tab.notes or "") + (" 'fitted structure' is read back from each fitted R object (engine, "
+                                                 "random part, residual correlation, grouping, number of fixed terms).")
+    if which == "time" and base.family == "gaussian" and base.estimator == "mixed":
+        result.messages.insert(0, ("Note: fixed-effect (time form) comparisons use ML fits; your model is "
+                                   f"{base.method}." if base.method != "ML" else "Note: all time forms are ML fits.")
+                               + f" Kept from your model: random effects {RANDOM[base.random]}, residual "
+                                 f"{RESIDUAL[base.residual]}" + (f", cluster {ds.var(base.cluster).display_name}"
+                                                                 if base.cluster else "") + ", fixed terms (time terms "
+                                 "follow each time form).")
+    if bad:
+        result.messages.insert(0, "Check: a fitted variant is not the requested model, so nothing is compared ("
+                               + " | ".join(bad) + ").")
+        result.tables = [t for t in result.tables if t is cmp_tab]
+        result.values["comparison_state"] = "failed: fitted structure differs from the request"
+        result.status = Status.FAILED
+        return result, {}
     result.values["comparison_state"] = state
     if state and state != "complete":
         result.messages.insert(0, f"Check: comparison {state}.")
@@ -1401,6 +1714,32 @@ def compare_specs(session: RSession, ds: Dataset, base: MixedSpec, which: str) -
         if result.status is Status.OK:
             result.status = Status.WARNING
     return result, {}
+
+
+def fitted_text(ds: Dataset, s: MixedSpec, eff: dict[str, Any]) -> str:
+    """Short description of what R fitted (from sx_effective), for comparison rows and reports."""
+    import re
+
+    cls = (_as_strs(eff.get("class")) or ["?"])[0]
+    parts = [cls]
+    blocks = eff.get("blocks") if isinstance(eff.get("blocks"), list) else []
+    for b in blocks:
+        if isinstance(b, dict):
+            g = re.sub(r"\.\d+$", "", str(b.get("group", "")))
+            g = {"sx_id": "participant", "sx_cluster": "cluster"}.get(g, g)
+            cols = ["1" if c == "(Intercept)" else "time" for c in _as_strs(b.get("columns"))]
+            parts.append(f"{g}: {'+'.join(cols)}" + (f" ({b.get('structure')})" if len(cols) > 1 else ""))
+    cor = (_as_strs(eff.get("correlation")) or ["none"])[0]
+    if cls == "lme":
+        parts.append("residual " + {"none": "independent", "corAR1": "AR(1)", "corCAR1": "CAR(1)",
+                                    "corARMA": "AR(1) (nlme corARMA p = 1)"}.get(cor, cor))
+    if eff.get("corstr"):
+        parts.append(f"working {(_as_strs(eff.get('corstr')) or [''])[0]}")
+    m = (_as_strs(eff.get("method")) or [""])[0]
+    if m:
+        parts.append(m)
+    parts.append(f"{len(effective_terms(ds, s, _as_strs(eff.get('fixed'))))} fixed terms")
+    return "; ".join(parts)
 
 
 def _estimation(v: MixedSpec) -> str:

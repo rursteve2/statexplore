@@ -257,7 +257,7 @@ sx_diag <- function(m, run = NULL) {
     if (!isTRUE(out$opt_code == 0)) out$flags <- c(out$flags, sprintf("optimizer convergence code %s", format(out$opt_code)))
     ch <- tryCatch(summary(m)$condHess, error = function(e) NA_real_)
     if (isTRUE(ch > 1e4)) out$flags <- c(out$flags, sprintf("ill-conditioned Hessian (condition number %.3g)", ch))
-    vc <- tryCatch(ordinal::VarCorr(m), error = function(e) NULL); sing <- FALSE
+    vc <- tryCatch(getExportedValue("ordinal", "VarCorr")(m), error = function(e) NULL); sing <- FALSE
     for (g in names(vc)) { ev <- eigen(as.matrix(vc[[g]]), symmetric = TRUE, only.values = TRUE)$values
       if (min(ev) < 1e-6) { sing <- TRUE; out$boundary <- c(out$boundary, sprintf("%s: smallest variance eigenvalue %.3g", g, min(ev))) } }
     out$singular <- sing
@@ -330,6 +330,39 @@ sx_group_counts <- function(m) {
   if (!length(fl)) return(NULL)
   do.call(rbind, lapply(names(fl), function(g) { k <- table(droplevels(as.factor(fl[[g]])))
     data.frame(level = g, groups = length(k), min_size = min(k), max_size = max(k)) }))
+}
+# What was ACTUALLY fitted (v1.3.3, J4), read back from the fitted object, never from the request: class, fixed-effect
+# term labels, grouping factors, random-effect blocks (columns, correlated or diagonal), residual correlation class,
+# estimation method, GEE working correlation, number of observations.
+sx_effective <- function(m) {
+  # optional helpers looked up only when needed (a Gaussian script does not depend on reformulas / ordinal)
+  nobars <- function(x) getExportedValue(if (requireNamespace("reformulas", quietly = TRUE)) "reformulas" else "lme4",
+                                         "nobars")(x)
+  f <- tryCatch(if (inherits(m, "merMod")) stats::formula(m, fixed.only = TRUE)
+                else if (inherits(m, "clmm")) nobars(m$formula) else stats::formula(m), error = function(e) NULL)
+  blocks <- list(); groups <- character()
+  if (inherits(m, "merMod") || inherits(m, "clmm")) {
+    vc <- tryCatch(if (inherits(m, "clmm")) getExportedValue("ordinal", "VarCorr")(m) else lme4::VarCorr(m),
+                   error = function(e) list())
+    groups <- names(vc)
+    blocks <- lapply(names(vc), function(g) { v <- as.matrix(vc[[g]])
+      list(group = g, columns = I(colnames(v)), structure = if (ncol(v) > 1) "correlated" else "single") })
+  } else if (inherits(m, "lme")) {
+    groups <- names(m$groups)
+    blocks <- lapply(names(m$modelStruct$reStruct), function(g) { p <- m$modelStruct$reStruct[[g]]
+      list(group = g, columns = I(colnames(as.matrix(p))),
+           structure = if (inherits(p, "pdDiag")) "diagonal" else if (ncol(as.matrix(p)) > 1) "correlated" else "single") })
+  }
+  list(class = class(m)[1], fixed = I(if (is.null(f)) character() else attr(stats::terms(f), "term.labels")),
+       groups = I(groups), blocks = blocks,
+       correlation = if (inherits(m, "lme") && !is.null(m$modelStruct$corStruct)) class(m$modelStruct$corStruct)[1] else "none",
+       # nlme turns corAR1 into the equivalent corARMA(p = 1, q = 0) when the occasion index has gaps: keep the order
+       cor_pq = I(if (inherits(m, "lme") && inherits(m$modelStruct$corStruct, "corARMA"))
+                    c(attr(m$modelStruct$corStruct, "p"), attr(m$modelStruct$corStruct, "q")) else integer()),
+       method = if (inherits(m, "merMod") && !inherits(m, "glmerMod")) (if (lme4::isREML(m)) "REML" else "ML")
+                else if (inherits(m, "lme")) m$method else "",
+       corstr = if (inherits(m, "geeglm")) m$corstr else "",
+       nobs = tryCatch(stats::nobs(m), error = function(e) NA_real_))
 }
 # Likelihood-ratio test with the reference distribution of the hypothesis (STAT-17 / 23 / 41): |LR| <= tol below 0 is
 # numerical noise (LR = 0, raw value kept); a materially negative, non-finite LR or df <= 0 gives no p-value.
