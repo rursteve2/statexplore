@@ -29,6 +29,13 @@ def main() -> None:
 
     subprocess.run([sys.executable, "-m", "PyInstaller", "--noconfirm", "--distpath", str(OUT / "dist"),
                     "--workpath", str(OUT / "build"), str(ROOT / "packaging" / "statexplore.spec")], check=True)
+    # build identity for export manifests (V133-EXP-02): the source commit, read by export.exporters.build_id()
+    sha = subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT, capture_output=True, text=True).stdout.strip()
+    dirty = subprocess.run(["git", "status", "--porcelain", "--untracked-files=no"], cwd=ROOT, capture_output=True,
+                           text=True).stdout.strip()
+    (DIST / "_internal" / "statexplore").mkdir(parents=True, exist_ok=True)
+    (DIST / "_internal" / "statexplore" / "_build.txt").write_text(
+        f"commit {sha[:12]}" + (" + local changes" if dirty else ""), encoding="utf-8")
     rscript = find_rscript()
     if rscript is None:
         sys.exit("R not found: install R or set STATEXPLORE_RSCRIPT")

@@ -106,7 +106,7 @@ class AnalysisBuilderPage(QWidget):
         self.run_btn.clicked.connect(self._run)
         self.code_btn = QPushButton("View Code")
         self.code_btn.setEnabled(False)
-        self.code_btn.clicked.connect(lambda: self.current and CodeDialog(self.current[0], self).exec())
+        self.code_btn.clicked.connect(lambda: self.current and CodeDialog(self.current[0], self, dataset=self.state.dataset).exec())
         self.copy_btn = QPushButton("Copy tables")
         self.copy_btn.setToolTip("Copy all result tables as tab-separated text (pastes as tables into Word or Excel)")
         self.copy_btn.clicked.connect(self._copy_tables)

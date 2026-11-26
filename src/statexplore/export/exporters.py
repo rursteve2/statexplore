@@ -246,14 +246,66 @@ def identity_check(identity: dict | None) -> str:
             'cat("Model identity reproduced (rows, outcome, design, grouping).\\n")\n')
 
 
+def results_check(expected: dict | None) -> str:
+    """R lines that stop unless the re-run reproduces the recorded fit (n and logLik / AIC / BIC within the documented
+    tolerance abs 1e-4 + rel 1e-6), read from the fitted object itself (V133-EXP-03)."""
+    if not expected:
+        return ""
+    checks = []
+    for key, expr in (("n", "stats::nobs(sx_fit)"), ("logLik", "as.numeric(stats::logLik(sx_fit))"),
+                      ("AIC", "stats::AIC(sx_fit)"), ("BIC", "stats::BIC(sx_fit)")):
+        v = expected.get(key)
+        if v is None or (isinstance(v, float) and v != v):
+            continue
+        if key == "n":
+            checks.append(f'  "n differs from the recorded model" = isTRUE(all.equal({expr}, {int(v)}))')
+        else:
+            checks.append(f'  "{key} differs from the recorded model" = isTRUE(abs({expr} - ({float(v)!r})) <= 1e-4 + '
+                          f'1e-6 * abs({float(v)!r}))')
+    if not checks:
+        return ""
+    return ("\n# ---- results check: the fitted model reproduces the recorded fit (abs 1e-4 + rel 1e-6) ----\n"
+            "if (exists(\"sx_fit\") && !inherits(sx_fit, \"geeglm\")) {\n  stopifnot(\n" + ",\n".join(checks)
+            + ")\n  cat(\"Results reproduced (n, logLik, AIC, BIC).\\n\")\n}\n")
+
+
+def _engine_versions(engine: Any) -> dict | None:
+    if engine is None:
+        return None
+    if isinstance(engine, dict):
+        return {"r": engine.get("r_version") or engine.get("version"), **(engine.get("packages") or {})}
+    return {"r": getattr(engine, "version", None), **(getattr(engine, "packages", {}) or {})}
+
+
+def build_id() -> str:
+    """Application build identity: version plus the source commit when known (a frozen build records it at build
+    time in statexplore/_build.txt)."""
+    from .. import __version__
+
+    here = Path(__file__).resolve().parents[1]
+    for cand in (here / "_build.txt",):
+        if cand.is_file():
+            return f"{__version__} ({cand.read_text(encoding='utf-8').strip()})"
+    try:
+        import subprocess
+
+        sha = subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=here, capture_output=True, text=True,
+                             timeout=5).stdout.strip()
+        return f"{__version__} (commit {sha})" if sha else __version__
+    except Exception:
+        return __version__
+
+
 def write_portable(script: str, folder: Path, ds: Dataset, name: str = "analysis",
                    pseudonymize_ids: bool = True, provenance: dict | None = None, identity: dict | None = None,
-                   engine: Any = None) -> list[Path]:
-    """Save a script, the data file it reads (analysis columns only) and a manifest as a self-contained set.
-    The script checks its packages first and refuses a data file whose SHA-256 differs from the exported one
-    (P1-EXPORT, STAT-36); with `identity` it also stops unless the re-run analysed the same rows, outcome coding and
-    design. Paths are relative; output folders are created. Numeric participant IDs are replaced by
-    order-preserving codes unless `pseudonymize_ids` is off."""
+                   engine: Any = None, expected: dict | None = None, include_data: bool = True,
+                   packages: list[str] | None = None, extra: dict | None = None) -> list[Path]:
+    """Save a portable reproducibility bundle: script, the data file it reads (analysis columns only; only with the
+    user's consent), a schema-versioned manifest and a README. The script checks its packages first, refuses a data
+    file whose SHA-256 differs from the exported one, and (when known) stops unless the re-run analysed the same rows,
+    outcome coding, design and grouping (identity) and reproduced n / logLik / AIC / BIC (expected). Paths are
+    relative and output folders are created, so the folder can be moved and run in a clean, offline R session.
+    `packages` restricts the declared dependencies to those the executed model family needs (V133-EXP-04)."""
     import datetime as _dt
 
     from .. import __version__
@@ -262,33 +314,75 @@ def write_portable(script: str, folder: Path, ds: Dataset, name: str = "analysis
     data_name = f"{name}_data.csv"
     used = used_aliases(script)
     data_path = folder / data_name
-    export_data_csv(ds, data_path, used)
-    ids = _pseudonymize(data_path, sorted(set(_ID_COLUMN.findall(script)))) if pseudonymize_ids else []
-    md5, sha = _md5(data_path), _sha256(data_path)
+    tmp_data = data_path if include_data else folder / f".{name}_data_hash.tmp"
+    export_data_csv(ds, tmp_data, used)
+    ids = _pseudonymize(tmp_data, sorted(set(_ID_COLUMN.findall(script)))) if pseudonymize_ids else []
+    md5, sha = _md5(tmp_data), _sha256(tmp_data)
+    rows = sum(1 for _ in open(tmp_data, encoding="utf-8")) - 1
+    if not include_data:
+        tmp_data.unlink()
     check = (f'sx_data_sha256 <- "{sha}"  # SHA-256 of {data_name} as exported (see {name}_manifest.json)\n'
              "if (!isTRUE(get0(\"sx_skip_checksum\")) && !identical(unname(tools::sha256sum(sx_data_file)), sx_data_sha256))\n"
              "  stop(\"The data file \", sx_data_file, \" is not the file exported with this script (SHA-256 differs). \",\n"
              "       \"Use the exported file, or set sx_skip_checksum <- TRUE before source() to run anyway.\", call. = FALSE)")
     text, used = portable_text(script, data_name, check)
-    packages = required_packages(text)
-    text = package_check(packages) + 'dir.create("plots", showWarnings = FALSE)  # output folder for any plots\n' + text
+    found = required_packages(text)
+    if packages is not None:
+        found = sorted(set(found) & set(packages))
+    text = package_check(found) + 'dir.create("plots", showWarnings = FALSE)  # output folder for any plots\n' + text
     text += identity_check(identity)
+    text += results_check(expected)
     if ids:
         text = ("# Participant IDs in the data file are order-preserving codes (1, 2, ...), not the original IDs; "
                 "grouping, row order and results are unchanged.\n" + text)
     (folder / f"{name}.R").write_text(text, encoding="utf-8")
-    rows = sum(1 for _ in open(data_path, encoding="utf-8")) - 1
-    manifest = {"created": _dt.datetime.now().isoformat(timespec="seconds"), "statexplore": __version__,
-                "script": f"{name}.R", "data": {"file": data_name, "sha256": sha, "md5": md5, "rows": rows,
+    versions = _engine_versions(engine)
+    manifest = {"manifest_schema": 2, "created": _dt.datetime.now().isoformat(timespec="seconds"),
+                "statexplore": __version__, "build": build_id(),
+                "script": f"{name}.R", "data": {"file": data_name, "included": bool(include_data), "sha256": sha,
+                                                "md5": md5, "rows": rows,
                                                 "columns": sorted(used) if used is not None else None,
-                                                "pseudonymized_id_columns": ids},
-                "r_packages": packages,
-                "r_versions": ({"r": getattr(engine, "version", None), **(getattr(engine, "packages", {}) or {})}
-                               if engine is not None else None),
+                                                "pseudonymized_id_columns": ids,
+                                                "source_dataset": getattr(ds, "source_path", None) and str(ds.source_path)},
+                "r_packages": found,
+                "r_versions": versions,
                 "provenance": provenance or None, "identity": identity or None,
+                "expected_results": expected or None,
+                "tolerance": {"logLik/AIC/BIC": "abs 1e-4 + rel 1e-6", "n, identity fingerprints": "exact"},
+                **({"model": extra} if extra else {}),
                 "notes": "Paths are relative to this folder. Run: source(\"" + name + ".R\") or Rscript " + name + ".R"}
-    (folder / f"{name}_manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
-    return [folder / f"{name}.R", data_path, folder / f"{name}_manifest.json"]
+    (folder / f"{name}_manifest.json").write_text(json.dumps(manifest, indent=2, default=str), encoding="utf-8")
+    readme = [f"StatExplore reproducibility bundle ({build_id()})", "",
+              f"Run in R (no network needed):  Rscript {name}.R   (from this folder), or source(\"{name}.R\") from anywhere.",
+              f"Data: {data_name} " + ("(included: analysis columns only, exported with your consent)" if include_data else
+                                      "(NOT included: place the analysis-columns file here; its SHA-256 must be "
+                                      f"{sha})"),
+              f"R packages used by this script: {', '.join(found) or 'base R only'}"
+              + (f" (recorded versions: R {versions.get('r')})" if versions else ""),
+              "The script stops with a message if the data file differs from the exported one, if the analysed rows, "
+              "outcome coding, design or grouping differ from the recorded model, or if n / logLik / AIC / BIC are "
+              "not reproduced within abs 1e-4 + rel 1e-6.",
+              "Treat the data file with the same care as the original data." if include_data else ""]
+    (folder / "README.txt").write_text("\n".join(readme) + "\n", encoding="utf-8")
+    out = [folder / f"{name}.R", folder / f"{name}_manifest.json", folder / "README.txt"]
+    return out[:1] + ([data_path] if include_data else []) + out[1:]
+
+
+FAMILY_PACKAGES = {   # packages a model family's executed code can need (anything else is not declared)
+    "lmm": ["lme4", "lmerTest", "nlme", "mmrm", "Matrix"], "glmm": ["lme4", "Matrix"], "clmm": ["ordinal"],
+    "gee": ["geepack"], "gaussian": [], "binomial": ["detectseparation"], "ordinal": ["ordinal"],
+    "multinomial": ["nnet"],
+}
+
+
+def fit_expectations(result: AnalysisResult) -> dict | None:
+    """n / logLik / AIC / BIC of a result's 'Model fit' table at full precision (None if absent)."""
+    t = next((t for t in result.tables if t.name.startswith("Model fit")), None)
+    if t is None or not t.rows:
+        return None
+    r = dict(zip(t.columns, t.rows[0]))
+    out = {"n": r.get("observations"), "logLik": r.get("logLik"), "AIC": r.get("AIC"), "BIC": r.get("BIC")}
+    return {k: v for k, v in out.items() if isinstance(v, (int, float))} or None
 
 
 def python_launcher(result: AnalysisResult, r_name: str) -> str:

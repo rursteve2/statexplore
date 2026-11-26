@@ -29,7 +29,9 @@ class CodeDialog(QDialog):
     """Shows the exact script the R worker executed for a result (§18)."""
 
     def __init__(self, result: AnalysisResult | None, parent: QWidget | None = None, *,
-                 title: str = "", script: str = "", header: str = "", dataset=None):
+                 title: str = "", script: str = "", header: str = "", dataset=None, provenance: dict | None = None,
+                 identity: dict | None = None, engine=None, expected: dict | None = None,
+                 packages: list[str] | None = None, extra: dict | None = None):
         super().__init__(parent)
         if result is not None:
             title, script = result.title, result.script
@@ -58,10 +60,25 @@ class CodeDialog(QDialog):
         find = btns.addButton("Find (Ctrl+F)", QDialogButtonBox.ActionRole)
         find.clicked.connect(self.find_bar.open)
         self.dataset = dataset
+        self.bundle = {"provenance": provenance, "identity": identity, "engine": engine, "expected": expected,
+                       "packages": packages, "extra": extra}
+        if result is not None:                       # V133-EXP-01/03: a result carries its own identity and fit
+            from ...export.exporters import fit_expectations
+
+            vals = result.values
+            self.bundle.update({k: v for k, v in {
+                "provenance": vals.get("provenance"), "identity": vals.get("identity"), "engine": result.engine,
+                "expected": fit_expectations(result),
+                # the packages this analysis loaded (V133-EXP-04: shared helper text is not a dependency)
+                "packages": sorted((getattr(result.engine, "packages", None) or {}).keys()) or None,
+                "extra": {k2: vals.get(k2) for k2 in ("model_spec", "effective_spec", "fit_check", "spec_diff",
+                                                      "identity_check", "diagnostics") if vals.get(k2) is not None}
+            }.items() if self.bundle.get(k) is None})
         if dataset is not None:
-            save = btns.addButton("Save script + data…", QDialogButtonBox.ActionRole)
-            save.setToolTip("Writes analysis.R and analysis_data.csv (only the columns this script uses) into a "
-                            "folder; the script finds the data next to itself, so source(\"analysis.R\") works.")
+            save = btns.addButton("Save reproducibility bundle…", QDialogButtonBox.ActionRole)
+            save.setToolTip("Writes analysis.R, a manifest (versions, provenance, identity, expected results), a "
+                            "README and - with your consent - analysis_data.csv (only the columns this script uses). "
+                            "Relative paths: the folder can be moved and run with Rscript in a clean, offline R.")
             save.clicked.connect(self._save)
         btns.rejected.connect(self.reject)
         lay.addWidget(btns)
@@ -83,15 +100,19 @@ class CodeDialog(QDialog):
 
         from ...export.exporters import write_portable
 
-        folder = QFileDialog.getExistingDirectory(self, "Folder for analysis.R and its data file")
+        folder = QFileDialog.getExistingDirectory(self, "Folder for the reproducibility bundle")
         if not folder:
             return
+        ans = QMessageBox.question(
+            self, "Include the data?", "Include the analysis data in the bundle (only the columns this script uses)?\n\n"
+            "Yes: the bundle runs on its own. No: only the script, manifest and README are written; the data file must "
+            "be placed in the folder later and is checked by its SHA-256.",
+            QMessageBox.Yes | QMessageBox.No | QMessageBox.Cancel)
+        if ans == QMessageBox.Cancel:
+            return
         try:
-            r = self.result
             written = write_portable(self.text.toPlainText(), Path(folder), self.dataset,
-                                     provenance=(r.values.get("provenance") if r is not None else None),
-                                     identity=(r.values.get("identity") if r is not None else None),
-                                     engine=(r.engine if r is not None else None))
+                                     include_data=ans == QMessageBox.Yes, **self.bundle)
         except Exception as e:  # file system errors are user-facing
             QMessageBox.warning(self, "Save", f"Could not save: {e}")
             return
@@ -426,7 +447,7 @@ class EdaPage(QWidget):
 
     def _view_code(self) -> None:
         if self.last_result:
-            CodeDialog(self.last_result, self).exec()
+            CodeDialog(self.last_result, self, dataset=self.state.dataset).exec()
 
     def _error(self, message: str) -> None:
         self.messages.setText(f"<span style='color:#c62828'>{html.escape(message)}</span>")

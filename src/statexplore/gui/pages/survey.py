@@ -77,7 +77,7 @@ class SurveyPage(QWidget):
         self.run_btn.clicked.connect(self._run)
         self.code_btn = QPushButton("View Code")
         self.code_btn.setEnabled(False)
-        self.code_btn.clicked.connect(lambda: self.current and CodeDialog(self.current, self).exec())
+        self.code_btn.clicked.connect(lambda: self.current and CodeDialog(self.current, self, dataset=self.state.dataset).exec())
         self.copy_btn = QPushButton("Copy tables")
         self.copy_btn.clicked.connect(self._copy_tables)
         brow.addWidget(self.run_btn)

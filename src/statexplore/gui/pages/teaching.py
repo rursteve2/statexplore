@@ -77,7 +77,7 @@ class TeachingPage(QWidget):
         self.draw_btn.clicked.connect(self._draw)
         self.code_btn = QPushButton("View Code")
         self.code_btn.setEnabled(False)
-        self.code_btn.clicked.connect(lambda: self.current and CodeDialog(self.current[0], self).exec())
+        self.code_btn.clicked.connect(lambda: self.current and CodeDialog(self.current[0], self, dataset=self.state.dataset).exec())
         self.save_btn = QPushButton("Save graph…")
         self.save_btn.setEnabled(False)
         self.save_btn.clicked.connect(self._save_graph)

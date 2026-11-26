@@ -39,7 +39,7 @@ class ComparisonPage(QWidget):
         self.compare_btn.clicked.connect(self._compare)
         self.code_btn = QPushButton("View Code")
         self.code_btn.setEnabled(False)
-        self.code_btn.clicked.connect(lambda: self.current and CodeDialog(self.current, self).exec())
+        self.code_btn.clicked.connect(lambda: self.current and CodeDialog(self.current, self, dataset=self.state.dataset).exec())
         r2.addWidget(self.compare_btn)
         r2.addWidget(self.code_btn)
         ll.addLayout(r2)

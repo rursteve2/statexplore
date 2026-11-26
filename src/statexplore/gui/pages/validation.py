@@ -115,7 +115,7 @@ class ValidationPage(QWidget):
         crow = QHBoxLayout()
         self.code_btn = QPushButton("View Code")
         self.code_btn.setEnabled(False)
-        self.code_btn.clicked.connect(lambda: self.current and CodeDialog(self.current, self).exec())
+        self.code_btn.clicked.connect(lambda: self.current and CodeDialog(self.current, self, dataset=self.state.dataset).exec())
         crow.addWidget(self.code_btn)
         crow.addStretch()
         ll.addLayout(crow)
