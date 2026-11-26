@@ -213,7 +213,8 @@ def main() -> int:
             out / "133_compare.log", p133, env)
         same133 = {}
         for f in sorted((ROOT / "tests" / "fixtures" / "v133").glob("*.csv")):
-            same133[f.name] = sha256(f) == sha256(p133 / "fixtures" / f.name)
+            src = p133 / "fixtures" / f.name if (p133 / "fixtures" / f.name).exists() else p133 / f.name
+            same133[f.name] = src.exists() and sha256(f) == sha256(src)
         for f in sorted((ROOT / "tests" / "fixtures" / "v133" / "reference").glob("Test*.csv")):
             g = p133 / "reference" / "output" / f.name
             same133[f"reference/{f.name}"] = g.exists() and sha256(g) == sha256(f)
