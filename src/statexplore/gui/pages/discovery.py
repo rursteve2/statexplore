@@ -40,7 +40,7 @@ STATUS_COL = "Highlight"
 _TEST_COLS = {"status_text": STATUS_COL, "test_id": "Test ID", "idx": "#", "model_type": "Model type",
               "label": "Tested effect", "test_label": "Test type", "formula": "Model", "statistic": "Statistic",
               "reference": "Reference model", "test_method": "Test method",
-              "df1": "df1", "df_den": "df (denominator)", "p": "p", "p_adj": "p (adjusted)",
+              "df1": "df1", "df_den": "df (denominator)", "p": "p", "log10_p": "log10 p", "p_adj": "p (adjusted)",
               "adj_method": "Adjusted p method", "effect": "Effect", "estimate": "Estimate", "ci_low": "CI low",
               "ci_high": "CI high", "ci_scale": "Effect scale", "odds_ratio": "Odds ratio", "or_low": "OR CI low",
               "or_high": "OR CI high", "ci_status": "CI applicability",
@@ -72,6 +72,8 @@ COMPARE_COLS = {"idx": "#", "model_type": "Model type", "formula": "Model", "pre
                 "loglik": "log-likelihood", "diag_text": "Diagnostics status"}
 ALPHA_PRESETS = ("0.05", "0.01", "0.001")
 COLUMN_TIPS = {
+    "log10 p": "log10 of the p-value at full precision (from R's log upper tail when recorded): orders p-values below "
+               "the smallest double too. Blank = no p-value (withheld or not applicable), not p = 0.",
     "Fixed coefficients": "Fixed-effect coefficients including the intercept; ordinal models add the K-1 thresholds, "
                           "multinomial models count (K-1) x coefficients. Used for the configured parameter limit.",
     "Covariance parameters": "Random-effect variances/covariances plus residual variance and correlation parameters "
@@ -127,6 +129,11 @@ class ResultTable(QWidget):
         copy.setToolTip("Copy the rows shown (current filter, search and sort; visible columns) as CSV")
         copy.clicked.connect(self.copy_csv)
         top.addWidget(copy)
+        save = QPushButton("Save CSV…")     # V133-UI-07: a file, not only the clipboard (full precision)
+        save.setToolTip("Save the rows shown (current filter, search and sort; visible columns) as a CSV file at full "
+                        "numeric precision")
+        save.clicked.connect(lambda: self.save_csv())
+        top.addWidget(save)
         self.copy_note = QLabel("")         # UI-41: say what was copied (or that copying failed)
         self.copy_note.setObjectName("hint")
         top.addWidget(self.copy_note)
@@ -348,12 +355,27 @@ class ResultTable(QWidget):
                 if not hdr.isSectionHidden(hdr.logicalIndex(v))]
         order = list(self.model._order)
         rows = self.model.frame.iloc[order][cols].copy() if len(self.model.frame) else self.model.frame
+        for name, fn in self.model.lazy.items():     # V133-UI-06: lazily displayed text is exported too, never blank
+            if name in rows.columns and len(rows):
+                rows[name] = [self.model._lazy_cache.get((i, name)) or fn(i) for i in order]
         if STATUS_COL in rows.columns and len(rows):
             st = self.model.status_text
             txt = [str(st[i]) if st is not None and i < len(st) and st[i] else "" for i in order]
             rows[STATUS_COL] = [t or ("highlighted" if self._highlight[i] else "not highlighted")
                                 for t, i in zip(txt, order)] if len(self._highlight) else txt
         return rows.to_csv(index=False)
+
+    def save_csv(self, path: str | None = None) -> str | None:
+        if path is None:
+            from PySide6.QtWidgets import QFileDialog
+
+            path, _ = QFileDialog.getSaveFileName(self, "Save table as CSV", f"{self.name or 'table'}.csv", "CSV (*.csv)")
+            if not path:
+                return None
+        with open(path, "w", encoding="utf-8", newline="") as fh:
+            fh.write(self.csv_text())
+        self.copy_note.setText(f"Saved {max(self.csv_text().count(chr(10)) - 1, 0):,} rows to {path}.")
+        return path
 
     def copy_csv(self) -> None:
         text = self.csv_text()
@@ -730,6 +752,16 @@ class DiscoveryPage(QWidget):
         self.tabs.addTab(self.support_table, "Statistical support ranking")
         self.tabs.addTab(compare_box, "Model comparison")
         self.tabs.addTab(self.all_table, "All attempts")
+        from ..widgets.validation_panel import ValidationPanel
+
+        # V133-VAL-01: validation lives in AMD (configurable before the search, runnable after it)
+        self.validation_panel = ValidationPanel(state, lambda: self.run, lambda: self.state.dataset)
+        from PySide6.QtWidgets import QScrollArea
+
+        val_scroll = QScrollArea()          # never imposes a minimum height on the results splitter (UI-28)
+        val_scroll.setWidgetResizable(True)
+        val_scroll.setWidget(self.validation_panel)
+        self.tabs.addTab(val_scroll, "Validation")
         # UI-28: results over a collapsible details pane for the selected model (uses the space under short tables)
         self.details = QTextBrowser()
         self.details.setOpenExternalLinks(False)
@@ -985,7 +1017,9 @@ class DiscoveryPage(QWidget):
                      f"{crng}, {rep.n_usable:,} participants ({rep.n_usable_one:,} with a single occasion)</p>"]
             if cl:
                 sizes = f"{rep.cluster_sizes[0]}–{rep.cluster_sizes[1]}" if rep.cluster_sizes else "—"
-                key = ("(cluster, ID) pairs" if self.id_policy.currentData() == "local" else "IDs (unique across clusters)")
+                key = ("(cluster, ID) pairs — composite key; IDs numbered within each cluster"
+                       if self.id_policy.currentData() == "local" else
+                       "(cluster, ID) pairs — composite key; IDs declared unique across clusters")
                 parts.append(f"<p><b>Nested design</b>: {rep.n_clusters:,} {html.escape(v.var(cl).display_name)} "
                              f"clusters · participants per cluster {sizes} · participants = {key} · rows without a "
                              f"cluster (excluded) {rep.n_cluster_missing:,} · IDs seen in 2+ clusters "
@@ -1219,6 +1253,8 @@ class DiscoveryPage(QWidget):
         long = self.study.currentData() == "longitudinal"
         time = self.time_combo.currentData() if long else None
         required = [n for n in self.req_sel.selected() if n != outcome]
+        if long and time and self.strategy.currentData() == "time":
+            required = [n for n in required if n != time]   # V133-UI-09: time enters every focal set; counted once
         if long and time and self.time_fixed.isChecked() and self.strategy.currentData() != "time" \
                 and time not in required:
             required.append(time)          # time as a fixed effect: counts toward the predictor limit
@@ -1260,13 +1296,19 @@ class DiscoveryPage(QWidget):
             self.estimate.setText(f"<span style='color:#c62828'>{html.escape(str(e))}</span>")
             return None
         c = info["coding"]
-        fam = f"{html.escape(c['family'])}; focal test: {html.escape(c['focal_test'])}"
+        fam = f"{html.escape(c['family'])}; " + ("comparison" if self._settings().workflow == "structure" and
+                                                  self._settings().participant else "focal test") + \
+            f": {html.escape(c['focal_test'])}"
         extra = []
         for key, label in (("event", "event"), ("reference", "reference"), ("ordering", "order")):
             if c.get(key):
                 val = " < ".join(c[key]) if isinstance(c[key], list) else c[key]
                 extra.append(f"{label}: {html.escape(str(val))}")
         extra += [html.escape(t) for t in c.get("treatments", [])]
+        st = self._settings()
+        if st.participant and st.time and st.strategy == "time":
+            extra.append(f"{html.escape(ds.var(st.time).display_name)} is in every focal interaction (its main effect "
+                         "added by hierarchy) and counts once toward the predictor limit; it is not an ordinary candidate")
         coding_txt = ("<br>" + " · ".join(extra)) if extra else ""
         warn = "".join(f"<br><span style='color:#8d6e00'>⚠ {html.escape(w)}</span>" for w in info["warnings"])
         blocks = " + ".join(f"{n:,} {name}" for name, n in info.get("blocks", [])) if len(info.get("blocks", [])) > 1 else ""
@@ -1283,6 +1325,11 @@ class DiscoveryPage(QWidget):
             return
         info = self._estimate()
         if info is None:
+            # V133-UI-03: a blocked start never leaves the previous run's progress looking like the current one
+            self.progress.setRange(0, 1)
+            self.progress.setValue(0)
+            self.progress_label.setText("Not started: the settings are not valid (see the message above). "
+                                        "Earlier results stay listed under Searches.")
             return
         if info["total"] >= 1_000_000 and QMessageBox.question(
                 self, "Large search", f"This search space has {info['total']:,} candidate models. Start anyway?"
@@ -1342,6 +1389,8 @@ class DiscoveryPage(QWidget):
         self.state.dirty = True
         self._on_progress(run)
         self._show_run()
+        if self.validation_panel.auto.isChecked() and run.status == "complete" and run is self.run:
+            self.validation_panel.start(run=run)
 
     def _failed(self, message: str) -> None:
         self._set_running(False)
@@ -1371,6 +1420,7 @@ class DiscoveryPage(QWidget):
 
     def _show_run(self) -> None:
         run = self.run
+        self.validation_panel.set_run(run)
         self.resume_btn.setEnabled(bool(run and run.resumable))
         if run is None:
             self.summary_view.setHtml("<p>Configure a search on the left, calculate the search space, then start.</p>")
@@ -1982,6 +2032,7 @@ class DiscoveryPage(QWidget):
             adjusted = mine[[c for c in cols if c in mine]].to_dict("records")
 
         from ...analysis.descriptor import TransferError, from_discovery, provenance
+        from ...export.exporters import FAMILY_PACKAGES
 
         try:
             prov = provenance(from_discovery(run, row))
@@ -1995,7 +2046,10 @@ class DiscoveryPage(QWidget):
                                     expected=row, adjusted=adjusted, provenance=prov)
 
         self.state.run_r(build, lambda script: CodeDialog(
-            None, self, title=f"Candidate #{cand.index}", script=script, dataset=ds,
+            None, self, title=f"Candidate #{cand.index}", script=script, dataset=ds, provenance=prov,
+            identity=row.get("identity"), engine=run.engine, packages=FAMILY_PACKAGES.get(run.family),
+            extra={"candidate": int(cand.index), "search_id": run.id, "formula": row.get("formula"),
+                   "structure": row.get("structure"), "status": row.get("status"), "flags": row.get("flags")},
             header="The search evaluated this candidate with exactly this function and arguments "
                    "(inside sx_discover_batch, which also records warnings)"
                    + ("; the reported covariance-structure comparisons are recomputed at the end." if comparisons

@@ -405,6 +405,10 @@ def _check_longitudinal(ds: Dataset, s: "SearchSettings") -> None:
     structs = set(s.structures if s.workflow == "structure" else [s.structure or "ri"])
     if s.strategy == "time" and not t:
         raise SearchSpaceError("The 'Time × each predictor' strategy needs a time variable.")
+    if s.strategy == "time" and t in s.required:
+        raise SearchSpaceError("With 'Time × each predictor' the time variable is part of every focal interaction "
+                               "(with its main effect, by hierarchy) and counts once toward the predictor limit: do not "
+                               "also list it as a required covariate.")
     if s.workflow == "structure" and s.time_interactions and not t:
         raise SearchSpaceError("Time interactions need a time variable.")
     if structs & (SLOPE_STRUCTURES | ORDERED_TIME_STRUCTURES) and not t:
@@ -464,9 +468,11 @@ def longitudinal_summary(ds: Dataset, s: "SearchSettings") -> dict[str, Any]:
     v = view(ds, s)
     rep = preflight(v, s.outcome, s.participant, s.time, s.candidates + [r for r in s.required if r != s.time],
                     cluster=getattr(s, "cluster", None))
-    used = [s.outcome] + s.candidates + s.required + [s.participant] + ([s.time] if s.time else [])
+    cl = getattr(s, "cluster", None)
+    used = [s.outcome] + s.candidates + s.required + [s.participant] + ([s.time] if s.time else []) + ([cl] if cl else [])
     f = v.analysis_frame(list(dict.fromkeys(used))).dropna()
-    per = f.groupby(s.participant).size() if len(f) else pd.Series(dtype=int)
+    key = [cl, s.participant] if cl else s.participant          # composite (cluster, ID) participant (V133-STAT-02)
+    per = f.groupby(key).size() if len(f) else pd.Series(dtype=int)
     return {"report": rep, "rows": rep.n_records, "participants": rep.n_participants,
             "waves": len(rep.time_points), "complete_rows": len(f), "complete_participants": int(per.size),
             "participants_2plus": int((per >= 2).sum()), "participants_3plus": int((per >= 3).sum())}
@@ -822,6 +828,8 @@ def random_part(ds: Dataset, s: SearchSettings, structure: str | None = None, cl
     if st in GAUSSIAN_STRUCTURES:
         rnd, res, eng = GAUSSIAN_STRUCTURES[st]
         cl = ds.var(cluster).display_name if cluster and clustered is not False else None
+        if cluster and clustered is False:      # V133-UI-04: exploratory fit without the cluster keeps composite IDs
+            g = f"{ds.var(cluster).display_name}:{g} (composite participant key)"
         if eng == "lme4" and res == "independent":
             blk = {"ri": f"(1 | {g})", "diag": f"(1 + {t} || {g})", "rs": f"(1 + {t} | {g})"}[rnd]
             return (f"(1 | {cl}) + " if cl else "") + blk
@@ -933,7 +941,11 @@ def coding(ds: Dataset, s: SearchSettings, family: str) -> dict[str, Any]:
     if s.participant:
         fam_label = f"{LONG_FAMILIES.get(family, family)}; outcome: {FAMILIES.get(base, base).split(' (')[0]}"
     out: dict[str, Any] = {"family": fam_label,
-                           "focal_test": FOCAL_TESTS.get(family, ""),
+                           "focal_test": ("none: the fixed part (time and any chosen interactions) is locked; "
+                                          "covariance structures are compared on common rows by REML AIC / BIC and "
+                                          "boundary-aware likelihood-ratio tests where nested (no focal interaction "
+                                          "test)" if s.participant and s.workflow == "structure"
+                                          else FOCAL_TESTS.get(family, "")),
                            "outcome": v.display_name, "outcome_level": v.measure.value,
                            "predictor_coding": "categorical predictors: treatment (dummy) contrasts against the "
                                                "reference category (first category unless one is set)",

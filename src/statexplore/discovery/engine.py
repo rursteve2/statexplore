@@ -81,6 +81,7 @@ class DiscoveryRun:
     n_times: int | None = None                                 # v1.2 longitudinal: distinct time points
     executions: list[dict[str, Any]] = field(default_factory=list)  # v1.3: budget + range of each execution
     data_snapshot: dict[str, Any] = field(default_factory=dict)     # v1.3.2: the data view used (STAT-39)
+    validation_runs: list[dict[str, Any]] = field(default_factory=list)  # v1.3.3: immutable AMD validation runs (J7)
 
     @property
     def is_complete(self) -> bool:
@@ -107,7 +108,7 @@ class DiscoveryRun:
         return {k: getattr(self, k) for k in ("id", "family", "total", "signature", "created_at", "status",
                                                "stop_reason", "n_done", "stop_index", "elapsed_s",
                                                "n_sample", "engine", "warnings", "coding", "fit_id", "n_times",
-                                               "executions", "data_snapshot")} | {
+                                               "executions", "data_snapshot", "validation_runs")} | {
             "settings": self.settings.to_dict(), "validation": {str(k): v for k, v in self.validation.items()}}
 
     @classmethod
@@ -124,6 +125,7 @@ class DiscoveryRun:
         run.n_times = meta.get("n_times")
         run.executions = list(meta.get("executions") or [])
         run.data_snapshot = dict(meta.get("data_snapshot") or {})
+        run.validation_runs = list(meta.get("validation_runs") or [])
         run.validation = {int(k): v for k, v in (meta.get("validation") or {}).items()}
         run.rows = rows
         return run
@@ -834,6 +836,12 @@ def tests_frame(run: DiscoveryRun, interpret: bool = True) -> pd.DataFrame:
     df["n_groups"] = pd.to_numeric(df.get("n_groups", np.nan), errors="coerce")
     if run.family == "lmm" and df["n_groups"].isna().all() and "df2" in df and not run.fit_id:
         df["n_groups"] = pd.to_numeric(df["df2"], errors="coerce")       # legacy v1.1 mixed rows
+    # V133-UI-08: log10 of the upper tail at full precision (R's log tail when recorded, so a p below the double range
+    # is still ordered); missing when there is no p-value (withheld / not applicable), never a bogus 0
+    lp = pd.to_numeric(df["log_p"], errors="coerce") / np.log(10) if "log_p" in df else pd.Series(np.nan, index=df.index)
+    with np.errstate(divide="ignore"):
+        direct = np.where(df["p"] > 0, np.log10(df["p"].where(df["p"] > 0)), np.nan)
+    df["log10_p"] = lp.where(lp.notna(), direct)
     df["lrt_df"] = np.where(run.family in LRT_FAMILIES, df["df1"], np.nan)
     df["test_label"] = df["test_type"].map(TEST_TYPES).fillna(df["test_type"])
     df["test_method"] = [test_method(t, run.family) for t in df["test_type"]]
