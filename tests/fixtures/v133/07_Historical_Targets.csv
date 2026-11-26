@@ -1,0 +1,167 @@
+case,metric,value,precision,evidence
+43B_AMD,n,960,full,archived AMD CSV; independently reproduced in R
+43B_AMD,k,10,full,archived AMD CSV; independently reproduced in R
+43B_AMD,participants,160,full,archived AMD CSV; independently reproduced in R
+43B_AMD,logLik,-1647.9521623673,full,archived AMD CSV; independently reproduced in R
+43B_AMD,AIC,3315.904324734594,full,archived AMD CSV; independently reproduced in R
+43B_AMD,BIC,3364.573657579213,full,archived AMD CSV; independently reproduced in R
+43B_AMD,LR,63.52091220094371,full,archived AMD CSV; independently reproduced in R
+43B_AMD,p,1.586733858179841e-15,full,archived AMD CSV; independently reproduced in R
+43B_AMD,BH,1.586733858179841e-15,full,archived AMD CSV; independently reproduced in R
+43B_AMD,Holm,1.586733858179841e-15,full,archived AMD CSV; independently reproduced in R
+43B_AMD,interaction,0.6394906246378372,full,archived AMD CSV; independently reproduced in R
+43B_AMD,se,0.0725083933031575,full,archived AMD CSV; independently reproduced in R
+43B_AMD,ci_low,0.4973767851867834,full,archived AMD CSV; independently reproduced in R
+43B_AMD,ci_high,0.7816044640888911,full,archived AMD CSV; independently reproduced in R
+43B_AMD,R2_marginal,0.23371488459824244,full,archived AMD CSV; independently reproduced in R
+43B_AMD,delta_R2_marginal,0.10209828747992525,full,archived AMD CSV; independently reproduced in R
+43B_R_independent,logLik,-1647.95216236636,full,independent nlme ML R reference
+43B_R_independent,k,10,full,independent nlme ML R reference
+43B_R_independent,AIC,3315.90432473273,full,independent nlme ML R reference
+43B_R_independent,BIC,3364.57365757735,full,independent nlme ML R reference
+43B_R_independent,interaction,0.63949051299,full,independent nlme ML R reference
+43B_R_independent,LR,63.5209122085289,full,independent nlme ML R reference
+43B_R_independent,reduced_logLik,-1679.71261847063,full,independent nlme ML R reference
+43B_R_independent,reduced_AIC,3377.42523694126,full,independent nlme ML R reference
+43B_R_independent,reduced_BIC,3421.22763650141,full,independent nlme ML R reference
+44D_REML,n,960,full,independent nlme R
+44D_REML,k,10,full,independent nlme R
+44D_REML,BIC_n,956,full,independent nlme R
+44D_REML,logLik,-1652.03940707685,full,independent nlme R
+44D_REML,AIC,3324.0788141537,full,independent nlme R
+44D_REML,BIC,3372.70639328421,full,independent nlme R
+44D_REML,intercept,19.403258495829494,full,independent nlme R
+44D_REML,time,0.417335529056101,full,independent nlme R
+44D_REML,group,1.030231357315392,full,independent nlme R
+44D_REML,interaction,0.63948435306292,full,independent nlme R
+44D_REML,se_interaction,0.0728140136008764,full,independent nlme R
+44D_REML,p_interaction,9.65482612724531e-18,full,independent nlme R
+44D_REML,school_variance,6.998432756568867,full,independent nlme R
+44D_REML,id_intercept_variance,1.679353949113056,full,independent nlme R
+44D_REML,id_slope_variance,0.101358285056469,full,independent nlme R
+44D_REML,residual_variance,1.476047401494579,full,independent nlme R
+44D_REML,phi,0.498496893382899,full,independent nlme R
+44D_REML,R2_marginal,0.227721784593879,full,independent nlme R
+44D_REML,R2_conditional,0.907002076812295,full,independent nlme R
+45A_composite,n,960,rounded,runtime matched 43B
+45A_composite,participants,160,rounded,runtime matched 43B
+45A_composite,clusters,20,rounded,runtime matched 43B
+45A_composite,duplicates,0,rounded,runtime matched 43B
+45A_composite,AIC,3315.904,rounded,runtime matched 43B
+45E_unclustered,n,960,full,independent nlme REML R
+45E_unclustered,participants,160,full,independent nlme REML R
+45E_unclustered,k,6,full,independent nlme REML R
+45E_unclustered,logLik,-1845.60953997332,full,independent nlme REML R
+45E_unclustered,AIC,3703.21907994665,full,independent nlme REML R
+45E_unclustered,BIC,3732.39562742495,full,independent nlme REML R
+46A_AR1,intercept,19.6108506084,reported precision,independent nlme R
+46A_AR1,time,0.18651841329,reported precision,independent nlme R
+46A_AR1,group,1.31934247971,reported precision,independent nlme R
+46A_AR1,interaction,0.285528159518,reported precision,independent nlme R
+46A_AR1,p_interaction,4.79332899587e-16,reported precision,independent nlme R
+46A_AR1,phi,0.766931143024,reported precision,independent nlme R
+46A_AR1,logLik,-1705.88879399556,reported precision,independent nlme R
+46A_AR1,k,8,reported precision,independent nlme R
+46A_AR1,AIC,3427.77758799113,reported precision,independent nlme R
+46A_AR1,BIC,3466.67965129554,reported precision,independent nlme R
+46A_CAR1,intercept,19.5867170018,reported precision,independent nlme R
+46A_CAR1,time,0.20321829194,reported precision,independent nlme R
+46A_CAR1,group,1.2726678187,reported precision,independent nlme R
+46A_CAR1,interaction,0.313111952714,reported precision,independent nlme R
+46A_CAR1,p_interaction,8.62711932735e-20,reported precision,independent nlme R
+46A_CAR1,phi,0.73724586601947,reported precision,independent nlme R
+46A_CAR1,logLik,-1750.758776998,reported precision,independent nlme R
+46A_CAR1,k,8,reported precision,independent nlme R
+46A_CAR1,AIC,3517.517553996,reported precision,independent nlme R
+46A_CAR1,BIC,3556.41961730041,reported precision,independent nlme R
+46B_AR1,n,760,reported precision,independent nlme R
+46B_AR1,excluded,200,reported precision,independent nlme R
+46B_AR1,participants,160,reported precision,independent nlme R
+46B_AR1,clusters,20,reported precision,independent nlme R
+46B_AR1,intercept,19.5038291,reported precision,independent nlme R
+46B_AR1,time,0.20275683547,reported precision,independent nlme R
+46B_AR1,group,1.24421824851,reported precision,independent nlme R
+46B_AR1,interaction,0.295380718604,reported precision,independent nlme R
+46B_AR1,p_interaction,7.11879137640746e-16,reported precision,independent nlme R
+46B_AR1,phi,0.760604614501083,reported precision,independent nlme R
+46B_AR1,logLik,-1431.88101090787,reported precision,independent nlme R
+46B_AR1,k,8,reported precision,independent nlme R
+46B_AR1,BIC_n,756,reported precision,independent nlme R
+46B_AR1,AIC,2879.76202181574,reported precision,independent nlme R
+46B_AR1,BIC,2916.78635282518,reported precision,independent nlme R
+48A_RI,n,960,full,independent lme4 R
+48A_RI,k,7,full,independent lme4 R
+48A_RI,AIC,3593.21989773355,full,independent lme4 R
+48A_RI,BIC,3627.28843072479,full,independent lme4 R
+48A_DIAG,n,960,full,independent lme4 R
+48A_DIAG,k,8,full,independent lme4 R
+48A_DIAG,AIC,3365.7909205773,full,independent lme4 R
+48A_DIAG,BIC,3404.726386853,full,independent lme4 R
+48A_RS,n,960,full,independent lme4 R
+48A_RS,k,9,full,independent lme4 R
+48A_RS,AIC,3367.13695624179,full,independent lme4 R
+48A_RS,BIC,3410.93935580195,full,independent lme4 R
+48A_RI_DIAG,LR,229.428977156251,reported precision,independent R boundary reference
+48A_RI_DIAG,p,3.97048726510929e-52,reported precision,independent R boundary reference
+48A_RI_RS,LR,230.082941491761,reported precision,independent R boundary reference
+48A_RI_RS,p,5.74466764053258e-51,reported precision,independent R boundary reference
+48A_DIAG_RS,LR,0.65396433551,reported precision,independent R boundary reference
+48A_DIAG_RS,p,0.41869888185,reported precision,independent R boundary reference
+48B_independent,k,7,rounded,runtime only baseline
+48B_independent,logLik,-1822.727,rounded,runtime only baseline
+48B_independent,AIC,3659.453,rounded,runtime only baseline
+48B_independent,BIC,3693.493,rounded,runtime only baseline
+48C_wrong_independent_linear,k,7,reported precision,independent R; wrong-independent cases are negative controls not intended AR1 fits
+48C_wrong_independent_linear,logLik,-1816.53226901,reported precision,independent R; wrong-independent cases are negative controls not intended AR1 fits
+48C_wrong_independent_linear,AIC,3647.06453802031,reported precision,independent R; wrong-independent cases are negative controls not intended AR1 fits
+48C_wrong_independent_linear,BIC,3681.13307101154,reported precision,independent R; wrong-independent cases are negative controls not intended AR1 fits
+48C_wrong_independent_quadratic,k,9,reported precision,independent R; wrong-independent cases are negative controls not intended AR1 fits
+48C_wrong_independent_quadratic,logLik,-1791.953894369,reported precision,independent R; wrong-independent cases are negative controls not intended AR1 fits
+48C_wrong_independent_quadratic,AIC,3601.90778873818,reported precision,independent R; wrong-independent cases are negative controls not intended AR1 fits
+48C_wrong_independent_quadratic,BIC,3645.71018829834,reported precision,independent R; wrong-independent cases are negative controls not intended AR1 fits
+48C_wrong_independent_categorical,k,15,reported precision,independent R; wrong-independent cases are negative controls not intended AR1 fits
+48C_wrong_independent_categorical,logLik,-1782.790058815,reported precision,independent R; wrong-independent cases are negative controls not intended AR1 fits
+48C_wrong_independent_categorical,AIC,3595.58011762922,reported precision,independent R; wrong-independent cases are negative controls not intended AR1 fits
+48C_wrong_independent_categorical,BIC,3668.58411689615,reported precision,independent R; wrong-independent cases are negative controls not intended AR1 fits
+48C_correct_AR1_linear,k,8,reported precision,independent R; wrong-independent cases are negative controls not intended AR1 fits
+48C_correct_AR1_linear,logLik,-1700.51530335577,reported precision,independent R; wrong-independent cases are negative controls not intended AR1 fits
+48C_correct_AR1_linear,AIC,3417.03060671154,reported precision,independent R; wrong-independent cases are negative controls not intended AR1 fits
+48C_correct_AR1_linear,BIC,3455.96607298724,reported precision,independent R; wrong-independent cases are negative controls not intended AR1 fits
+49A_DIAG,n,960,full,independent lmer R
+49A_DIAG,k,8,full,independent lmer R
+49A_DIAG,logLik,-1473.6418959648,full,independent lmer R
+49A_DIAG,AIC,2963.28379192959,full,independent lmer R
+49A_DIAG,BIC,3002.21925820529,full,independent lmer R
+49A_DIAG,singular,1,full,independent lmer R
+49A_DIAG,slope_sd,0,full,independent lmer R
+49A_DIAG,id_intercept_sd,1.3317157463443,full,independent lmer R
+49A_DIAG,school_sd,2.1679628902994,full,independent lmer R
+49A_DIAG,residual_sd,0.8633231896337,full,independent lmer R
+49A_DIAG,R2_marginal,0.0921182867601764,full,independent lmer R
+49A_DIAG,R2_conditional,0.9062637334779721,full,independent lmer R
+49B_RI,k,7,rounded,runtime
+49B_RI,AIC,2961.284,rounded,runtime
+49B_RI,BIC,2995.352,rounded,runtime
+49B_RS,k,9,rounded,runtime
+49B_RS,AIC,2965.284,rounded,runtime
+49B_RS,BIC,3009.086,rounded,runtime
+49B_RS,singular,1,rounded,runtime
+50B_D_historical,n,960,rounded,runtime; identity verified
+50B_D_historical,k,10,rounded,runtime; identity verified
+50B_D_historical,participants,160,rounded,runtime; identity verified
+50B_D_historical,clusters,20,rounded,runtime; identity verified
+50B_D_historical,interaction,0.639,rounded,runtime; identity verified
+50B_D_historical,logLik,-1647.952,rounded,runtime; identity verified
+50B_D_historical,AIC,3315.904,rounded,runtime; identity verified
+50B_D_historical,BIC,3364.574,rounded,runtime; identity verified
+50C_new,n,800,rounded,runtime only; independent reference pending
+50C_new,k,10,rounded,runtime only; independent reference pending
+50C_new,participants,160,rounded,runtime only; independent reference pending
+50C_new,clusters,20,rounded,runtime only; independent reference pending
+50C_new,interaction,0.636,rounded,runtime only; independent reference pending
+50C_new,logLik,-1399.416,rounded,runtime only; independent reference pending
+50C_new,AIC,2818.833,rounded,runtime only; independent reference pending
+50C_new,BIC,2865.679,rounded,runtime only; independent reference pending
+50C_new,phi,0.42,rounded,runtime only; independent reference pending
+50C_new,R2_marginal,0.188,rounded,runtime only; independent reference pending
+50C_new,R2_conditional,0.909,rounded,runtime only; independent reference pending

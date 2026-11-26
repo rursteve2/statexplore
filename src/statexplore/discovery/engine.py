@@ -307,7 +307,9 @@ def _dispatch(run: DiscoveryRun, ds: Dataset, pooled: list[_PooledSession], ex: 
               cancel: threading.Event, progress, t_start: float, elapsed_before: float,
               cache: dict[str, dict[str, Any]]) -> None:
     s = run.settings
-    it = enumerate_candidates(s, start=run.n_done)
+    have = {int(r["idx"]) for r in run.rows}
+    # resume: candidates evaluated after an interrupted batch already have rows and are not fitted twice
+    it = (c for c in enumerate_candidates(s, start=run.n_done) if c.index not in have)
     # Budgets apply per execution, so resuming a budget-limited search continues it.
     budget = s.max_models
     deadline = None if s.max_minutes is None else t_start + s.max_minutes * 60
@@ -317,6 +319,7 @@ def _dispatch(run: DiscoveryRun, ds: Dataset, pooled: list[_PooledSession], ex: 
     dispatched_to = run.n_done
     exhausted = stop = False
     reason = ""
+    aborted: list[int] = []           # first candidate index of each batch interrupted by a cancellation
     n_sig = sum(1 for r in run.rows if _qualifies(r, s.alpha))
     while True:
         while not stop and idle:
@@ -350,6 +353,20 @@ def _dispatch(run: DiscoveryRun, ds: Dataset, pooled: list[_PooledSession], ex: 
             in_flight[fut] = (ps, batch)
         if not in_flight:
             break
+        if cancel.is_set() and not aborted:
+            # V133-QA-02 / STAT-31: cancel promptly - stop the R workers of the running batches instead of waiting
+            # for them; their candidates are not evaluated (never recorded or cached) and stay pending for a resume
+            stop, reason = True, "cancelled"
+            for fut, (ps, batch) in in_flight.items():
+                aborted.append(batch[0].index)
+                ps.session.worker.kill()
+            for fut in list(in_flight):
+                try:
+                    fut.result(timeout=30)
+                except Exception:   # noqa: BLE001 - the killed worker's error is expected
+                    pass
+            in_flight.clear()
+            break
         done, _ = wait(list(in_flight), timeout=0.5, return_when=FIRST_COMPLETED)
         for fut in done:
             ps, batch = in_flight.pop(fut)
@@ -381,6 +398,8 @@ def _dispatch(run: DiscoveryRun, ds: Dataset, pooled: list[_PooledSession], ex: 
             run.n_done = dispatched_to
             run.elapsed_s = elapsed_before + (time.perf_counter() - t_start)
             progress(run)
+    if aborted:
+        dispatched_to = min(aborted)        # contiguous prefix of evaluated candidates (later rows are kept)
     run.n_done = dispatched_to
     if run.executions:
         run.executions[-1]["end"] = dispatched_to

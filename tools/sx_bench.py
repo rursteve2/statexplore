@@ -25,7 +25,8 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "src"))
+if not os.environ.get("PYTHONPATH"):            # a baseline checkout can be benchmarked with PYTHONPATH=<its src>
+    sys.path.insert(0, str(ROOT / "src"))
 
 
 def _rss_kb() -> int:
@@ -94,19 +95,24 @@ def synthetic(path: Path, n_part: int, n_occ: int, n_school: int, n_pred: int, s
 def main() -> int:
     from statexplore import __version__
     from statexplore.core.importers import import_file
-    from statexplore.discovery import engine, validate as V
+    from statexplore.discovery import engine
     from statexplore.discovery.space import SearchSettings
+    try:
+        from statexplore.discovery import validate as V
+    except ImportError:                          # baseline without AMD validation
+        V = None
 
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", required=True, type=Path)
     ap.add_argument("--repeats", type=int, default=3)
+    ap.add_argument("--f43", type=Path, default=None)
     a = ap.parse_args()
     out = a.out / f"bench_{dt.datetime.now():%Y%m%d_%H%M%S}"
     out.mkdir(parents=True)
     tmp = Path(tempfile.mkdtemp(dir=str(out)))
     med = tmp / "medium_16k.csv"
     synthetic(med, 2000, 8, 100, 10, seed=5301)                    # 16,000 rows, 100 schools, 10 predictors
-    f43 = ROOT / "tests" / "fixtures" / "v133" / "Test43B.csv"
+    f43 = a.f43 or ROOT / "tests" / "fixtures" / "v133" / "Test43B.csv"
     loads = [
         ("small_43B_A_rs_ar1_time", f43, dict(candidates=["GROUP"], structure="rs_ar1", strategy="time")),
         ("small_43B_B_9_structures", f43, dict(candidates=["GROUP"], workflow="structure", time_interactions=True,
@@ -144,25 +150,26 @@ def main() -> int:
     from statexplore.analysis.session import RSession
     from statexplore.rbridge.worker import RWorker
 
-    d = import_file(f43)
-    run = engine.create_run(d, SearchSettings(outcome="Y", candidates=["GROUP"], family="gaussian", participant="ID",
-                                              time="TIME", cluster="SCHOOL", structure="ri", strategy="time",
-                                              include_main=True, workers=1, max_models=None, max_minutes=None))
-    engine.execute(run, d)
-    w = RWorker()
-    w.start()
-    sess = RSession(w, tmp)
-    for rep in range(a.repeats):
-        cfg = V.ValidationConfig(target="cluster", modes=["holdout", "cv", "bootstrap"], k=5, B=20)
-        t0 = time.perf_counter()
-        with Sampler() as smp:
-            v = V.ValidationRunner(sess, d, run, cfg).execute()
-        wall = time.perf_counter() - t0
-        rows.append({"workload": "validation_43B_cluster_holdout_cv5_B20_pipeline", "repeat": rep + 1, "rows": 960,
-                     "candidates": len(v["candidates"]), "status": v["status"], "wall_s": round(wall, 3),
-                     "first_result_s": "", "candidates_per_s": "", "peak_rss_mb": round(smp.peak / 1024, 1)})
-        print(rows[-1], flush=True)
-    w.stop()
+    if V is not None:
+        d = import_file(f43)
+        run = engine.create_run(d, SearchSettings(outcome="Y", candidates=["GROUP"], family="gaussian", participant="ID",
+                                                  time="TIME", cluster="SCHOOL", structure="ri", strategy="time",
+                                                  include_main=True, workers=1, max_models=None, max_minutes=None))
+        engine.execute(run, d)
+        w = RWorker()
+        w.start()
+        sess = RSession(w, tmp)
+        for rep in range(a.repeats):
+            cfg = V.ValidationConfig(target="cluster", modes=["holdout", "cv", "bootstrap"], k=5, B=20)
+            t0 = time.perf_counter()
+            with Sampler() as smp:
+                v = V.ValidationRunner(sess, d, run, cfg).execute()
+            wall = time.perf_counter() - t0
+            rows.append({"workload": "validation_43B_cluster_holdout_cv5_B20_pipeline", "repeat": rep + 1, "rows": 960,
+                         "candidates": len(v["candidates"]), "status": v["status"], "wall_s": round(wall, 3),
+                         "first_result_s": "", "candidates_per_s": "", "peak_rss_mb": round(smp.peak / 1024, 1)})
+            print(rows[-1], flush=True)
+        w.stop()
     # cancellation latency + orphan check (medium search cancelled after 3 s)
     d = import_file(med)
     run = engine.create_run(d, SearchSettings(outcome="Y", candidates=[f"X{j}" for j in range(1, 11)], family="gaussian",

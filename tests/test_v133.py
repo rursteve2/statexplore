@@ -807,3 +807,115 @@ def test_validation_rows_target_gaussian_and_binary(r_session):
         else:
             assert pooled["RMSE"] > 0 and "R2_out_of_sample" in pooled
         assert all(f["selected"] for f in v["folds"])
+
+
+# ---- recorded anchors that only the application computes (07_Historical_Targets.csv; 155 others = reference) -----------
+
+def _anchors() -> dict[tuple[str, str], float]:
+    out = {}
+    with open(FX / "07_Historical_Targets.csv", encoding="utf-8") as fh:
+        for r in csv.DictReader(fh):
+            try:
+                out[(r["case"], r["metric"])] = float(r["value"])
+            except ValueError:
+                pass
+    return out
+
+
+@pytest.mark.r
+def test_07_application_only_anchors(r_session):
+    from statexplore.discovery import engine
+
+    A = _anchors()
+    run = disc(f43(), candidates=["GROUP"], cluster="SCHOOL", structure="rs_ar1", strategy="time")
+    tf = engine.tests_frame(run)
+    t = tf[tf["test_type"].str.contains("interaction")].iloc[0]
+    for col, key in (("p_bh", "BH"), ("p_holm", "Holm")):
+        assert near_p(t[col], A[("43B_AMD", key)])
+    for col, key in (("estimate", "interaction"), ("ci_low", "ci_low"), ("ci_high", "ci_high"),
+                     ("effect", "delta_R2_marginal")):
+        assert near(t[col], A[("43B_AMD", key)], 1e-6, 1e-5), key
+    s = mixed.MixedSpec(outcome="Y", id="ID", time="TIME", predictors=["GROUP"], cluster="SCHOOL", random="intercept",
+                        residual="ar1", method="REML", interactions="time")
+    res, _ = mixed.run(r_session, fx("Test46B_MissingTime"), s)
+    assert res.n_used == A[("46B_AR1", "n")] and res.values["n_excluded"] == A[("46B_AR1", "excluded")]
+    assert near(fit_row(res)["logLik"], A[("46B_AR1", "logLik")], 1e-6, 1e-8)
+    s = mixed.MixedSpec(outcome="Y", id="ID", time="TIME", predictors=["GROUP"], cluster="SCHOOL",
+                        random="slope_uncorrelated", residual="independent", method="REML", interactions="time")
+    res, _ = mixed.run(r_session, fx("Test49A_Singularity"), s)
+    t = next(t for t in res.tables if t.name.startswith("Random effects"))
+    vc = [dict(zip(t.columns, r)) for r in t.rows]
+    sd = lambda pred: [float(r["sd_or_corr"]) for r in vc if pred(r)]  # noqa: E731
+    assert near(sd(lambda r: "SCHOOL" in str(r["group"]))[0], A[("49A_DIAG", "school_sd")], 1e-4, 1e-4)
+    assert near(sd(lambda r: r["term"] == "(Intercept)" and "SCHOOL" not in str(r["group"]) and
+                   r["group"] != "Residual")[0], A[("49A_DIAG", "id_intercept_sd")], 1e-4, 1e-4)
+    assert sd(lambda r: "TIME" in str(r["term"]) or "time" in str(r["term"]))[0] < 1e-4          # slope sd = 0
+    assert near(sd(lambda r: r["group"] == "Residual")[0], A[("49A_DIAG", "residual_sd")], 1e-4, 1e-4)
+    assert res.values["diagnostics"]["status"] != "clean"                                   # singular is flagged
+
+
+@pytest.mark.r
+def test_validation_gee_participant_target_marginal_mean(r_session, tmp_path):
+    """GEE searches: held-out marginal-mean predictions equal an independent geeglm fit on the same manifest."""
+    from statexplore.discovery import validate as V
+
+    d = f43()
+    run = disc(d, candidates=["GROUP"], structure="gee_exch", strategy="time")
+    assert run.family == "gee" and run.rows[0]["status"] in ("ok", "warning")
+    cfg = V.ValidationConfig(target="participant", modes=["cv"], pipeline="fixed", candidate=run.rows[0]["idx"], k=4)
+    v = V.ValidationRunner(r_session, d, run, cfg).execute()
+    assert v["status"] == "complete" and sum(f["n_test"] for f in v["folds"]) == 960
+    man = tmp_path / "man.csv"
+    man.write_text(V.csv_text(v["manifest"]), encoding="utf-8")
+    out = rscript(f"""
+d <- read.csv('{(FX / "Test43B.csv").as_posix()}'); d$row_id <- seq_len(nrow(d)); d <- d[order(d$ID, d$TIME), ]
+m <- read.csv('{man.as_posix()}'); fo <- m$fold[match(d$row_id, m$row_id)]; res <- list()
+for (f in 1:4) {{ tr <- d[fo != f, ]; te <- d[fo == f, ]
+  g <- geepack::geeglm(Y ~ TIME * GROUP, id = ID, waves = TIME + 1, data = tr, corstr = "exchangeable")
+  res[[f]] <- data.frame(row_id = te$row_id, oracle = as.numeric(predict(g, newdata = te, type = "response"))) }}
+write.csv(do.call(rbind, res), '{(tmp_path / "o.csv").as_posix()}', row.names = FALSE)
+""", tmp_path)
+    assert out.returncode == 0, out.stderr
+    import pandas as pd
+
+    mrg = pd.DataFrame(v["predictions"]).merge(pd.read_csv(tmp_path / "o.csv"), on="row_id")
+    assert len(mrg) == 960 and np.max(np.abs(mrg["predicted"] - mrg["oracle"])) < 1e-6
+
+
+@pytest.mark.r
+def test_51_cancel_kills_running_batches_and_resume_completes_exactly_once():
+    """Cancellation stops the running R batches (no waiting for them); interrupted candidates are not recorded; the
+    resume evaluates exactly the missing candidates with the same IDs; results equal an uninterrupted search."""
+    import threading
+    import time
+
+    from statexplore.discovery import engine
+    from statexplore.discovery.space import SearchSettings
+
+    d = fx("CustomTerms")
+    from statexplore.core.variables import Measure
+
+    d.set_variable_field("Z", "measure", Measure.CONTINUOUS)
+    kw = dict(outcome="Y", candidates=["GROUP", "Z", "W"], family="gaussian", participant="ID", time="TIME",
+              cluster="SCHOOL", structure="rs_ar1", strategy="main", max_predictors=6, workers=2, batch_size=1,
+              max_models=None, max_minutes=None, study="longitudinal")
+    full = engine.create_run(d, SearchSettings(**kw))
+    engine.execute(full, d)
+    run = engine.create_run(d, SearchSettings(**kw))
+    cancel = threading.Event()
+    seen = {"t": None}
+
+    def prog(r):
+        if r.rows and seen["t"] is None:
+            seen["t"] = time.perf_counter()
+            cancel.set()
+    engine.execute(run, d, progress=prog, cancel=cancel)
+    assert run.status == "cancelled" and run.resumable
+    assert time.perf_counter() - seen["t"] < 30                                  # did not wait for every batch
+    done = sorted(int(r["idx"]) for r in run.rows)
+    assert len(done) == len(set(done)) and len(done) < run.total
+    assert all(r["status"] in ("ok", "warning") for r in run.rows)               # nothing recorded as failed
+    engine.execute(run, d)
+    assert run.status == "complete" and sorted(int(r["idx"]) for r in run.rows) == list(range(run.total))
+    ref = {int(r["idx"]): r["loglik"] for r in full.rows}
+    assert all(abs(r["loglik"] - ref[int(r["idx"])]) < 1e-6 for r in run.rows)
