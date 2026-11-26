@@ -412,7 +412,8 @@ def test_identity_cross_module_lmm_verified_and_cluster_mismatch(r_session):
     spec = mixed.spec_from_discovery(run, row)
     spec.cluster = None                                                        # not the historical model
     res2, _ = mixed.run(r_session, d, spec)
-    assert res2.values["identity_check"] == "MISMATCH"
+    # v1.3.3 (01 §1): an explicitly edited transferred model is "modified" (lineage kept, never verified)
+    assert res2.values["identity_check"].startswith("modified") and res2.values["spec_diff"]
 
 
 def test_cd09_history_context_rebuild_and_new_analysis(r_session):

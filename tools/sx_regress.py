@@ -1,4 +1,4 @@
-"""StatExplore developer regression runner (v1.3.2, 05_Regression_Test_Protocol.md "Developer runner").
+"""StatExplore developer regression runner (v1.3.2 05 "Developer runner"; v1.3.3 gates and reference re-run).
 
 Developer-only: no user-facing mode. One invocation produces an immutable evidence folder:
 
@@ -108,9 +108,48 @@ GATES: dict[str, list[str] | str] = {
     "UI-35": ["tests/test_v13.py"], "UI-36": ["tests/test_v13.py"], "UI-37": ["tests/test_v13.py"],
     "UI-38": ["tests/test_v13.py"], "UI-44": ["tests/test_v131.py::test_33"], "UI-45": ["tests/test_v131.py::test_33"],
 }
+T133 = "tests/test_v133.py::"
+GATES.update({   # v1.3.3 register (03_Defect_Register.csv): new IDs and re-verified inherited ones
+    "STAT-47": [T133 + "test_stat47_transfer_refit_plot_and_reml_keep_the_model",
+                T133 + "test_spec_diff_ignores_presentation", T133 + "test_fitted_vs_requested_fails_closed"],
+    "V133-STATE-01": [T133 + "test_stat47_transfer_refit_plot_and_reml_keep_the_model"],
+    "V133-STATE-02": [T133 + "test_stat47_transfer_refit_plot_and_reml_keep_the_model"],
+    "V133-STATE-03": [T133 + "test_stat47_transfer_refit_plot_and_reml_keep_the_model"],
+    "V133-STATE-04": [T133 + "test_stat47_transfer_refit_plot_and_reml_keep_the_model"],
+    "V133-STATE-05": [T133 + "test_custom_term_subset_and_hierarchy_refusal", T133 + "test_term_presets_custom"],
+    "V133-STAT-01": [T133 + "test_48c_time_comparison_keeps_ar1_cluster_and_terms"],
+    "V133-STAT-02": [T133 + "test_45a_preflight_composite_key_counts"],
+    "V133-STAT-03": [T133 + "test_45a_local_ids_fit_matches_reference", "tests/test_v132.py::test_cd05_explicit_cluster"],
+    "V133-VAL-01": [T133 + "test_validation_splits_deterministic", T133 + "test_validation_predictions_match",
+                    T133 + "test_validation_pipeline_bootstrap", "tests/test_v133_gui.py::test_validation_panel"],
+    "V133-EXP-01": [T133 + "test_full_analysis_bundle_runs_relocated"],
+    "V133-EXP-02": [T133 + "test_amd_candidate_bundle_manifest_complete"],
+    "V133-EXP-03": [T133 + "test_full_analysis_bundle_runs_relocated"],
+    "V133-EXP-04": [T133 + "test_amd_candidate_bundle_manifest_complete"],
+    "V133-UI-01": ["tests/test_v133_gui.py::test_preflight_labels"],
+    "V133-UI-02": ["tests/test_v133_gui.py::test_workflow_b_copy"],
+    "V133-UI-03": ["tests/test_v133_gui.py::test_blocked_start_resets_progress"],
+    "V133-UI-04": ["tests/test_v133_gui.py::test_workflow_b_copy"],
+    "V133-UI-05": ["tests/test_v133_gui.py::test_preflight_labels"],
+    "V133-UI-06": ["tests/test_v133_gui.py::test_csv_save_and_interpretation"],
+    "V133-UI-07": ["tests/test_v133_gui.py::test_csv_save_and_interpretation"],
+    "V133-UI-08": [T133 + "test_51_bh_holm_per_family_match_p_adjust"],
+    "V133-UI-09": [T133 + "test_51_independent_enumeration_oracle"],
+    "V133-CMP-01": [T133 + "test_glmm_and_clmm_match_independent", "tests/test_v132.py::test_cmp_family_aware"],
+    "V133-DIAG-01": [T133 + "test_optimizer_fallback_same_spec", T133 + "test_lr_material_negative_withheld"],
+    "V133-HIST-01": [T133 + "test_50_filter_reconstruct", T133 + "test_50d_three_category_coding_change"],
+    "V133-DISC-01": [T133 + "test_51_independent_enumeration_oracle", T133 + "test_51_bh_holm_per_family"],
+    "V133-QA-01": [T133 + "test_matrix_workflow_a_focal", T133 + "test_matrix_workflow_b_nine",
+                   T133 + "test_matrix_standalone_full_analysis"],
+    "STAT-22": GATES["STAT-22"] + [T133 + "test_stat47_transfer_refit_plot_and_reml_keep_the_model"],
+    "STAT-36": GATES["STAT-36"] + [T133 + "test_full_analysis_bundle_runs_relocated"],
+    "STAT-39": GATES["STAT-39"] + [T133 + "test_50_filter_reconstruct"],
+})
 OWNER_ONLY = {"PACKAGED-OFFLINE-VM": "clean Windows VM with the network off (installer + portable): owner step M13",
               "PHYSICAL-DPI-150": "real monitor at 150% Windows scaling: owner step M12 (Qt scale-factor screenshots "
-                                  "are the developer proxy)"}
+                                  "are the developer proxy)",
+              "V133-QA-03": "offline final acceptance on a clean Windows machine (Test 54): owner step in "
+                            "docs/v1.3.3/manual_acceptance_v1.3.3.md"}
 
 
 def sha256(p: Path) -> str:
@@ -125,7 +164,9 @@ def run(cmd: list[str], log: Path, cwd: Path, env: dict | None = None, timeout: 
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--package", required=True, type=Path, help="unzipped developer package (07/08 scripts)")
+    ap.add_argument("--package", type=Path, default=None, help="v1.3.2 developer package (07/08 scripts)")
+    ap.add_argument("--package133", type=Path, default=None,
+                    help="v1.3.3 developer package (reference/*.R, qa/compare_metrics.py)")
     ap.add_argument("--out", required=True, type=Path, help="parent folder; a fresh run folder is created")
     ap.add_argument("--rscript", default=None, help="Rscript executable (default: the one StatExplore finds)")
     ap.add_argument("--tests", nargs="*", default=["tests"], help="pytest targets")
@@ -141,22 +182,52 @@ def main() -> int:
     env = dict(os.environ, R_LIBS=str(r_library()), PYTHONIOENCODING="utf-8", QT_QPA_PLATFORM="offscreen")
     summary: dict = {"run": stamp, "statexplore": __version__, "rscript": rscript, "steps": {}}
     ref = out / "reference"
-    pkg = a.package.resolve()
-    gen = run([rscript, "--vanilla", str(pkg / "07_Generate_Test_Fixtures.R"), str(ref)], out / "07_generation.log",
-              pkg, env)
-    fit = run([rscript, "--vanilla", str(pkg / "08_Independent_R_Reference_Models.R"), str(ref)],
-              out / "08_reference.log", pkg, env) if gen == 0 else None
-    audit = run([sys.executable, str(pkg / "Verify_Reference_Results.py"), str(ref)], out / "09_audit.log", pkg, env) \
-        if (ref / "actual_metrics.csv").exists() else None
+    gen = fit = audit = 0
+    if a.package is not None:
+        pkg = a.package.resolve()
+        gen = run([rscript, "--vanilla", str(pkg / "07_Generate_Test_Fixtures.R"), str(ref)], out / "07_generation.log",
+                  pkg, env)
+        fit = run([rscript, "--vanilla", str(pkg / "08_Independent_R_Reference_Models.R"), str(ref)],
+                  out / "08_reference.log", pkg, env) if gen == 0 else None
+        audit = run([sys.executable, str(pkg / "Verify_Reference_Results.py"), str(ref)], out / "09_audit.log", pkg,
+                    env) if (ref / "actual_metrics.csv").exists() else None
+    if a.package133 is not None:
+        # v1.3.3: re-execute the independent reference scripts in a copy of the package, then check the committed
+        # reference output (what tests/test_v133.py compares the application with) against the fresh one using the
+        # package's own comparator, and the committed fixtures against the package bytes
+        import shutil
+
+        p133 = out / "package133"
+        shutil.copytree(a.package133.resolve(), p133, ignore=shutil.ignore_patterns("output"))
+        steps = {}
+        for name in ("generate_fixtures", "reference_fits", "validation_reference", "non_gaussian_reference"):
+            steps[name] = run([rscript, "--vanilla", f"reference/{name}.R"], out / f"133_{name}.log", p133, env)
+        committed = ROOT / "tests" / "fixtures" / "v133" / "reference" / "reference_metrics.csv"
+        steps["compare_committed_vs_fresh"] = run(
+            [sys.executable, str(p133 / "qa" / "compare_metrics.py"), str(p133 / "reference" / "output" /
+             "reference_metrics.csv"), str(committed), str(out / "133_reference_reproducibility.csv")],
+            out / "133_compare.log", p133, env)
+        same133 = {}
+        for f in sorted((ROOT / "tests" / "fixtures" / "v133").glob("*.csv")):
+            same133[f.name] = sha256(f) == sha256(p133 / "fixtures" / f.name)
+        for f in sorted((ROOT / "tests" / "fixtures" / "v133" / "reference").glob("Test*.csv")):
+            g = p133 / "reference" / "output" / f.name
+            same133[f"reference/{f.name}"] = g.exists() and sha256(g) == sha256(f)
+        steps["fixtures_identical"] = 0 if all(same133.values()) else 1
+        summary["v133_reference"] = steps
+        summary["v133_fixture_bytes"] = same133
+        if any(v not in (0, None) for v in steps.values()):
+            audit = audit or 1
     summary["steps"]["fixtures"] = gen
     summary["steps"]["references"] = fit            # 2 = some reference fit failed in R (listed in the log)
     summary["steps"]["historical_audit"] = audit
     # the shipped fixtures must be the bytes the references were computed from
     shipped = ROOT / "tests" / "fixtures" / "v132"
     same = {}
-    for f in sorted(shipped.glob("*.csv")):
-        g = ref / "fixtures" / f.name
-        same[f.name] = g.exists() and sha256(g) == sha256(f)
+    if a.package is not None:
+        for f in sorted(shipped.glob("*.csv")):
+            g = ref / "fixtures" / f.name
+            same[f.name] = g.exists() and sha256(g) == sha256(f)
     summary["fixtures_identical_to_fresh_generation"] = same
     junit = out / "pytest_junit.xml"
     rc = run([sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", f"--junitxml={junit}",
