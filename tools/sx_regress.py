@@ -144,7 +144,11 @@ GATES.update({   # v1.3.3 register (03_Defect_Register.csv): new IDs and re-veri
     "STAT-22": GATES["STAT-22"] + [T133 + "test_stat47_transfer_refit_plot_and_reml_keep_the_model"],
     "STAT-36": GATES["STAT-36"] + [T133 + "test_full_analysis_bundle_runs_relocated"],
     "STAT-39": GATES["STAT-39"] + [T133 + "test_50_filter_reconstruct"],
+    "STAT-31": GATES["STAT-31"] + [T133 + "test_51_cancel_kills_running_batches"],
+    "STAT-37": GATES["STAT-37"] + [T133 + "test_51_cancel_kills_running_batches"],
+    "V133-HIST-ANCHORS": [T133 + "test_07_application_only_anchors", T133 + "test_fixture_bytes_match_manifest"],
 })
+GATES["V133-VAL-01"] = GATES["V133-VAL-01"] + [T133 + "test_validation_rows_target", T133 + "test_validation_gee"]
 OWNER_ONLY = {"PACKAGED-OFFLINE-VM": "clean Windows VM with the network off (installer + portable): owner step M13",
               "PHYSICAL-DPI-150": "real monitor at 150% Windows scaling: owner step M12 (Qt scale-factor screenshots "
                                   "are the developer proxy)",
