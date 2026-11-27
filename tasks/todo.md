@@ -501,3 +501,41 @@ expected): 43B ML logLik −1647.9521623673, LR 63.5209122009, p 1.5867e−15; R
 - Not reproduced: 48C "AR(1) → independent lme4" (all tested routes kept AR(1) on ff7b4f3); hardened anyway.
 - Evidence: docs/v1.3.3/, E:\sx_v133_work, E:\sx_v133_runs, E:\sx_v133_bench. Owner steps: clean offline VM,
   physical 150 % DPI (docs/v1.3.3/manual_acceptance_v1.3.3.md).
+
+---
+
+# v1.3.4 (handoff `E:\Downloads\StatExplore_v1.3.4_Developer_Handoff`; started 2026-11-27)
+
+Baseline: tag v1.3.3 = 90305ec (spec names df24932: the code is identical, 90305ec only adds evidence text to
+docs/v1.3.3/evidence_report_v1.3.3.md). Branch `release/v1.3.4`. Clean worktree `E:\sx_v133_base` (r/library
+junction). Work/evidence: `E:\sx_v134_work` (handoff copy `pkg\`, `handoff_SHA256.txt`). Fixture hashes: 43B MD5
+15b557b5… = owner record; Null_13 sha256 2975c585… = 52D project source. Owner decisions (2026-11-27): clean-VM install
+and physical DPI deferred as owner steps (simulated DPI + same-machine frozen/offline evidence, labelled); 47A–D draws
+regenerated with the deterministic v1.3.3 splitter and checked against the owner's per-draw evidence (labelled
+reconstructed). 2026-11-27 amendment to V134-017: no VM required; physical DPI and clean-machine install are
+separate owner-approved deferrals if unavailable; never reported as PASS; they do not block other gates.
+
+## Gate 0 runtime reproductions on v1.3.3 (E:\sx_v134_work\repro, logs)
+- 51H3: regenerated draw manifest == owner export (32,000 rows); baseline selections == owner app [17,13,13,...]
+- 47B3: config = participants-in-clusters, rs_ar1, local IDs, seed 133 (draw-1 logLik -1671.83698173322 vs owner
+  -1671.83698173324); baseline selections and 7 failed draws == owner app
+
+## Root causes found in Gate 0 (source; runtime reproductions in docs/v1.3.4/evidence)
+| ID | Root cause |
+|---|---|
+| V134-001 | `sx_cache_for` keys the reduced/null cache by rownames only; `sx_val_boot` renames every draw b1..bn, so a 10-draw chunk reuses draw 1's reduced fits |
+| V134-002 | `sx_lr_test` computes log p but `sx_compare` keeps only `p`; F / Wald tests never compute it; BH/Holm/ranking/selection on ordinary p |
+| V134-003 | `stability_table` groups by display label; labels are not unique |
+| V134-004 | validation pool = `run.rows` non-invalid (outcome- and stop-dependent); early stop not replayed |
+| V134-005 | `sx_fit_model` GEE uses global `sx_disc_corstr` (first structure) for every structure |
+| V134-010 | reduced-model flags appended to the row; batch-level warning handler attributes any fit's warning to the row; a cache hit emits no warning |
+| V134-011 | `sx_val_coef` returns `cols[1]` |
+
+## Plan
+- [ ] G0 baseline suite + red reproductions (001/002/003/004/005/009 + 007 counts)
+- [ ] G1 fit context + content-keyed, per-sample caches; log-domain inference/adjustment/ranking; GEE corstr + readback + QIC/QICu/CIC; comparability; FIT_RULES 4; legacy-identity no-reuse
+- [ ] G2 candidate identity in stability; training-only pipeline with replayed stopping; time-eligible grammar (opt-in); validation manifest identity/realized sizes/portable script; per-fit diagnostic attribution; multi-coefficient estimands; workload caps
+- [ ] G3 resume after reopen (reason states); Educational vs Complete R code; audit JSON + report; migration
+- [ ] G4 candidate reordering; teaching wording; code Ctrl+F; DPI simulation
+- [ ] G5 full suite + references + benchmarks + build + frozen self-test
+- [ ] G6 docs (register, evidence report, release notes), release

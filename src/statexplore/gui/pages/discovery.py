@@ -68,7 +68,8 @@ COMPARE_COLS = {"idx": "#", "model_type": "Model type", "formula": "Model", "pre
                 "n": "n", "n_groups": "Groups (participants)", "observed_clusters": "Clusters (observed)",
                 "modeled_clusters": "Clusters (modeled)", "aic": "AIC", "d_aic": "ΔAIC", "bic": "BIC",
                 "bic_n": "BIC n", "d_bic": "ΔBIC", "bic_harmonized": "BIC (harmonized, n − p)",
-                "d_bic_harmonized": "ΔBIC (harmonized)", "r2": "R²", "adj_r2": "Adjusted R²",
+                "d_bic_harmonized": "ΔBIC (harmonized)", "qic": "QIC", "d_qic": "ΔQIC", "qicu": "QICu",
+                "d_qicu": "ΔQICu", "cic": "CIC", "r2": "R²", "adj_r2": "Adjusted R²",
                 "loglik": "log-likelihood", "diag_text": "Diagnostics status"}
 ALPHA_PRESETS = ("0.05", "0.01", "0.001")
 COLUMN_TIPS = {
@@ -96,6 +97,10 @@ COLUMN_TIPS = {
                    "reference distribution or an unreliable likelihood (no p-value).",
     "Reference distribution": "The null distribution used for this test: chi-square, or a 50:50 mixture when a variance "
                               "or a CAR(1) correlation is tested on the boundary of its range.",
+    "QIC": "GEE quasi-likelihood information criterion (Pan 2001; geepack::QIC of the actual fit): compares working "
+           "correlations and mean models on the same rows. Not an AIC.",
+    "QICu": "QIC with the penalty 2p: for comparing mean models under the same working correlation.",
+    "CIC": "Correlation information criterion (trace term of QIC): compares working correlations.",
     "BIC n": "Sample size in the native BIC: n for lme4, n − p for REML nlme fits.",
     "BIC (harmonized, n − p)": "Every model's BIC recomputed on one basis (n − p) when native BICs use different n.",
 }
@@ -397,6 +402,10 @@ class ResultTable(QWidget):
         frame = df[cols].rename(columns=self.columns) if len(df) else pd.DataFrame(columns=list(self.columns.values()))
         lazy = {self.columns[k]: f for k, f in (lazy or {}).items() if k in self.columns}
         n = len(frame)
+        from ..models import LOG_P_TWIN
+
+        self.model.log_twins = {self.columns[k]: pd.to_numeric(df[lk], errors="coerce").to_numpy(float)
+                                for k, lk in LOG_P_TWIN.items() if k in self.columns and lk in df.columns and len(df)}
         self._highlight = np.zeros(n, bool) if highlight is None else np.asarray(highlight, bool)
         self.model.status_text = text
         self.model.set_frame(frame, self._highlight, warning, tips=None if text is None else [t or None for t in text],

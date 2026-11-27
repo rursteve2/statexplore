@@ -23,6 +23,10 @@ import pandas as pd
 from ..core.dataset import Dataset
 from ..core.variables import Measure, Storage
 
+# Candidate grammar version (recorded with every search; a search is resumed only under its own grammar).
+# 2 = v1.2-v1.3.3; 3 = v1.3.4: opt-in time-eligible interactions (V134-007), minimum candidates in the time strategy.
+GRAMMAR_VERSION = 3
+
 MAX_VARIABLES = 40          # outcome + candidates + required (§7)
 MAX_PREDICTORS_LIMIT = 6    # hard cap on distinct predictors per model (§7.1)
 LARGE_SEARCH = 1_000_000
@@ -82,6 +86,9 @@ class SearchSettings:
     cluster: str | None = None         # e.g. school / hospital; random intercept, locked in every candidate
     id_policy: str = "global"          # global: IDs unique across clusters | local: numbered within each cluster
     cluster_compare: bool = False      # workflow B, exploratory opt-in: also fit every structure without the cluster
+    # ---- v1.3.4 (V134-007): time as an interaction-eligible variable (opt-in; off = the v1.3.3 grammar) ----
+    time_eligible: bool = False        # combinations / factorial: time (a required main effect) joins every subset's
+                                       # interaction sets; counted once among the predictors, never an optional candidate
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -403,6 +410,14 @@ def _check_longitudinal(ds: Dataset, s: "SearchSettings") -> None:
                                "predictor (it enters the fixed effects through the time strategy or as a required "
                                "covariate).")
     structs = set(s.structures if s.workflow == "structure" else [s.structure or "ri"])
+    if getattr(s, "time_eligible", False):
+        if not t or t not in s.required:
+            raise SearchSpaceError("'Include time in eligible interactions' needs a time variable entered as a required "
+                                   "fixed effect (its main effect is in every model).")
+        if s.strategy not in ("combinations", "factorial") or s.workflow == "structure":
+            raise SearchSpaceError("'Include time in eligible interactions' applies to the 'All eligible interaction "
+                                   "combinations' and 'Full factorial' strategies of workflow A; the 'Time x each "
+                                   "predictor' strategy already pairs time with every candidate.")
     if s.strategy == "time" and not t:
         raise SearchSpaceError("The 'Time × each predictor' strategy needs a time variable.")
     if s.strategy == "time" and t in s.required:
@@ -480,6 +495,17 @@ def longitudinal_summary(ds: Dataset, s: "SearchSettings") -> dict[str, Any]:
 
 # ---- enumeration ------------------------------------------------------------------
 
+def time_eligible(s: SearchSettings) -> bool:
+    """Time takes part in the interaction sets (V134-007): opt-in, longitudinal, time required (its main effect is in
+    every model), combinations / factorial strategies."""
+    return bool(getattr(s, "time_eligible", False) and s.participant and s.time and s.time in s.required
+                and s.strategy in ("combinations", "factorial"))
+
+
+def _iset_vars(s: SearchSettings, sub: tuple[str, ...]) -> tuple[str, ...]:
+    return sub + ((s.time,) if time_eligible(s) else ())
+
+
 def _orders(s: SearchSettings) -> list[int]:
     room = s.max_predictors - len(s.required)
     return [o for o in (2, 3) if o <= s.max_order and o <= room]
@@ -504,9 +530,11 @@ def _block_counts(s: SearchSettings) -> list[tuple[str, int]]:
         blocks.append(("main", sum(comb(p, k) for k in _sizes(s))))
     if s.strategy == "combinations":
         drop = 0 if s.include_main else 1
-        blocks.append(("combinations", sum(comb(p, k) * (n_interaction_sets(k, s.max_order) - drop) for k in _sizes(s))))
+        extra = 1 if time_eligible(s) else 0
+        blocks.append(("combinations", sum(comb(p, k) * (n_interaction_sets(k + extra, s.max_order) - drop)
+                                           for k in _sizes(s))))
     elif s.strategy == "factorial":
-        blocks.append(("factorial", sum(comb(p, k) for k in _sizes(s, 2))))
+        blocks.append(("factorial", sum(comb(p, k) for k in _sizes(s, 1 if time_eligible(s) else 2))))
     elif s.strategy == "focal":
         blocks.append(("focal", _count_focal(s)))
     elif s.strategy == "time":
@@ -517,23 +545,30 @@ def _block_counts(s: SearchSettings) -> list[tuple[str, int]]:
 def _count_time(s: SearchSettings) -> int:
     p, room = len(s.candidates), _room(s)
     orders = [o for o in (2, 3) if o <= s.max_order and o <= room]
+    lo = max(1, s.min_predictors)     # V134-007: the minimum counts candidate predictors (time excluded)
     if s.covariate_mode == "focal":
-        return sum(comb(p, o - 1) for o in orders)
-    return sum(comb(p, k - 1) * sum(comb(k - 1, o - 1) for o in orders if o <= k) for k in range(2, room + 1))
+        return sum(comb(p, o - 1) for o in orders if o - 1 >= lo)
+    return sum(comb(p, k - 1) * sum(comb(k - 1, o - 1) for o in orders if o <= k) for k in range(2, room + 1)
+               if k - 1 >= lo)
 
 
 def _enum_time(s: SearchSettings, idx: int, start: int) -> Iterator[Candidate]:
     """Time × predictor focal interactions (M §8.5): focal sets always contain the time variable."""
     names, req, t, room = s.candidates, tuple(s.required), s.time, _room(s)
     orders = [o for o in (2, 3) if o <= s.max_order and o <= room]
+    lo = max(1, s.min_predictors)
     if s.covariate_mode == "focal":
         for o in orders:
+            if o - 1 < lo:
+                continue
             for f in combinations(names, o - 1):
                 if idx >= start:
                     yield Candidate(idx, (t,) + f, (), req)
                 idx += 1
         return
     for k in range(2, room + 1):
+        if k - 1 < lo:
+            continue
         for rest in combinations(names, k - 1):
             for o in orders:
                 if o > k:
@@ -604,8 +639,9 @@ def _enum_combinations(s: SearchSettings, idx: int, start: int) -> Iterator[Cand
     from .modelspec import interaction_sets, n_interaction_sets
 
     names, req = s.candidates, tuple(s.required)
+    extra = 1 if time_eligible(s) else 0
     for size in _sizes(s):
-        per = n_interaction_sets(size, s.max_order) - (0 if s.include_main else 1)
+        per = n_interaction_sets(size + extra, s.max_order) - (0 if s.include_main else 1)
         n = comb(len(names), size) * per
         if idx + n <= start:
             idx += n
@@ -614,7 +650,7 @@ def _enum_combinations(s: SearchSettings, idx: int, start: int) -> Iterator[Cand
             if idx + per <= start:
                 idx += per
                 continue
-            for inter in interaction_sets(sub, s.max_order):
+            for inter in interaction_sets(_iset_vars(s, sub), s.max_order):
                 if not inter and not s.include_main:
                     continue
                 if idx >= start:
@@ -628,14 +664,14 @@ def _factorial_terms(sub: tuple[str, ...], max_order: int) -> tuple[tuple[str, .
 
 def _enum_factorial(s: SearchSettings, idx: int, start: int) -> Iterator[Candidate]:
     names, req = s.candidates, tuple(s.required)
-    for size in _sizes(s, 2):
+    for size in _sizes(s, 1 if time_eligible(s) else 2):
         n = comb(len(names), size)
         if idx + n <= start:
             idx += n
             continue
         for sub in combinations(names, size):
             if idx >= start:
-                yield Candidate(idx, (), sub, req, "factorial", _factorial_terms(sub, s.max_order))
+                yield Candidate(idx, (), sub, req, "factorial", _factorial_terms(_iset_vars(s, sub), s.max_order))
             idx += 1
 
 

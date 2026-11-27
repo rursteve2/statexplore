@@ -9,18 +9,44 @@ from ..core.dataset import Dataset
 from ..rbridge.codegen import factor_label, alias, r_num, r_str, r_vec
 from .space import Candidate, SearchSettings
 
+FIT_RULES_R = 4   # = engine.FIT_RULES (kept here to avoid an import cycle; asserted equal in the tests)
+
 DISCOVERY_HELPERS = r"""# ---- StatExplore: discovery helpers ----
 # Fit one candidate's full model once, then evaluate each planned hypothesis as a nested
 # comparison with a reduced model (tests[[1]] is the candidate's declared focal test).
-sx_disc_cache <- new.env()            # reduced-model statistics, reused on the shared sample
-sx_disc_cache_rows <- NULL            # the exact rows the cached statistics were fitted to
-sx_cache_for <- function(d) {
-  # callers (stability, procedure CV) may point sx_dd at other rows: never reuse fits across samples
-  if (!identical(rownames(d), sx_disc_cache_rows)) {
-    rm(list = ls(sx_disc_cache), envir = sx_disc_cache)
-    sx_disc_cache_rows <<- rownames(d)
-  }
+# v1.3.4 (V134-001 / V134-012): fit statistics are cached only under a FIT KEY that proves what was fitted - the
+# content of every column the model uses (response, design variables, grouping, time, occasion) in the exact row order
+# with the row identities, plus the estimation context (family, structure, cluster, REML/ML, GEE family and working
+# correlation, optimizer rules) and the sample context set by the caller. Row names, counts or formulas alone never
+# justify reuse; validation resets the cache for every training part and bootstrap draw (sx_cache_reset).
+sx_disc_cache <- new.env()            # fit key -> fit statistics (with the producing fit's own diagnostics)
+sx_disc_ctx <- "search"               # sample context: "search", or a validation split / bootstrap draw id
+sx_disc_cache_log <- new.env()        # hits / misses (audit)
+sx_disc_cache_log$hits <- 0L; sx_disc_cache_log$misses <- 0L
+sx_disc_current <- NA_integer_        # candidate being evaluated (cache provenance)
+sx_cache_reset <- function(ctx = "search") {
+  rm(list = ls(sx_disc_cache, all.names = TRUE), envir = sx_disc_cache)
+  rm(list = ls(sx_col_hashes, all.names = TRUE), envir = sx_col_hashes)
+  sx_disc_ctx <<- ctx
 }
+sx_col_hashes <- new.env()            # column name -> (row names, column, MD5): each column hashed once per sample
+sx_col_hash <- function(d, v) {
+  rn <- rownames(d); col <- d[[v]]; e <- sx_col_hashes[[v]]
+  if (!is.null(e) && identical(e$rn, rn) && identical(e$col, col)) return(e$h)
+  h <- unname(tools::md5sum(bytes = serialize(list(v, rn, if (is.factor(col)) levels(col), unclass(col)), NULL, xdr = TRUE)))
+  assign(v, list(rn = rn, col = col, h = h), envir = sx_col_hashes)
+  h
+}
+sx_fit_key <- function(f, d) {
+  cols <- intersect(c("sx_y", all.vars(f), "sx_gid", "sx_cluster", "sx_time", "sx_timef", "sx_occ"), names(d))
+  terms <- sort(sx_canon_names(attr(stats::terms(f), "term.labels")))
+  paste(c(sx_disc_ctx, sx_disc_family, sx_disc_struct, sx_disc_clustered, sx_disc_reml,
+          if (sx_disc_family == "gee") c(sx_disc_gee_family, sx_gee_corstr(sx_disc_struct)), sx_disc_fit_rules,
+          paste(terms, collapse = "+"), nrow(d), vapply(cols, function(v) paste0(v, "=", sx_col_hash(d, v)), "")),
+        collapse = "|")
+}
+sx_gee_corstr <- function(st) switch(st, gee_exch = "exchangeable", gee_ar1 = "ar1", gee_ind = "independence",
+                                      stop("not a GEE structure: ", st))
 # Analysis-row signature: MD5 of the row identities in fitting order plus the levels of every factor model column
 # (participant codes excluded: only their grouping matters). Equal signatures = same rows, order and coding.
 sx_rows_sig <- function(d) {
@@ -59,12 +85,43 @@ sx_fit_model <- function(f, d) {
                        family = stats::binomial()),
     clmm = ordinal::clmm(sx_add(f, if (st == "clmm_rs") "(1 + sx_time | sx_gid)" else "(1 | sx_gid)"), data = d,
                          link = "logit"),
-    gee = geepack::geeglm(f, data = d, id = sx_gid, waves = sx_occ, corstr = sx_disc_corstr,
-                          family = if (sx_disc_gee_family == "binomial") stats::binomial() else stats::gaussian()),
+    gee = sx_fit_gee(f, d, st),
     gaussian = stats::lm(f, d),
     ordinal = ordinal::clm(f, data = d, link = "logit"),
     multinomial = nnet::multinom(f, data = d, trace = FALSE, maxit = 1000, model = FALSE),
     stats::glm(f, data = d, family = stats::binomial()))
+}
+# GEE (V134-005): the working correlation of THIS candidate's structure, passed explicitly and read back from the
+# fitted object; a mismatch fails closed.
+sx_fit_gee <- function(f, d, st) {
+  cs <- sx_gee_corstr(st)
+  m <- geepack::geeglm(f, data = d, id = sx_gid, waves = sx_occ, corstr = cs,
+                       family = if (sx_disc_gee_family == "binomial") stats::binomial() else stats::gaussian())
+  if (!identical(as.character(m$corstr), cs))
+    stop(sprintf("the fitted working correlation (%s) differs from the requested one (%s)", m$corstr, cs))
+  m
+}
+sx_gee_readback <- function(m) {
+  # what geepack actually estimated (never the request): working correlation, its parameter(s), scale, clusters
+  list(corstr = as.character(m$corstr), alpha = I(as.numeric(m$geese$alpha)), scale = as.numeric(m$geese$gamma),
+       clusters = length(unique(m$id)), nobs = length(m$y), family = m$family$family, link = m$family$link,
+       robust_se = I(as.numeric(sqrt(diag(as.matrix(m$geese$vbeta))))))
+}
+# Fit a model and its statistics, capturing the warnings of THIS fit (V134-010): they belong to the fit that produced
+# them and travel with it into the cache, so a reused reduced model keeps its diagnostics and an unrelated fit's warning
+# never flags another test.
+sx_fit_capture <- function(f, d) {
+  w <- character()
+  st <- withCallingHandlers({ m <- sx_fit_model(f, d); s <- sx_fit_stats(m, d); list(m = m, s = s) },
+    warning = function(x) { w <<- c(w, conditionMessage(x)); invokeRestart("muffleWarning") })
+  w <- unique(w)
+  if (length(w)) {
+    known <- if (is.null(st$s$diag)) character() else st$s$diag$flags
+    extra <- w[!vapply(w, function(x) any(grepl(x, known, fixed = TRUE)), logical(1))]
+    if (length(extra)) st$s$conv <- paste(c(if (nzchar(st$s$conv)) st$s$conv, paste("warning:", extra)), collapse = "; ")
+  }
+  st$s$warnings <- w
+  st
 }
 sx_fit_stats <- function(m, d) {
   if (sx_disc_family == "gee") return(list(ll = NA_real_, k = length(stats::coef(m)), conv = ""))
@@ -91,20 +148,25 @@ sx_fit_stats <- function(m, d) {
   out
 }
 sx_reduced_stats <- function(reduced, d) {
-  key <- paste0("m:", paste(sort(reduced), collapse = "+"))      # "m:" = intercept-only model
-  if (sx_disc_shared && !is.null(sx_disc_cache[[key]])) return(sx_disc_cache[[key]])
   f0 <- stats::reformulate(if (length(reduced)) reduced else "1", response = "sx_y")
-  st <- sx_fit_stats(sx_fit_model(f0, d), d)
-  if (sx_disc_shared) assign(key, st, envir = sx_disc_cache)
+  key <- sx_fit_key(f0, d)
+  hit <- sx_disc_cache[[key]]
+  if (!is.null(hit)) {
+    sx_disc_cache_log$hits <- sx_disc_cache_log$hits + 1L
+    hit$source <- "cache"; return(hit)
+  }
+  sx_disc_cache_log$misses <- sx_disc_cache_log$misses + 1L
+  st <- sx_fit_capture(f0, d)$s
+  st$m <- NULL
+  st$source <- "fitted"; st$fitted_for <- sx_disc_current; st$key_md5 <- unname(tools::md5sum(bytes = charToRaw(key)))
+  assign(key, st, envir = sx_disc_cache)
   st
 }
 sx_null_scale <- function(d) {
-  # denominators of the pseudo-R2 effects: -2 log L (ordinal) or deviance (logistic, multinomial) of y ~ 1
-  if (sx_disc_shared && !is.null(sx_disc_cache[["<null>"]])) return(sx_disc_cache[["<null>"]])
+  # denominators of the pseudo-R2 effects: -2 log L (ordinal) or deviance (logistic, multinomial) of y ~ 1, fitted to
+  # exactly these rows (same fit key as any other model)
   st <- sx_reduced_stats(character(), d)
-  v <- if (sx_disc_family == "ordinal") -2 * st$ll else st$dev
-  if (sx_disc_shared) assign("<null>", v, envir = sx_disc_cache)
-  v
+  if (sx_disc_family == "ordinal") -2 * st$ll else st$dev
 }
 # columns of the design matrix X that belong to model term `term` ("a:b" matches "b:a")
 sx_term_cols <- function(X, f, term) {
@@ -119,15 +181,25 @@ sx_wald <- function(m, X, f, drop) {
   b <- stats::coef(m)[cols]; V <- as.matrix(stats::vcov(m))[cols, cols, drop = FALSE]
   w <- as.numeric(t(b) %*% solve(V, b))
   list(statistic = w, df1 = length(cols), df_den = NA_real_, p = stats::pchisq(w, length(cols), lower.tail = FALSE),
-       effect = NA_real_, partial_eta2 = NA_real_)
+       log_p = stats::pchisq(w, length(cols), lower.tail = FALSE, log.p = TRUE), effect = NA_real_, partial_eta2 = NA_real_)
 }
 sx_compare <- function(s1, s0, d) {
-  r <- list(statistic = NA_real_, df1 = NA_real_, df_den = NA_real_, p = NA_real_, effect = NA_real_,
+  # V134-002: the natural log of the upper tail comes from the distribution itself (log.p = TRUE), never log(p)
+  r <- list(statistic = NA_real_, df1 = NA_real_, df_den = NA_real_, p = NA_real_, log_p = NA_real_, effect = NA_real_,
             partial_eta2 = NA_real_)
   if (sx_disc_family == "gaussian") {
     ss <- s0$rss - s1$rss; r$df1 <- s0$dfres - s1$dfres; r$df_den <- s1$dfres
     r$statistic <- (ss / r$df1) / (s1$rss / s1$dfres)
-    r$p <- stats::pf(r$statistic, r$df1, r$df_den, lower.tail = FALSE)
+    if (!is.finite(r$statistic) || r$df1 <= 0) {
+      r$statistic <- NA_real_; r$withheld <- "no extra parameters or non-finite F statistic"
+    } else if (r$statistic < 0) {
+      # residual SS of the larger model above the smaller one's: only rounding noise can do this for nested OLS
+      if (ss < -1e-8 * max(1, s0$rss)) r$withheld <- sprintf("the larger model has a larger residual SS (%.6g): no p-value", ss)
+      else { r$statistic <- 0; r$p <- 1; r$log_p <- 0 }
+    } else {
+      r$p <- stats::pf(r$statistic, r$df1, r$df_den, lower.tail = FALSE)
+      r$log_p <- stats::pf(r$statistic, r$df1, r$df_den, lower.tail = FALSE, log.p = TRUE)
+    }
     r$effect <- ss / sum((d$sx_y - mean(d$sx_y))^2)                # delta R-squared
     r$partial_eta2 <- ss / (ss + s1$rss)
     return(r)
@@ -141,7 +213,7 @@ sx_compare <- function(s1, s0, d) {
   r$statistic <- lr
   # STAT-41: a materially negative LR (larger model fits worse) means an unreliable optimization: no p-value
   t <- sx_lr_test(0, lr / 2, r$df1, "chisq")
-  r$p <- t$p
+  r$p <- t$p; r$log_p <- t$log_p; r$LR_raw <- t$LR_raw
   if (!identical(t$status, "tested")) r$withheld <- t$reason
   r$effect <- switch(sx_disc_family, lmm = s1$r2m - s0$r2m,             # delta marginal R-squared (lme4 RI)
                      glmm = NA_real_, clmm = NA_real_,
@@ -149,7 +221,8 @@ sx_compare <- function(s1, s0, d) {
   r
 }
 sx_long <- function() sx_disc_family %in% c("lmm", "glmm", "clmm", "gee")
-sx_discover_one <- function(full, tests, vars, focal_vars, struct = NULL, clustered = NULL) {
+sx_discover_one <- function(full, tests, vars, focal_vars, struct = NULL, clustered = NULL, i = NA_integer_) {
+  sx_disc_current <<- i
   if (!is.null(struct)) {      # workflow B: this candidate's structure
     old_struct <- sx_disc_struct; sx_disc_struct <<- struct; on.exit(sx_disc_struct <<- old_struct)
   }
@@ -207,11 +280,10 @@ sx_discover_one <- function(full, tests, vars, focal_vars, struct = NULL, cluste
     k2 <- sum(tapply(d$sx_time, droplevels(d$sx_gid), function(x) length(unique(x))) >= 2)
     if (k2 < 10) return(invalid(sprintf("only %d participants have 2+ time points: a random slope is not estimable", k2)))
   }
-  if (sx_disc_shared) sx_cache_for(d)
-  m1 <- sx_fit_model(f1, d)
-  s1 <- sx_fit_stats(m1, d)
+  fc <- sx_fit_capture(f1, d); m1 <- fc$m; s1 <- fc$s
+  if (sx_disc_family == "gee") res$gee <- sx_gee_readback(m1)
   if (!is.null(s1$diag)) {
-    res$flags <- c(res$flags, s1$diag$flags)
+    res$flags <- c(res$flags, if (nzchar(s1$conv)) strsplit(s1$conv, "; ", fixed = TRUE)[[1]])
     res$diagnostics <- s1$diag[c("status", "optimizer", "apvar")]
     res$diagnostics$attempts <- if (is.null(sx_last_run)) "" else paste(sprintf("%s: %s%s", sx_last_run$attempts$optimizer,
       sx_last_run$attempts$status, ifelse(nzchar(sx_last_run$attempts$error), paste0(" (", sx_last_run$attempts$error, ")"), "")),
@@ -270,13 +342,19 @@ sx_discover_one <- function(full, tests, vars, focal_vars, struct = NULL, cluste
       tr <- sx_wald(m1, X, f1, t$drop)
     } else {
       s0 <- sx_reduced_stats(t$reduced, d)
-      # a flagged reduced model makes this test provisional too (both fits must be clean)
-      if (nzchar(s0$conv) && sx_disc_family %in% c("ordinal", "multinomial", "binomial", "glmm", "clmm", "lmm"))
-        res$flags <- c(res$flags, paste("reduced model", s0$conv))
       tr <- sx_compare(s1, s0, d)
+      # V134-010: the reference (reduced) fit's own diagnostics belong to THIS test only, with their provenance: a
+      # flagged reference makes the test provisional; it does not flag the model or its other tests
+      tr$reference_flags <- s0$conv
+      tr$reference_source <- s0$source
+      tr$reference_fitted_for <- if (is.null(s0$fitted_for)) NA_integer_ else s0$fitted_for
+      tr$reference_key <- if (is.null(s0$key_md5)) "" else s0$key_md5
+      tr$reference_loglik <- if (is.null(s0$ll)) NA_real_ else s0$ll
+      tr$reference_k <- if (is.null(s0$k)) NA_real_ else s0$k
     }
-    if (sx_disc_family == "multinomial" && tr$statistic < -1e-6)
-      res$flags <- c(res$flags, "optimizer: the reduced model fitted better than the full model")
+    if (sx_disc_family == "multinomial" && isTRUE(tr$statistic < -1e-6))
+      tr$reference_flags <- paste(c(if (nzchar(tr$reference_flags)) tr$reference_flags,
+                                    "optimizer: the reduced model fitted better than the full model"), collapse = "; ")
     tr$id <- t$id; tr$estimate <- NA_real_; tr$se <- NA_real_; tr$ci_low <- NA_real_; tr$ci_high <- NA_real_
     if (length(t$drop) == 1 && isTRUE(tr$df1 == 1) && !is.null(ctab)) {
       col <- sx_term_cols(X, f1, t$drop)
@@ -290,16 +368,18 @@ sx_discover_one <- function(full, tests, vars, focal_vars, struct = NULL, cluste
   }
   if (sx_disc_family == "gee") {
     # QIC refits the independence model from the stored call (formula `f`, data `d`): give it both (P1-07)
+    # V134-005: QIC, QICu and CIC of the ACTUAL fit (native geepack definitions), kept in their own fields
     qic_env <- list2env(list(f = f1, d = d), parent = environment())
-    res$qic <- tryCatch(as.numeric(geepack::QIC(m1, env = qic_env)[["QIC"]]),
-                        error = function(e) { res$flags <<- c(res$flags, paste("QIC unavailable:", conditionMessage(e)))
-                                              NA_real_ })
+    q <- tryCatch(geepack::QIC(m1, env = qic_env),
+                  error = function(e) { res$flags <<- c(res$flags, paste("QIC unavailable:", conditionMessage(e))); NULL })
+    pick <- function(nm) if (!is.null(q) && nm %in% names(q)) as.numeric(q[[nm]]) else NA_real_
+    res$qic <- pick("QIC"); res$qicu <- pick("QICu"); res$cic <- pick("CIC"); res$quasi_lik <- pick("Quasi Lik")
     res$aic <- NA_real_; res$bic <- NA_real_; res$loglik <- NA_real_
   }
   # the declared focal test, also at the top level (v1.1 row layout)
   if (length(res$tests)) {
     t1 <- res$tests[[1]]
-    for (nm in c("statistic", "df1", "p", "effect", "partial_eta2", "estimate", "se", "ci_low", "ci_high"))
+    for (nm in c("statistic", "df1", "p", "log_p", "effect", "partial_eta2", "estimate", "se", "ci_low", "ci_high"))
       res[[nm]] <- t1[[nm]]
     if (sx_disc_family == "gaussian") res$df2 <- t1$df_den
   }
@@ -311,7 +391,7 @@ sx_discover_one <- function(full, tests, vars, focal_vars, struct = NULL, cluste
 sx_discover_batch <- function(batch) lapply(batch, function(s) {
   warns <- character()
   r <- tryCatch(withCallingHandlers(
-      do.call(sx_discover_one, s[intersect(c("full", "tests", "vars", "focal_vars", "struct", "clustered"), names(s))]),
+      do.call(sx_discover_one, s[intersect(c("full", "tests", "vars", "focal_vars", "struct", "clustered", "i"), names(s))]),
       warning = function(w) { warns <<- c(warns, conditionMessage(w)); invokeRestart("muffleWarning") }),
     error = function(e) list(status = "failed", reason = conditionMessage(e), flags = ""))
   if (length(warns) && !identical(r$status, "failed") && !identical(r$status, "invalid")) {
@@ -350,7 +430,8 @@ def setup_script(ds: Dataset, s: SearchSettings, family: str) -> str:
         f"sx_disc_conf <- {r_num(s.conf)}",
         f"sx_disc_min_obs <- {int(getattr(s, 'min_obs', 0) or 0)}",
         f"sx_disc_shared <- {'TRUE' if s.sample == 'shared' else 'FALSE'}",
-        "rm(list = ls(sx_disc_cache), envir = sx_disc_cache)",
+        f"sx_disc_fit_rules <- {r_str('fit-rules-' + str(FIT_RULES_R))}  # part of every fit key",
+        "sx_cache_reset(\"search\")",
         ("sx_dd <- sx_complete(dat, sx_disc_vars)  # shared complete-case sample"
          if s.sample == "shared" else
          "sx_dd <- droplevels(dat[, sx_disc_vars, drop = FALSE])  # complete cases are taken per model"),
@@ -359,7 +440,6 @@ def setup_script(ds: Dataset, s: SearchSettings, family: str) -> str:
     lines += [f"sx_disc_struct <- {r_str(struct)}",
               f"sx_disc_reml <- {'TRUE' if s.participant and s.workflow == 'structure' else 'FALSE'}"
               "  # REML only to compare covariance structures with a locked fixed part",
-              f"sx_disc_corstr <- {r_str({'gee_exch': 'exchangeable', 'gee_ar1': 'ar1', 'gee_ind': 'independence'}.get(struct, 'exchangeable'))}",
               f"sx_disc_gee_family <- {r_str(s.family or 'gaussian')}",
               f"sx_disc_has_time <- {'TRUE' if s.participant and s.time else 'FALSE'}"]
     if s.participant and cluster:

@@ -14,8 +14,16 @@ from ..core.dataset import Dataset
 from ..core.schema import Table
 
 
-def fmt_p(v: float) -> str:
-    """p-value display (v1.3.1 §6.6): never a literal 0 from underflow or rounding; exports keep the full value."""
+# p-value column -> its natural-log twin (V134-002): sorting and tiny-value display use the log tail
+LOG_P_TWIN = {"p": "log_p", "p_adj": "log_p_adj", "p_bh": "log_p_bh", "p_holm": "log_p_holm"}
+
+
+def fmt_p(v: float, log_p: float | None = None) -> str:
+    """p-value display (v1.3.1 §6.6, V134-002): never a literal 0 from underflow or rounding; below 1e-300 the exact
+    log10 magnitude is shown when known; exports keep the full value and the log tail."""
+    if log_p is not None and log_p == log_p and log_p / math.log(10) < -300:
+        return "< 1e-300" + (f" (log10 p = {log_p / math.log(10):.2f})" if math.isfinite(log_p) else
+                             " (magnitude not recorded)")
     if v <= 0:
         return "< 1e-300"
     return f"{v:.2e}" if v < 1e-4 else f"{v:.4f}"
@@ -195,6 +203,7 @@ class FrameModel(QAbstractTableModel):
         self.frame = frame if frame is not None else pd.DataFrame()
         self.digits = digits
         self.p_columns = set(p_columns)
+        self.log_twins: dict[str, np.ndarray] = {}    # p column -> natural-log p of each row (set by the owner)
         self.highlight: np.ndarray | None = None
         self.warning: np.ndarray | None = None
         self.row_tips: list[str] | None = None
@@ -244,9 +253,12 @@ class FrameModel(QAbstractTableModel):
             return None
         value = plain(self.frame.iat[r, index.column()])
         if role == Qt.DisplayRole:
-            if self.frame.columns[index.column()] in self.p_columns and isinstance(value, (int, float)) \
+            name = self.frame.columns[index.column()]
+            if name in self.p_columns and isinstance(value, (int, float)) \
                     and not isinstance(value, bool) and value == value:
-                return fmt_p(value)
+                tw = self.log_twins.get(name)
+                lp = float(tw[r]) if tw is not None and r < len(tw) else None
+                return fmt_p(value, lp)
             return fmt(value, self.digits)
         if role == Qt.ToolTipRole:   # full text of long cells (formulas, labels) that the column may truncate
             return value if isinstance(value, str) and len(value) > 24 else None
@@ -359,6 +371,10 @@ class ResultFrameModel(FrameModel):
             col = pd.Series(self.status_text, dtype=object)
         else:
             col = self.frame.iloc[:, column]
+            tw = self.log_twins.get(name) if name in self.p_columns else None
+            if tw is not None and len(tw) == len(col):      # V134-002: order p-values by their log tail
+                lp = pd.Series(tw, index=col.index, dtype=float)
+                col = lp.where(~np.isneginf(lp), -1e308).where(lp.notna(), pd.to_numeric(col, errors="coerce"))
         num = pd.to_numeric(col, errors="coerce").astype(float)
         finite = np.isfinite(num.to_numpy())
         if col.dtype == object or pd.api.types.is_string_dtype(col):

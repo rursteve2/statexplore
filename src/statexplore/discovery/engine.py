@@ -216,7 +216,11 @@ ENGINE_PACKAGES = ["detectseparation", "lme4", "ordinal", "nnet", "stats", "nlme
 
 # Version of the rules that turn a fit into a row (bump when a stored statistic changes definition).
 # 2 = v1.3.1: AIC/BIC from the fitted object (STAT-16). Rows from older rules are refitted, never reused.
-FIT_RULES = 3   # 3 = v1.3.2: identity fingerprints, diagnostics, direct R2, shared structure builder, msMaxIter 200
+# 3 = v1.3.2: identity fingerprints, diagnostics, direct R2, shared structure builder, msMaxIter 200
+# 4 = v1.3.4: content-keyed per-sample fit cache (V134-001), native log tails (V134-002), GEE working correlation per
+#     structure + QIC/QICu/CIC (V134-005), per-fit diagnostic attribution (V134-010). Rows from rules <= 3 may carry
+#     contaminated statistics: they stay as labelled history and are never reused.
+FIT_RULES = 4
 
 
 def _engine_id(engine: dict[str, Any]) -> tuple:
@@ -226,21 +230,19 @@ def _engine_id(engine: dict[str, Any]) -> tuple:
 
 def cache_from(run: DiscoveryRun, previous: list[DiscoveryRun], ds: Dataset | None = None) -> dict[str, dict[str, Any]]:
     """Rows already fitted by earlier searches with the same fit identity (§21 caching, F6).
-    Without `ds`, runs are matched on their stored identity (runs created by v1.2)."""
-    ident = run.fit_id or (fit_identity(ds, run.settings, run.family) if ds is not None else "")
+    V134-012: only runs with their OWN recorded fit identity qualify; a missing legacy identity is never reconstructed
+    from the current data (that would trust today's data for yesterday's fit). Rows must also come from the current
+    fit rules and the same R / package versions (checked in `execute`). `ds` is accepted for compatibility."""
+    ident = run.fit_id
     out: dict[str, dict[str, Any]] = {}
     if not ident:
         return out
     for prev in previous:
         if prev is run or prev.signature != run.signature or prev.family != run.family:
             continue
-        pid = prev.fit_id
-        if not pid and ds is not None:
-            try:
-                pid = fit_identity(ds, prev.settings, prev.family)
-            except Exception:  # an old run whose variables no longer exist
-                continue
-        if pid != ident:
+        if not prev.fit_id or prev.fit_id != ident:
+            continue
+        if (prev.engine or {}).get("fit_rules") != FIT_RULES:
             continue
         for r in prev.rows:
             if r["status"] != "failed" and not r.get("speculative"):
@@ -429,8 +431,21 @@ def _dispatch(run: DiscoveryRun, ds: Dataset, pooled: list[_PooledSession], ex: 
 
 
 def _qualifies(row: dict[str, Any], alpha: float) -> bool:
-    return row["status"] in ("ok", "warning") and row.get("p") is not None and row["p"] < alpha \
-        and not row.get("speculative")
+    """Raw significance of the declared focal test, on the log scale (V134-002: an underflowed p still qualifies)."""
+    if row["status"] not in ("ok", "warning") or row.get("speculative"):
+        return False
+    lp = row_log_p(row)
+    return lp is not None and lp < np.log(alpha)
+
+
+def row_log_p(row: dict[str, Any]) -> float | None:
+    """Natural-log p of the row's declared focal test: R's native log tail when recorded, else log(p) for p > 0;
+    None when there is no p (withheld, not tested) or p == 0 without a recorded log tail (older searches)."""
+    lp = _num(row.get("log_p"))
+    if lp is not None:
+        return lp
+    p = _num(row.get("p"))
+    return float(np.log(p)) if p is not None and p > 0 else None
 
 
 def _num(x: Any) -> float | None:
@@ -465,14 +480,26 @@ def _test_record(ds: Dataset, run: DiscoveryRun, c: Candidate, plan: dict[str, A
     out = {"test_id": int(plan["id"]), "type": plan["type"], "label": test_label(ds, c, plan),
            "drop": [":".join(t) for t in plan["drop"]],
            "reference": display(plan["reduced"], dn(run.settings.outcome), dn),
-           **{k: _num(r.get(k)) for k in ("statistic", "df1", "df_den", "p", "effect", "partial_eta2",
-                                          "estimate", "se", "ci_low", "ci_high")}}
+           **{k: _num(r.get(k)) for k in ("statistic", "df1", "df_den", "p", "log_p", "effect", "partial_eta2",
+                                          "estimate", "se", "ci_low", "ci_high", "LR_raw", "reference_loglik",
+                                          "reference_k")}}
+    # V134-010: diagnostics of the reference (reduced) fit used by THIS test, with provenance
+    ref_flags = _scalar_text(r.get("reference_flags"))
+    out["reference_flags"] = ref_flags
+    out["reference_source"] = _scalar_text(r.get("reference_source"))
+    out["reference_key"] = _scalar_text(r.get("reference_key"))
+    rf = _num(r.get("reference_fitted_for"))
+    out["reference_fitted_for"] = int(rf) if rf is not None else None
     single = len(plan["drop"]) == 1 and out["df1"] == 1 and fam != "multinomial"
     has_ci = out["ci_low"] is not None and out["ci_high"] is not None
     out["ci_applicable"] = "same_estimand" if single and has_ci else (
         "joint" if (out["df1"] or 0) > 1 or len(plan["drop"]) > 1 or fam == "multinomial" else "unavailable")
     if r.get("withheld"):          # STAT-41: materially negative LR or invalid df -> no p-value, reason kept
         out["test_status"], out["test_reason"], out["p"] = "withheld", str(_scalar_text(r.get("withheld"))), None
+        out["log_p"] = None
+    elif ref_flags:
+        out["test_status"] = "provisional"
+        out["test_reason"] = f"the reference model of this test is flagged: {ref_flags}"
     out["ci_scale"] = _ci_scale(run)
     out["ci_null"] = 0.0
     out["ci_level"] = run.settings.conf
@@ -554,8 +581,15 @@ def _row(ds: Dataset, run: DiscoveryRun, c: Candidate, r: dict[str, Any]) -> dic
     row["n_lik_params"] = _num(r.get("n_lik_params"))       # every likelihood parameter, from the fitted object
     row["ic_basis"] = str(r.get("ic_basis") or "")
     row["rows_sig"] = str(r.get("rows_sig") or "")
-    if r.get("qic") is not None:
-        row["qic"] = _num(r.get("qic"))
+    row["log_p"] = _num(r.get("log_p")) if status in ("ok", "warning") and not (tests and tests[0].get("test_status")
+                                                                              == "withheld") else None
+    for k in ("qic", "qicu", "cic", "quasi_lik"):
+        if r.get(k) is not None:
+            row[k] = _num(r.get(k))
+    if isinstance(r.get("gee"), dict):        # V134-005: what geepack actually fitted
+        g = r["gee"]
+        row["gee"] = {k: (v[0] if isinstance(v, list) and len(v) == 1 and k not in ("alpha", "robust_se") else v)
+                      for k, v in g.items()}
     from ..analysis.descriptor import parse_identity
 
     row["identity"] = parse_identity(r.get("identity"))
@@ -619,6 +653,37 @@ def holm(p: np.ndarray) -> np.ndarray:
     adj = np.maximum.accumulate(ranked)
     out = np.empty(m)
     out[order] = np.minimum(adj, 1.0)
+    return out
+
+
+def log_bh(lp: np.ndarray) -> np.ndarray:
+    """Benjamini-Hochberg on natural-log p-values (V134-002): sorted ascending, backward cumulative minimum of
+    log p_(i) + log m - log i, clipped above at 0 (p_adj <= 1), restored to the input order. Exact ties keep their
+    input order (stable sort = candidate / test order: the documented secondary key). -inf (an underflowed tail with no
+    recorded magnitude, older searches only) stays -inf."""
+    lp = np.asarray(lp, dtype=float)
+    m = len(lp)
+    if m == 0:
+        return lp
+    order = np.argsort(lp, kind="stable")
+    ranked = lp[order] + np.log(m) - np.log(np.arange(1, m + 1))
+    adj = np.minimum.accumulate(ranked[::-1])[::-1]
+    out = np.empty(m)
+    out[order] = np.minimum(adj, 0.0)
+    return out
+
+
+def log_holm(lp: np.ndarray) -> np.ndarray:
+    """Holm on natural-log p-values: forward cumulative maximum of log p_(i) + log(m - i + 1), clipped above at 0."""
+    lp = np.asarray(lp, dtype=float)
+    m = len(lp)
+    if m == 0:
+        return lp
+    order = np.argsort(lp, kind="stable")
+    ranked = lp[order] + np.log(m - np.arange(m))
+    adj = np.maximum.accumulate(ranked)
+    out = np.empty(m)
+    out[order] = np.minimum(adj, 0.0)
     return out
 
 
@@ -855,27 +920,37 @@ def tests_frame(run: DiscoveryRun, interpret: bool = True) -> pd.DataFrame:
     df["n_groups"] = pd.to_numeric(df.get("n_groups", np.nan), errors="coerce")
     if run.family == "lmm" and df["n_groups"].isna().all() and "df2" in df and not run.fit_id:
         df["n_groups"] = pd.to_numeric(df["df2"], errors="coerce")       # legacy v1.1 mixed rows
-    # V133-UI-08: log10 of the upper tail at full precision (R's log tail when recorded, so a p below the double range
-    # is still ordered); missing when there is no p-value (withheld / not applicable), never a bogus 0
-    lp = pd.to_numeric(df["log_p"], errors="coerce") / np.log(10) if "log_p" in df else pd.Series(np.nan, index=df.index)
+    # V134-002: the authoritative statistic is the natural-log upper tail (R's log.p = TRUE). log(p) is used only for an
+    # older row without a recorded log tail and p > 0; p == 0 without a log tail has no known magnitude (-inf, labelled)
+    lp_native = pd.to_numeric(df["log_p"], errors="coerce") if "log_p" in df else pd.Series(np.nan, index=df.index)
     with np.errstate(divide="ignore"):
-        direct = np.where(df["p"] > 0, np.log10(df["p"].where(df["p"] > 0)), np.nan)
-    df["log10_p"] = lp.where(lp.notna(), direct)
+        derived = np.log(df["p"].where(df["p"] > 0))
+    lp = lp_native.where(lp_native.notna(), derived)
+    zero = df["p"].notna() & (df["p"] == 0) & lp.isna()
+    lp = lp.where(~zero, -np.inf)
+    df["log_p"] = lp
+    df["log_p_source"] = np.where(lp_native.notna(), "native log tail", np.where(
+        zero, "p underflowed; magnitude not recorded (older search)", np.where(lp.notna(), "log of p", "")))
+    df["log10_p"] = lp / np.log(10)
     df["lrt_df"] = np.where(run.family in LRT_FAMILIES, df["df1"], np.nan)
     df["test_label"] = df["test_type"].map(TEST_TYPES).fillna(df["test_type"])
     df["test_method"] = [test_method(t, run.family) for t in df["test_type"]]
-    df["in_family"] = _null_flags(df)
-    df["p_bh"] = np.nan
-    df["p_holm"] = np.nan
+    df["in_family"] = _null_flags(df) & df["log_p"].notna()
+    for c in ("p_bh", "p_holm", "log_p_bh", "log_p_holm"):
+        df[c] = np.nan
     df["family_size"] = 0
     for ttype, idx in df[df["in_family"]].groupby("test_type").groups.items():
-        p = df.loc[idx, "p"].to_numpy(float)
-        df.loc[idx, "p_bh"] = bh(p)
-        df.loc[idx, "p_holm"] = holm(p)
+        lpi = df.loc[idx, "log_p"].to_numpy(float)
+        df.loc[idx, "log_p_bh"] = log_bh(lpi)
+        df.loc[idx, "log_p_holm"] = log_holm(lpi)
         df.loc[idx, "family_size"] = len(idx)
+    df["p_bh"] = np.exp(df["log_p_bh"])
+    df["p_holm"] = np.exp(df["log_p_holm"])
+    df["log_p_adj"] = df["log_p_bh"] if s.correction == "BH" else df["log_p_holm"]
     df["p_adj"] = df["p_bh"] if s.correction == "BH" else df["p_holm"]
-    df["sig_raw"] = df["in_family"] & (df["p"] < s.alpha)
-    df["sig_adj"] = df["in_family"] & (df["p_adj"] < s.alpha)
+    la = np.log(s.alpha)
+    df["sig_raw"] = df["in_family"] & (df["log_p"] < la)
+    df["sig_adj"] = df["in_family"] & (df["log_p_adj"] < la)
     if "test_status" not in df:
         df["test_status"] = ""
     df["test_status"] = df["test_status"].fillna("")
@@ -909,7 +984,7 @@ MODEL_FIELDS = ("idx", "key", "focal", "covariates", "kind", "order", "interacti
                 "reason", "flags", "speculative", "n", "n_params", "n_groups", "r2", "adj_r2", "aic", "bic",
                 "loglik", "model_type", "predictors", "n_predictors", "n_main", "n_two_way", "n_three_way",
                 "n_terms", "n_re_params", "candidate_id", "model_id", "cache_reason", "df2", "inter", "run_id",
-                "fitted_at", "structure", "qic")
+                "fitted_at", "structure", "qic", "qicu", "cic", "log_p")
 
 
 def results_frame(run: DiscoveryRun, tf: pd.DataFrame | None = None) -> pd.DataFrame:
@@ -926,7 +1001,8 @@ def results_frame(run: DiscoveryRun, tf: pd.DataFrame | None = None) -> pd.DataF
     prim = tf[tf["primary"]].set_index("idx") if len(tf) else pd.DataFrame()
     cols = ("test_type", "test_label", "label", "statistic", "df1", "df_den", "lrt_df", "p", "effect",
             "partial_eta2", "estimate", "se", "ci_low", "ci_high", "ci_applicable", "ci_scale", "ci_null",
-            "ci_status", "in_family", "p_bh", "p_holm", "p_adj", "sig_raw", "sig_adj", "tier", "family_size",
+            "ci_status", "in_family", "p_bh", "p_holm", "p_adj", "log_p", "log10_p", "log_p_bh", "log_p_holm",
+            "log_p_adj", "log_p_source", "sig_raw", "sig_adj", "tier", "family_size",
             "validation", "interpretation", "test_method")
     for c in cols:
         if len(prim) and c in prim:
@@ -1031,23 +1107,33 @@ def model_comparison(df: pd.DataFrame, run: DiscoveryRun) -> tuple[pd.DataFrame,
         fitted["d_aic"] = 0.0 if crit == "aic" else np.nan
         fitted["d_bic"] = np.nan
         if crit == "qic":
-            fitted["aic"] = fitted["qic"]
+            fitted["d_qic"] = 0.0
         return fitted, ("Only one model was fitted, so there is no comparison and no 'best' model: the ranking is "
                         "incomplete.")
+    same = _common_rows(fitted)
     if crit == "qic":
-        fitted = fitted.sort_values(["qic", "idx"], kind="stable")
-        fitted["d_aic"] = fitted["qic"] - fitted["qic"].min()
-        fitted["aic"] = fitted["qic"]
+        # V134-005/006: QIC / QICu / CIC in their own columns (native geepack definitions), never in the AIC column;
+        # ranked only on identical analysed rows (same outcome family by construction of a GEE run)
+        fitted["aic"] = np.nan
+        fitted["bic"] = np.nan
+        fitted["d_aic"] = np.nan
         fitted["d_bic"] = np.nan
-        return fitted, ("GEE (population-average): the AIC column holds QIC (quasi-likelihood under the "
-                        "independence model criterion) and ΔAIC holds ΔQIC. QIC is only comparable between models "
-                        "with the same rows and outcome family; it is not an AIC.")
-    same_rows = fitted["n"].nunique() <= 1
-    if same_rows and "identity" in fitted:
-        rows = {(i or {}).get("rows") for i in fitted["identity"] if isinstance(i, dict)}
-        same_rows = len(rows - {None}) <= 1
-    shared = run.settings.sample == "shared" and same_rows
-    fitted = fitted.sort_values(["aic", "idx"], kind="stable")
+        if not same:
+            fitted = fitted.sort_values(["idx"], kind="stable")
+            fitted["d_qic"] = np.nan
+            return fitted, ("GEE models were fitted to different rows: QIC/QICu/CIC are shown per model but not "
+                            "ranked or differenced (they are comparable only on the same rows).")
+        fitted = fitted.sort_values(["qic", "idx"], kind="stable")
+        fitted["d_qic"] = fitted["qic"] - fitted["qic"].min()
+        if "qicu" in fitted:
+            fitted["d_qicu"] = fitted["qicu"] - fitted["qicu"].min()
+        return fitted, ("GEE (population-average), same rows for every model: QIC (Pan) compares working-correlation "
+                        "structures and mean models; QICu (= -2 quasi-likelihood + 2p) only mean models with the same "
+                        "working correlation; CIC (trace term) compares working correlations. None is an AIC: GEE has "
+                        "no likelihood, so there is no AIC, BIC or likelihood-ratio test.")
+    shared = same
+    # V134-006: AIC order (and any 'best') only on common rows; otherwise candidate order
+    fitted = fitted.sort_values(["aic", "idx"] if shared else ["idx"], kind="stable")
     if shared:
         fitted["d_aic"] = fitted["aic"] - fitted["aic"].min()
         reml = run.settings.participant and run.settings.workflow == "structure" and run.family == "lmm"
@@ -1074,9 +1160,23 @@ def model_comparison(df: pd.DataFrame, run: DiscoveryRun) -> tuple[pd.DataFrame,
     else:
         fitted["d_aic"] = np.nan
         fitted["d_bic"] = np.nan
-        note = ("Models were fitted to different rows (complete cases per model): AIC/BIC are not comparable "
-                "across them, so no ΔAIC is shown.")
+        note = ("Models were fitted to different rows (complete cases per model, or different analysed samples): "
+                "AIC/BIC are shown per model but are not comparable across them, so the table is in candidate order "
+                "with no ΔAIC and no 'best' model. Equal n is not enough: the rows themselves must be identical. "
+                "Refit the models on their common rows (shared sample) to compare them.")
     return fitted, note
+
+
+def _common_rows(fitted: pd.DataFrame) -> bool:
+    """V134-006: True only when every model provably used the same analysed rows - the SHA-256 row-identity
+    fingerprint (or, for older rows, the row signature) is identical for all; equal n alone never qualifies."""
+    ids = [i.get("rows") if isinstance(i, dict) else None for i in fitted.get("identity", pd.Series([None] * len(fitted)))]
+    if all(ids):
+        return len(set(ids)) == 1
+    sigs = list(fitted["rows_sig"]) if "rows_sig" in fitted else []
+    if sigs and all(isinstance(x, str) and x for x in sigs):
+        return len(set(sigs)) == 1
+    return False
 
 
 HIGHLIGHT_MODES = {
@@ -1104,11 +1204,13 @@ def highlight_mask(df: pd.DataFrame, mode: str = "adjusted", alpha: float = 0.05
     if df.empty or mode == "off":
         return pd.Series(False, index=df.index)
     ok = df["in_family"].astype(bool)
-    p = pd.to_numeric(df["p"], errors="coerce")
-    pa = pd.to_numeric(df["p_adj"], errors="coerce")
+    # V134-002: compared on the log scale, so an underflowed p is still below alpha
+    p = pd.to_numeric(df["log_p"] if "log_p" in df else np.log(df["p"]), errors="coerce")
+    pa = pd.to_numeric(df["log_p_adj"] if "log_p_adj" in df else np.log(df["p_adj"]), errors="coerce")
+    la = np.log(alpha)
     if mode == "raw":
-        return (ok & (p < alpha)).fillna(False).astype(bool)
-    sig = (ok & (pa < alpha)).fillna(False).astype(bool)
+        return (ok & (p < la)).fillna(False).astype(bool)
+    sig = (ok & (pa < la)).fillna(False).astype(bool)
     if mode == "strict":
         return sig & ci_excludes_null(df)
     return sig
@@ -1197,10 +1299,14 @@ def interpret_row(r: dict[str, Any], s: SearchSettings, family: str = "gaussian"
     return text
 
 
-def discovery_ranking(df: pd.DataFrame, by: str = "p") -> pd.DataFrame:
+def discovery_ranking(df: pd.DataFrame, by: str = "log_p") -> pd.DataFrame:
+    """Primary p-value ranking on the log scale (V134-002); exact ties by candidate index, then test id."""
     if df.empty:
         return df
-    return df[df["in_family"]].sort_values([by, "idx"], kind="stable", na_position="last")
+    if by == "p" and "log_p" in df:
+        by = "log_p"
+    keys = [by, "idx"] + (["test_id"] if "test_id" in df else [])
+    return df[df["in_family"]].sort_values(keys, kind="stable", na_position="last")
 
 
 def support_ranking(df: pd.DataFrame) -> pd.DataFrame:
@@ -1315,8 +1421,8 @@ def _family_counts(run: DiscoveryRun) -> list[dict[str, Any]]:
         g = groups[ttype]
         out.append({"type": ttype, "label": TEST_TYPES.get(ttype, ttype), "tests": len(g),
                     "sig_raw": int(g["sig_raw"].sum()), "sig_adj": int(g["sig_adj"].sum()),
-                    "sig_bh": int((g["p_bh"] < run.settings.alpha).sum()),
-                    "sig_holm": int((g["p_holm"] < run.settings.alpha).sum()),
+                    "sig_bh": int((g["log_p_bh"] < np.log(run.settings.alpha)).sum()),
+                    "sig_holm": int((g["log_p_holm"] < np.log(run.settings.alpha)).sum()),
                     "sig_adj_clean": int((g["sig_adj"] & (g["tier"] == "A")).sum()),
                     "sig_adj_flagged": int((g["sig_adj"] & (g["tier"] == "C")).sum()),
                     "withheld": int((g.get("test_status", pd.Series("", index=g.index)) == "withheld").sum()),

@@ -29,7 +29,7 @@ import pandas as pd
 from ..core.dataset import Dataset
 from ..rbridge.codegen import r_str, r_vec
 
-GRAMMAR = "validation-1"
+GRAMMAR = "validation-2"   # v1.3.4: a-priori pool, replayed stopping, per-sample caches, identity-keyed stability
 
 TARGETS = {
     "rows": ("New independent observations",
@@ -47,7 +47,8 @@ TARGETS = {
 MODES = {"holdout": "Holdout", "cv": "Grouped K-fold cross-validation", "bootstrap": "Bootstrap stability"}
 PIPELINES = {"pipeline": "Whole selection pipeline (search repeated inside each training part)",
              "fixed": "Fixed candidate (conditional on a model chosen on all data: post-selection, not independent)"}
-RULES = {"p": "Smallest training p-value of the candidate's primary test (the search's discovery ranking)",
+RULES = {"p": "Smallest training p-value (natural-log tail) of the candidate's primary test (the search's discovery "
+              "ranking); exact ties: lower candidate index",
          "aic": "Lowest training AIC (same likelihood basis for every candidate)"}
 SUPPORTED_FAMILIES = {"gaussian", "binomial", "lmm", "gee"}
 
@@ -68,7 +69,9 @@ class ValidationConfig:
     repeats: int = 1
     B: int = 200
     seed: int = 133
-    max_fits: int = 20000                 # computational budget (candidate fits), checked before running
+    max_fits: int = 20000                 # computational budget (R model fits incl. reduced models), checked first
+    pool: str = "declared"                # declared: the search's a-priori space | prefix: first `prefix_n` (restricted)
+    prefix_n: int | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -149,6 +152,14 @@ def feasibility(ds: Dataset, run: Any, cfg: ValidationConfig) -> dict[str, Any]:
         problems.append("Marginal mmrm searches are not validated (no prediction for new participants is implemented).")
     if s.workflow == "structure" and cfg.rule == "p":
         problems.append("Workflow B compares covariance structures by information criteria: choose the AIC rule.")
+    if cfg.rule == "aic" and run.family == "gee":
+        problems.append("GEE has no likelihood, so there is no AIC: choose the p-value rule (robust Wald test). QIC-based "
+                        "selection inside validation is not implemented (V134-005/006).")
+    if cfg.rule == "aic" and getattr(s, "sample", "shared") != "shared" and cfg.pipeline == "pipeline":
+        problems.append("The AIC rule needs every candidate fitted to the same training rows; this search uses per-model "
+                        "complete cases (V134-006). Use the shared sample or the p-value rule.")
+    if cfg.pool not in ("declared", "prefix") or (cfg.pool == "prefix" and not (cfg.prefix_n or 0) >= 1):
+        problems.append("Restricted pool: give the number of leading candidates (at least 1).")
     if cfg.pipeline == "fixed" and cfg.candidate is None:
         problems.append("Choose the candidate to validate (fixed-candidate mode).")
     if not set(cfg.modes) <= set(MODES) or not cfg.modes:
@@ -188,14 +199,60 @@ def feasibility(ds: Dataset, run: Any, cfg: ValidationConfig) -> dict[str, Any]:
     if cfg.target == "cluster" and n_units < 20:
         warnings.append(f"Only {n_units} clusters: held-out performance for new clusters is imprecise and training "
                         "parts estimate the cluster variance from very few groups.")
-    n_cand = 1 if cfg.pipeline == "fixed" else max(1, run.total)
-    fits = n_cand * ((1 if "holdout" in cfg.modes else 0) + (cfg.k * cfg.repeats if "cv" in cfg.modes else 0)
-                     + (cfg.B if "bootstrap" in cfg.modes else 0))
-    info["fits"] = int(fits)
+    n_cand = 1 if cfg.pipeline == "fixed" else pool_size(run, cfg)
+    info["pool"] = int(n_cand)
+    info["pool_label"] = pool_label(run, cfg)
+    # V134-016: a conservative workload from exact counts (each candidate: full + one reduced fit per planned test,
+    # averaged over the first candidates), computed WITHOUT materializing the candidate list
+    from .space import estimate_fits
+    per = 1.0 if cfg.pipeline == "fixed" else max(1.0, estimate_fits(s, 1, sample=500))
+    samples = ((1 if "holdout" in cfg.modes else 0) + (cfg.k * cfg.repeats if "cv" in cfg.modes else 0)
+               + (cfg.B if "bootstrap" in cfg.modes else 0))
+    fits = int(round(n_cand * per * samples + samples))      # + the selected model refit per training part
+    info["fits"] = fits
+    info["candidate_fits"] = int(n_cand * samples)
     if fits > cfg.max_fits:
-        problems.append(f"About {fits:,} model fits exceed the budget of {cfg.max_fits:,}: reduce K, repeats or B, or use "
-                        "fixed-candidate mode.")
+        problems.append(f"About {fits:,} R model fits ({n_cand:,} candidates x {samples:,} training parts, with their "
+                        f"reduced models) exceed the budget of {cfg.max_fits:,}: reduce K, repeats or B, restrict the pool "
+                        "explicitly to the first N candidates (labelled restricted), or use fixed-candidate mode.")
     return info
+
+
+def stop_target(run: Any) -> int | None:
+    """The search's own outcome-dependent stopping rule, replayed inside every training part (V134-004)."""
+    s = run.settings
+    if s.participant and s.workflow == "structure":
+        return None
+    return 1 if s.mode == "A" else int(s.target) if s.mode == "B" else None
+
+
+def pool_size(run: Any, cfg: ValidationConfig) -> int:
+    """Candidates of the a-priori pool: the declared space (mode D: its declared model budget, an outcome-independent
+    prefix), or an explicit restriction to the first N. Never the rows a full-data run happened to evaluate."""
+    total = int(run.total)
+    if cfg.pool == "prefix" and cfg.prefix_n:
+        return max(0, min(total, int(cfg.prefix_n)))
+    s = run.settings
+    if s.mode == "D" and s.max_models:
+        first = (run.executions[0].get("max_models") if run.executions else None) or s.max_models
+        return min(total, int(first))
+    return total
+
+
+def pool_label(run: Any, cfg: ValidationConfig) -> str:
+    n, s = pool_size(run, cfg), run.settings
+    stop = stop_target(run)
+    if cfg.pool == "prefix" and cfg.prefix_n:
+        base = (f"RESTRICTED pool: the first {n:,} of {run.total:,} candidates in the declared order (outcome-"
+                "independent restriction; results are conditional on it)")
+    elif s.mode == "D" and n < run.total:
+        base = f"declared model budget: the first {n:,} of {run.total:,} candidates in the declared order"
+    else:
+        base = f"the whole declared search space ({n:,} candidates)"
+    if stop:
+        base += (f"; the search's stopping rule (stop at the {stop} candidate(s) with raw p < {s.alpha:g}) is replayed "
+                 "on the training data of every part")
+    return base
 
 
 # ---- split manifests (Python, deterministic, before fitting) --------------------------------------------------------
@@ -330,9 +387,24 @@ sx_val_fit <- function(a, d) sx_val_with(a, function() {
   if (sx_long() && sx_disc_has_time) d$sx_occ <- as.integer(d$sx_timef)
   sx_fit_model(stats::reformulate(if (length(a$full)) a$full else "1", response = "sx_y"), d)
 })
-sx_val_score <- function(a) { r <- tryCatch(sx_val_with(a, function() do.call(sx_discover_one, a)), error = function(e) NULL)
-  if (is.null(r) || !(r$status %in% c("ok", "warning"))) return(NA_real_)
-  if (sx_val_rule == "aic") r$aic else r$p }
+sx_val_score <- function(a) {
+  # V134-002: the p rule ranks the natural-log p of the primary test (an underflowed p keeps its magnitude)
+  r <- tryCatch(sx_val_with(a, function() do.call(sx_discover_one, a)), error = function(e) NULL)
+  if (is.null(r) || !(r$status %in% c("ok", "warning"))) return(list(score = NA_real_, log_p = NA_real_, rows = "",
+    status = if (is.null(r)) "failed" else r$status, reason = if (is.null(r)) "fit error" else r$reason,
+    loglik = NA_real_, statistic = NA_real_, df = NA_real_, ref_loglik = NA_real_, flags = "", ref_flags = "", aic = NA_real_))
+  t1 <- if (length(r$tests)) r$tests[[1]] else list()
+  g <- function(x) if (is.null(x) || !length(x)) NA_real_ else as.numeric(x)[1]
+  lp <- g(t1$log_p)
+  if (!is.null(t1$withheld)) lp <- NA_real_
+  # comparability key: the analysed row identities and the response values (SHA-256 fingerprints of the fit)
+  rk <- if (is.null(r$identity)) r$rows_sig else paste(r$identity$rows, r$identity$response)
+  list(score = if (sx_val_rule == "aic") r$aic else lp, log_p = lp, rows = rk, status = r$status, reason = "",
+       loglik = g(r$loglik), statistic = g(t1$statistic), df = g(t1$df1), ref_loglik = g(t1$reference_loglik),
+       flags = paste(r$flags, collapse = "; "), ref_flags = if (is.null(t1$reference_flags)) "" else t1$reference_flags,
+       aic = g(r$aic))
+}
+sx_val_trace <- list()   # every candidate evaluated in every training part / draw (audit, V134-015)
 sx_val_predict <- function(m, newd) {
   if (inherits(m, "merMod")) {
     rf <- switch(sx_val_target, participant_in_cluster = ~ (1 | sx_cluster), NA)
@@ -342,28 +414,51 @@ sx_val_predict <- function(m, newd) {
                                  level = if (sx_val_target == "participant_in_cluster") 1 else 0)))
   as.numeric(stats::predict(m, newdata = newd, type = "response"))
 }
-sx_val_coef <- function(m, a) {   # coefficient(s) of the candidate's primary tested term(s)
+sx_val_coef <- function(m, a) {
+  # V134-011: EVERY coefficient of the candidate's primary tested term(s), one record each (never the first column only)
+  none <- data.frame(term = character(), coefficient = character(), estimate = numeric(), stringsAsFactors = FALSE)
   b <- tryCatch(if (inherits(m, "merMod")) lme4::fixef(m) else if (inherits(m, "lme")) nlme::fixef(m) else stats::coef(m),
                 error = function(e) NULL)
-  if (is.null(b) || !length(a$tests)) return(list(name = "", value = NA_real_, k = 0L))
+  if (is.null(b) || !length(a$tests)) return(none)
   drop <- sx_canon_names(unlist(a$tests[[1]]$drop))
   f <- stats::reformulate(if (length(a$full)) a$full else "1", response = "sx_y")
   lab <- sx_canon_names(attr(stats::terms(f), "term.labels"))
   X <- tryCatch(stats::model.matrix(stats::delete.response(stats::terms(f)), sx_val_lastd), error = function(e) NULL)
-  if (is.null(X)) return(list(name = "", value = NA_real_, k = 0L))
-  cols <- colnames(X)[attr(X, "assign") %in% which(lab %in% drop)]
-  cols <- intersect(cols, names(b))
-  if (!length(cols)) return(list(name = "", value = NA_real_, k = 0L))
-  list(name = cols[1], value = unname(b[[cols[1]]]), k = length(cols))
+  if (is.null(X)) return(none)
+  asg <- attr(X, "assign")
+  keep <- asg %in% which(lab %in% drop) & colnames(X) %in% names(b)
+  if (!any(keep)) return(none)
+  data.frame(term = lab[asg[keep]], coefficient = colnames(X)[keep], estimate = unname(b[colnames(X)[keep]]),
+             stringsAsFactors = FALSE)
 }
-sx_val_select <- function(train) {
+# Training-only selection (V134-004): every outcome-dependent step - fitting, eligibility, ranking and the search's own
+# stopping rule (replayed in candidate order) - uses the training rows only; the candidate pool is the a-priori space.
+sx_val_select <- function(train, ctx) {
   sx_dd <<- train
-  if (length(sx_val_cands) == 1) return(list(j = 1L, score = NA_real_, scores = NA_real_))
-  sc <- vapply(sx_val_cands, sx_val_score, 0)
-  if (all(is.na(sc))) return(list(j = NA_integer_, score = NA_real_, scores = sc))
-  list(j = which.min(sc), score = min(sc, na.rm = TRUE), scores = sc)
+  sx_cache_reset(ctx)           # V134-001: a fresh fit cache for every independent sample
+  n <- length(sx_val_cands)
+  if (n == 1) return(list(j = 1L, score = NA_real_, scores = NA_real_, visited = 1L, n_sig = NA_integer_, scored = 1L))
+  sc <- rep(NA_real_, n); rows <- rep("", n); n_sig <- 0L; visited <- 0L
+  for (j in seq_len(n)) {
+    s <- sx_val_score(sx_val_cands[[j]]); visited <- j
+    sc[j] <- s$score; rows[j] <- s$rows
+    sx_val_trace[[length(sx_val_trace) + 1]] <<- data.frame(part = ctx, candidate_index = sx_val_index[j],
+      status = s$status, reason = s$reason, loglik = s$loglik, statistic = s$statistic, df = s$df, log_p = s$log_p,
+      reference_loglik = s$ref_loglik, aic = s$aic, score = s$score, flags = s$flags, reference_flags = s$ref_flags,
+      rows_sig = s$rows, stringsAsFactors = FALSE)
+    if (is.finite(s$log_p) && s$log_p < log(sx_val_alpha)) n_sig <- n_sig + 1L
+    if (!is.na(sx_val_stop) && n_sig >= sx_val_stop) break    # the search's stopping rule, on training data
+  }
+  ok <- which(!is.na(sc))
+  if (!length(ok)) return(list(j = NA_integer_, score = NA_real_, scores = sc, visited = visited, n_sig = n_sig,
+                               scored = 0L))
+  if (sx_val_rule == "aic" && length(unique(rows[ok])) > 1)
+    stop("AIC is not comparable here: the candidates were fitted to different training rows (per-model complete cases)")
+  j <- ok[which.min(sc[ok])]     # exact ties: the lower candidate index (documented secondary key)
+  list(j = j, score = sc[j], scores = sc, visited = visited, n_sig = n_sig, scored = length(ok))
 }
 sx_val_split <- function(split_id, fold_of) {
+  sx_val_trace <<- list()
   folds <- sort(unique(fold_of[!is.na(fold_of) & fold_of > 0]))
   preds <- list(); info <- list()
   for (f in folds) {
@@ -377,7 +472,7 @@ sx_val_split <- function(split_id, fold_of) {
         stop("internal: a cluster is in both parts")
       if (sx_val_target == "participant_in_cluster" && !all(as.character(te$sx_cluster) %in% as.character(tr$sx_cluster)))
         stop("internal: a test cluster has no training rows")
-      sel <- sx_val_select(tr)
+      sel <- sx_val_select(tr, paste0(split_id, ":fold", f))
       if (is.na(sel$j)) stop("no candidate could be fitted on the training part")
       a <- sx_val_cands[[sel$j]]
       m <- sx_val_fit(a, tr)
@@ -393,7 +488,8 @@ sx_val_split <- function(split_id, fold_of) {
         participant = if (sx_long()) as.character(tec$sx_gid)[ok] else as.character(rownames(tec))[ok],
         cluster = if (sx_long() && sx_disc_has_cluster) as.character(tec$sx_cluster)[ok] else "", stringsAsFactors = FALSE)
       list(split = split_id, fold = f, status = "scored", reason = "", selected = sx_val_labels[sel$j],
-           selected_index = sx_val_index[sel$j], train_score = sel$score, n_train = nrow(trc), n_test = sum(ok),
+           selected_index = sx_val_index[sel$j], train_score = sel$score, visited = sel$visited,
+           scored = sel$scored, n_sig_train = sel$n_sig, n_train = nrow(trc), n_test = sum(ok),
            train_mean = mean(trc$sx_y), train_groups = if (sx_long()) nlevels(droplevels(trc$sx_gid)) else nrow(trc),
            test_groups = if (sx_long()) length(unique(as.character(tec$sx_gid[ok]))) else sum(ok),
            train_clusters = if (sx_long() && sx_disc_has_cluster) nlevels(droplevels(trc$sx_cluster)) else 0L,
@@ -402,7 +498,8 @@ sx_val_split <- function(split_id, fold_of) {
            test_events = if (sx_disc_family == "binomial" || identical(sx_disc_gee_family, "binomial")) sum(tec$sx_y[ok] == 1) else NA_real_,
            diagnostics = tryCatch(paste(sx_diag(m, sx_last_run)$flags, collapse = "; "), error = function(e) ""))
     }, error = function(e) list(split = split_id, fold = f, status = "failed", reason = conditionMessage(e),
-                                 selected = "", selected_index = NA_integer_, train_score = NA_real_, n_train = nrow(tr),
+                                 selected = "", selected_index = NA_integer_, train_score = NA_real_, visited = NA_integer_,
+                                 scored = NA_integer_, n_sig_train = NA_integer_, n_train = nrow(tr),
                                  n_test = 0L, train_mean = NA_real_, train_groups = NA_real_, test_groups = NA_real_,
                                  train_clusters = NA_real_, test_clusters = NA_real_, excluded_incomplete = NA_real_,
                                  excluded_unseen_levels = NA_real_, excluded_unpredicted = NA_real_, test_events = NA_real_,
@@ -410,10 +507,12 @@ sx_val_split <- function(split_id, fold_of) {
     info[[length(info) + 1]] <- as.data.frame(res, stringsAsFactors = FALSE)
   }
   sx_dd <<- sx_val_full
-  list(folds = do.call(rbind, info), predictions = if (length(preds)) do.call(rbind, preds) else NULL)
+  sx_cache_reset("search")
+  list(folds = do.call(rbind, info), predictions = if (length(preds)) do.call(rbind, preds) else NULL,
+       trace = if (length(sx_val_trace)) do.call(rbind, sx_val_trace) else NULL)
 }
 sx_val_boot <- function(draws) {
-  out <- list()
+  out <- list(); coefs <- list(); sx_val_trace <<- list()
   for (b in sort(unique(draws$b))) {
     dr <- draws[draws$b == b, , drop = FALSE]
     res <- tryCatch({
@@ -423,27 +522,35 @@ sx_val_boot <- function(draws) {
       if (sx_long()) {
         d$sx_gid <- factor(dr$draw_gid)            # a unit drawn twice = two sampled units (new IDs)
         if (sx_disc_has_cluster) d$sx_cluster <- factor(ifelse(nzchar(dr$draw_cluster), dr$draw_cluster, as.character(d$sx_cluster)))
-        if (sx_disc_has_time) d <- d[order(d$sx_gid, d$sx_time), , drop = FALSE]
       }
-      rownames(d) <- paste0("b", seq_len(nrow(d)))
-      sel <- sx_val_select(d)
+      # deterministic, draw-specific row identities: draw b, position k in the draw (source row kept in the manifest)
+      rownames(d) <- paste0("b", b, ".", seq_len(nrow(d)))
+      if (sx_long() && sx_disc_has_time) d <- d[order(d$sx_gid, d$sx_time), , drop = FALSE]
+      sel <- sx_val_select(d, paste0("boot", b))
       if (is.na(sel$j)) stop("no candidate could be fitted on this resample")
       a <- sx_val_cands[[sel$j]]
       m <- sx_val_fit(a, d)
       sx_val_lastd <<- sx_complete(d, sx_val_need(a))
       cf <- sx_val_coef(m, a)
+      if (nrow(cf)) coefs[[length(coefs) + 1]] <- data.frame(b = b, selected_index = sx_val_index[sel$j], cf,
+                                                            stringsAsFactors = FALSE)
       dg <- tryCatch(sx_diag(m, sx_last_run), error = function(e) list(status = "unknown", flags = character()))
       list(b = b, status = "fitted", reason = "", selected = sx_val_labels[sel$j], selected_index = sx_val_index[sel$j],
-           coefficient = cf$name, estimate = cf$value, n_coef = cf$k, diagnostics = paste(dg$status, collapse = ""),
+           train_score = sel$score, visited = sel$visited, scored = sel$scored, n_sig_train = sel$n_sig,
+           coefficient = if (nrow(cf)) cf$coefficient[nrow(cf)] else "", estimate = if (nrow(cf)) cf$estimate[nrow(cf)] else NA_real_,
+           n_coef = nrow(cf), diagnostics = paste(dg$status, collapse = ""),
            flags = paste(dg$flags, collapse = "; "), n = nrow(sx_val_lastd),
            groups = if (sx_long()) nlevels(droplevels(sx_val_lastd$sx_gid)) else nrow(sx_val_lastd))
     }, error = function(e) list(b = b, status = "failed", reason = conditionMessage(e), selected = "",
-                                 selected_index = NA_integer_, coefficient = "", estimate = NA_real_, n_coef = 0L,
-                                 diagnostics = "failed", flags = "", n = NA_real_, groups = NA_real_))
+                                 selected_index = NA_integer_, train_score = NA_real_, visited = NA_integer_,
+                                 scored = NA_integer_, n_sig_train = NA_integer_, coefficient = "", estimate = NA_real_,
+                                 n_coef = 0L, diagnostics = "failed", flags = "", n = NA_real_, groups = NA_real_))
     out[[length(out) + 1]] <- as.data.frame(res, stringsAsFactors = FALSE)
   }
   sx_dd <<- sx_val_full
-  do.call(rbind, out)
+  sx_cache_reset("search")
+  list(draws = do.call(rbind, out), coefs = if (length(coefs)) do.call(rbind, coefs) else NULL,
+       trace = if (length(sx_val_trace)) do.call(rbind, sx_val_trace) else NULL)
 }
 """
 
@@ -488,17 +595,25 @@ class ValidationRunner:
             raise ValidationError("Standardized / centred derived variables (" + ", ".join(
                 self.v.var(n).display_name for n in sorted(used & set(leaky))) + ") use whole-sample means: their "
                 "scaling would leak information from the held-out data. Use the raw variables.")
-        cands = list(enumerate_candidates(s))
-        valid = {int(r["idx"]) for r in run.rows if r.get("status") not in ("invalid",)} if run.rows else None
+        # V134-004: the a-priori pool (declared grammar, order and budget), enumerated lazily up to its exact size; the
+        # full-data run's statuses, stop point and visited rows never define it
+        from itertools import islice
+
         if cfg.pipeline == "fixed":
-            cands = [c for c in cands if c.index == cfg.candidate]
+            cands = [c for c in enumerate_candidates(s, start=int(cfg.candidate or 0)) if c.index == cfg.candidate][:1] \
+                if cfg.candidate is not None and 0 <= int(cfg.candidate) < run.total else []
             if not cands:
                 raise ValidationError(f"Candidate #{cfg.candidate} is not part of this search.")
-        elif valid is not None:
-            cands = [c for c in cands if c.index in valid] or cands
+            cands = cands[:1]
+        else:
+            cands = list(islice(enumerate_candidates(s), pool_size(run, cfg)))
         self.cands = cands
-        self.labels = [focal_label(self.v, c) if c.kind != "structure" else c.structure + (
-            "" if c.clustered is None else (" (with cluster)" if c.clustered else " (without cluster)")) for c in cands]
+        # V134-003: display labels are for people and need not be unique; the candidate index (+ key) is the identity
+        self.labels = [(focal_label(self.v, c) if c.kind != "structure" else c.structure + (
+            "" if c.clustered is None else (" (with cluster)" if c.clustered else " (without cluster)"))) + f" [#{c.index}]"
+            for c in cands]
+        from .space import candidate_key
+        self.keys = [candidate_key(c) for c in cands]
         self.info = info
         self.units = unit_frame(ds, run)
         self.splits = make_splits(self.units, cfg)
@@ -521,6 +636,9 @@ class ValidationRunner:
             f"sx_val_index <- {r_vec([int(c.index) for c in self.cands])}",
             f"sx_val_rule <- {r_str(self.cfg.rule)}",
             f"sx_val_target <- {r_str(self.cfg.target)}",
+            f"sx_val_alpha <- {float(s.alpha)!r}",
+            f"sx_val_stop <- {stop_target(self.run) if self.cfg.pipeline == 'pipeline' and stop_target(self.run) else 'NA'}"
+            "  # the search's stopping rule, replayed on training data (NA = none)",
             "if (!exists(\"sx_disc_gee_family\")) sx_disc_gee_family <- \"\"",
             "sx_val_full <- sx_dd; sx_val_lastd <- sx_dd",
         ])
@@ -540,6 +658,8 @@ class ValidationRunner:
                 progress: Callable[[str], None] = lambda m: None) -> dict[str, Any]:
         cfg = self.cfg
         folds, preds, boot, problems = [], [], [], []
+        coefs: list[pd.DataFrame] = []
+        trace: list[pd.DataFrame] = []
         status = "complete"
         try:
             for sp in self.splits:
@@ -553,13 +673,14 @@ class ValidationRunner:
                     f"names(sx_vfold) <- c({', '.join(str(r) for r, _ in rows)})",
                     "sx_vf <- unname(sx_vfold[rownames(sx_val_full)])",
                     f"sx_vr <- sx_val_split({r_str(sp['id'])}, sx_vf)",
-                    "sx_result <- list(folds = sx_vr$folds, predictions = sx_vr$predictions)",
+                    "sx_result <- list(folds = sx_vr$folds, predictions = sx_vr$predictions, trace = sx_vr$trace)",
                 ])
                 raw = self._call(body, f"AMD validation: {sp['id']}")
                 fr = _frame(raw.get("folds"))
                 fr["mode"], fr["repeat"] = sp["mode"], sp["repeat"]
                 folds.append(fr)
                 preds.append(_frame(raw.get("predictions")))
+                trace.append(_frame(raw.get("trace")))
             chunk = 10
             for i in range(0, len(self.draws), chunk):
                 if status != "complete" or should_stop():
@@ -575,15 +696,21 @@ class ValidationRunner:
                     "sx_result <- list(boot = sx_val_boot(sx_vdraws))",
                 ])
                 raw = self._call(body, f"AMD validation: bootstrap {part[0]['b']}-{part[-1]['b']}")
-                boot.append(_frame(raw.get("boot")))
+                bt = raw.get("boot") or {}
+                boot.append(_frame(bt.get("draws") if isinstance(bt, dict) and "draws" in bt else bt))
+                coefs.append(_frame(bt.get("coefs") if isinstance(bt, dict) else None))
+                trace.append(_frame(bt.get("trace") if isinstance(bt, dict) else None))
         except Exception as e:  # cancellation kills the worker: completed chunks stay, the run is partial
             problems.append(str(e))
             status = "cancelled" if should_stop() else "failed"
-        return self.assemble(folds, preds, boot, status, problems)
+        out = self.assemble(folds, preds, boot, status, problems, coefs)
+        T = [x for x in trace if len(x)]
+        out["trace"] = pd.concat(T, ignore_index=True).to_dict("records") if T else []
+        return out
 
     # ---- aggregation ----
     def assemble(self, folds: list[pd.DataFrame], preds: list[pd.DataFrame], boot: list[pd.DataFrame], status: str,
-                 problems: list[str]) -> dict[str, Any]:
+                 problems: list[str], coefs: list[pd.DataFrame] | None = None) -> dict[str, Any]:
         cfg = self.cfg
         F = pd.concat(folds, ignore_index=True) if folds else pd.DataFrame()
         P = pd.concat([p for p in preds if len(p)], ignore_index=True) if any(len(p) for p in preds) else pd.DataFrame()
@@ -597,16 +724,36 @@ class ValidationRunner:
         if status == "complete" and len(Bt) and (Bt["status"] != "fitted").any():
             status = "partial"
         summary = performance(F, P, binary, cfg.target) if len(P) else []
-        stability = stability_table(Bt, self.labels) if len(Bt) else []
+        C = pd.concat([c for c in (coefs or []) if len(c)], ignore_index=True) if any(len(c) for c in (coefs or [])) \
+            else pd.DataFrame()
+        if len(C):
+            C["coefficient_label"] = [coef_display(self.v, x) for x in C["coefficient"]]
+        if len(Bt) and "coefficient" in Bt:
+            Bt["coefficient_label"] = [coef_display(self.v, x) if isinstance(x, str) and x else "" for x in Bt["coefficient"]]
+        index_of = [int(c.index) for c in self.cands]
+        stability = stability_table(Bt, self.labels, index_of, self.keys) if len(Bt) else []
+        estimands = estimand_table(Bt, C, dict(zip(index_of, self.labels))) if len(Bt) else []
         manifest = [{"split": sp["id"], "mode": sp["mode"], "repeat": sp["repeat"], "row_id": int(r),
                      "participant": pk, "cluster": ck, "fold": int(sp["folds"][int(r)])}
                     for sp in self.splits for r, pk, ck in zip(self.units["row_id"], self.units["participant"],
                                                                  self.units["cluster"])]
         draws = [{"b": d["b"], "row_id": r[0], "draw_participant": r[1], "draw_cluster": r[2],
                   "original_participant": r[3], "original_cluster": r[4]} for d in self.draws for r in d["rows"]]
+        import uuid
+
+        from .space import GRAMMAR_VERSION
+        realized = realized_sizes(self.units, self.splits, cfg) if self.splits else []
         return {
             "grammar": GRAMMAR, "config": cfg.to_dict(), "status": status, "problems": problems,
-            "search_id": self.run.id, "search_identity": getattr(self.run, "identity", "") or "",
+            "validation_id": uuid.uuid4().hex[:12], "schema": 2,
+            # V134-008: the real identities of the search this validation repeats (never blank / arbitrary)
+            "search_id": self.run.id, "search_identity": self.run.fit_id or "",
+            "search_grammar": GRAMMAR_VERSION, "search_signature": self.run.signature,
+            "data_sha256": getattr(getattr(self.ds, "source", None), "sha256", "") or "",
+            "pool": self.info.get("pool"), "pool_label": self.info.get("pool_label", ""),
+            "stop_rule": stop_target(self.run) if cfg.pipeline == "pipeline" else None,
+            "candidate_keys": [{"index": int(c.index), "key": k} for c, k in zip(self.cands, self.keys)],
+            "realized": realized, "estimands": estimands,
             "target_label": TARGETS[cfg.target][0], "target_estimand": TARGETS[cfg.target][1],
             "pipeline_label": PIPELINES[cfg.pipeline], "rule_label": RULES[cfg.rule] if cfg.pipeline == "pipeline" else "",
             "candidates": [{"index": int(c.index), "label": lab} for c, lab in zip(self.cands, self.labels)],
@@ -663,26 +810,98 @@ def performance(F: pd.DataFrame, P: pd.DataFrame, binary: bool, target: str) -> 
     return out
 
 
-def stability_table(Bt: pd.DataFrame, labels: list[str]) -> list[dict[str, Any]]:
+def coef_display(ds: Dataset, name: str) -> str:
+    """Design-column name with internal aliases (v005, sx_time) replaced by display names (V134-011)."""
+    import re
+
+    if not isinstance(name, str):
+        return ""
+    amap = {v.alias: v.display_name for v in ds.variables.values() if getattr(v, "alias", None)}
+    parts = []
+    for p in name.split(":"):
+        if p in ("sx_time", "sx_timef"):
+            parts.append("Time")
+            continue
+        m = re.match(r"^(v\d{3,})(.*)$", p)
+        if m and m.group(1) in amap:
+            parts.append(amap[m.group(1)] + (f" [{m.group(2)}]" if m.group(2) else ""))
+        else:
+            parts.append(p)
+    return " × ".join(parts)
+
+
+def stability_table(Bt: pd.DataFrame, labels: list[str], index_of: list[int] | None = None,
+                    keys: list[str] | None = None) -> list[dict[str, Any]]:
     """Selection frequency with BOTH denominators (all attempted draws, successful draws), sign stability conditional
-    on selection, percentiles of the estimate among draws that selected the candidate. Failed draws are never zeros."""
+    on selection, percentiles of the estimate among draws that selected the candidate. Failed draws are never zeros.
+    V134-003: draws are counted by the candidate INDEX (identity), never by the display label; under the single-winner
+    rule the selected counts sum to the successful draws."""
     att = int(len(Bt))
     ok = Bt[Bt["status"] == "fitted"]
     nok = int(len(ok))
     out = []
-    for lab in labels:
-        sel = ok[ok["selected"] == lab]
+    index_of = index_of if index_of is not None else list(range(len(labels)))
+    sel_idx = pd.to_numeric(ok["selected_index"], errors="coerce") if "selected_index" in ok else pd.Series(dtype=float)
+    for j, lab in enumerate(labels):
+        sel = ok[(sel_idx == index_of[j]).to_numpy()] if len(ok) else ok
         est = pd.to_numeric(sel["estimate"], errors="coerce").dropna()
-        rec = {"candidate": lab, "selected": int(len(sel)), "attempted": att, "successful": nok,
+        rec = {"candidate_index": int(index_of[j]), "candidate_key": keys[j] if keys else "",
+               "candidate": lab, "selected": int(len(sel)), "attempted": att, "successful": nok,
                "freq_of_attempted": len(sel) / att if att else float("nan"),
                "freq_of_successful": len(sel) / nok if nok else float("nan"),
                "flagged_fits": int((sel["diagnostics"].astype(str) != "clean").sum()) if len(sel) else 0,
-               "coefficient": sel["coefficient"].iloc[0] if len(sel) else "",
+               "coefficient": (sel["coefficient_label"] if "coefficient_label" in sel else sel["coefficient"]).iloc[0]
+               if len(sel) else "",
                "positive_sign": float((est > 0).mean()) if len(est) else float("nan"),
                "estimate_p2.5": float(est.quantile(0.025)) if len(est) else float("nan"),
                "estimate_median": float(est.median()) if len(est) else float("nan"),
                "estimate_p97.5": float(est.quantile(0.975)) if len(est) else float("nan")}
         out.append(rec)
+    return out
+
+
+def estimand_table(Bt: pd.DataFrame, C: pd.DataFrame, labels: dict[int, str]) -> list[dict[str, Any]]:
+    """V134-011: one record per (selected candidate, coefficient) of the primary test: sign stability and percentiles
+    conditional on that candidate being selected AND that coefficient existing; separate from selection frequency.
+    Not a probability that the effect is real and not a post-selection confidence interval."""
+    if C is None or not len(C):
+        return []
+    ok = Bt[Bt["status"] == "fitted"]
+    out = []
+    for (ix, coef), g in C.groupby(["selected_index", "coefficient"], sort=True):
+        n_sel = int((pd.to_numeric(ok["selected_index"], errors="coerce") == ix).sum())
+        est = pd.to_numeric(g["estimate"], errors="coerce").dropna()
+        out.append({"candidate_index": int(ix), "candidate": labels.get(int(ix), str(ix)),
+                    "term": str(g["term"].iloc[0]), "coefficient": str(coef),
+                    "coefficient_label": str(g["coefficient_label"].iloc[0]) if "coefficient_label" in g else str(coef),
+                    "draws_selected": n_sel, "draws_with_estimate": int(len(est)),
+                    "positive_sign": float((est > 0).mean()) if len(est) else float("nan"),
+                    "estimate_p2.5": float(est.quantile(0.025)) if len(est) else float("nan"),
+                    "estimate_median": float(est.median()) if len(est) else float("nan"),
+                    "estimate_p97.5": float(est.quantile(0.975)) if len(est) else float("nan")})
+    return out
+
+
+def realized_sizes(u: pd.DataFrame, splits: list[dict[str, Any]], cfg: ValidationConfig) -> list[dict[str, Any]]:
+    """V134-008: requested vs realized test-part sizes per split and fold, in units of the target and in rows."""
+    col = _unit_col(cfg.target)
+    out = []
+    for sp in splits:
+        f = u.assign(fold=u["row_id"].map(sp["folds"]))
+        units_all = f[col].nunique() if cfg.target != "rows" else len(f)
+        for k in sorted(set(f["fold"]) - {0}):
+            te = f[f["fold"] == k]
+            n_units = te[col].nunique() if cfg.target != "rows" else len(te)
+            out.append({"split": sp["id"], "mode": sp["mode"], "fold": int(k),
+                        "requested_fraction": cfg.holdout_fraction if sp["mode"] == "holdout" else 1.0 / cfg.k,
+                        "test_units": int(n_units), "units": int(units_all),
+                        "realized_unit_fraction": n_units / units_all if units_all else float("nan"),
+                        "test_rows": int(len(te)), "rows": int(len(f)),
+                        "realized_row_fraction": len(te) / len(f) if len(f) else float("nan"),
+                        "rule": ("ceil(fraction x units) test units" + (" per cluster (at least one training "
+                                 "participant kept)" if cfg.target == "participant_in_cluster" else "")
+                                 if sp["mode"] == "holdout" else "units dealt round-robin over K folds in random order; "
+                                 "rows per fold follow the units' sizes (no row balancing is promised)")})
     return out
 
 
