@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Any
 
 SCHEMA = "statexplore-audit"
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2   # 2 = v1.3.5 (AUD134-07): historical data provenance separated from the export-time context
 REQUIRED = ("schema", "schema_version", "generated_utc", "application", "search", "data", "environment", "grammar",
             "candidates", "hypotheses", "validation", "limitations")
 
@@ -56,12 +56,51 @@ def _app_version() -> str:
         return ""
 
 
-def audit_record(run: Any, ds: Any) -> dict[str, Any]:
+def historical_data(run: Any) -> dict[str, Any]:
+    """AUD134-07: what the search analysed, from its OWN immutable record (data snapshot, signature, fit identity).
+    Missing historical metadata is 'unknown', never filled from the current project."""
+    snap = getattr(run, "data_snapshot", None) or {}
+    unknown = "unknown (not recorded by the version that ran this search)"
+    return {"source_file": snap.get("source_file") or unknown, "source_format": snap.get("source_format") or unknown,
+            "source_sha256": snap.get("source_sha256") or unknown, "source_rows": snap.get("source_rows"),
+            "source_size_bytes": snap.get("source_size_bytes"),
+            "analysis_signature": run.signature, "fit_identity": run.fit_id or unknown, "n_sample": run.n_sample,
+            "filters": snap.get("filters") if snap else unknown, "derived": snap.get("derived") if snap else unknown,
+            "holdout": snap.get("holdout") if snap else unknown, "treatments": list(run.settings.treatments or []),
+            "snapshot_schema": snap.get("schema"), "snapshot": snap or None,
+            "fingerprints": {
+                "source_sha256": "SHA-256 of the source FILE's bytes as imported (not of the analysed rows)",
+                "analysis_signature": "SHA-256 of (source SHA-256, variable metadata, derived variables, filters, holdout) "
+                                      "of the search's data view: the canonical analysed-content identity",
+                "fit_identity": "SHA-256 of the analysed data view, outcome family / coding, grouping, sample policy and "
+                                "fitting settings",
+                "per_fit": "each candidate's identity: SHA-256 of its realized rows, response, design and grouping "
+                           "(identity schema 2)"}}
+
+
+def current_context(run: Any, ds: Any) -> dict[str, Any]:
+    """The project at EXPORT time, explicitly labelled: it is not the analysed data unless `matches_analysis`."""
+    from pathlib import PureWindowsPath
+
+    src = getattr(ds, "source", None)
+    out = {"label": "export-time project context (NOT the analysed data unless matches_analysis is true)",
+           "source_file": PureWindowsPath(getattr(src, "path", "") or "").name, "source_sha256": getattr(src, "sha256", ""),
+           "matches_analysis": False, "state": "unknown", "differences": []}
+    try:
+        from ..discovery.history import context
+
+        ctx = context(ds, run)
+        out.update(matches_analysis=ctx.current, state=ctx.state, differences=list(ctx.differences))
+    except Exception as e:  # noqa: BLE001 - the current data may not even have the search's variables
+        out.update(state="unrecoverable", differences=[f"the search's data view cannot be built on the current data ({e})"])
+    return out
+
+
+def audit_record(run: Any, ds: Any, include_current: bool = True) -> dict[str, Any]:
     from ..discovery import engine
     from ..discovery.space import GRAMMAR_VERSION, count_candidates
 
     s = run.settings
-    src = getattr(ds, "source", None)
     tf = engine.tests_frame(run, interpret=False)
     cands = []
     for r in run.rows:
@@ -86,14 +125,19 @@ def audit_record(run: Any, ds: Any) -> dict[str, Any]:
                 "reference_flags", "reference_source", "reference_fitted_for", "estimate", "se", "ci_low", "ci_high",
                 "ci_level", "ci_applicable", "ci_scale", "effect")
         for rec in tf[[c for c in keep if c in tf.columns]].to_dict("records"):
+            lp = rec.get("log_p")
+            # an underflowed p is 0.0 in double precision: say so, and keep the exact log tail (AUD134-07)
+            rec["p_underflow"] = bool(rec.get("p") == 0 and lp is not None and lp == lp)
+            rec["log_p_unknown_magnitude"] = bool(lp is not None and lp == -math.inf)
             hyps.append(rec)
     vals = []
     for v in run.validation_runs or []:
         vals.append({k: v.get(k) for k in ("validation_id", "schema", "grammar", "status", "problems", "config",
                                            "search_id", "search_identity", "search_grammar", "search_signature",
-                                           "data_sha256", "pool", "pool_label", "stop_rule", "target_label",
-                                           "pipeline_label", "rule_label", "rng", "realized", "performance",
-                                           "stability", "estimands", "candidate_keys")})
+                                           "data_sha256", "pool", "pool_label", "pool_scope", "adaptive", "stop_rule",
+                                           "target_label", "pipeline_label", "rule_label", "rng", "realized",
+                                           "performance", "stability", "estimands", "candidate_keys", "provenance",
+                                           "fit_budget")})
     rec = {
         "schema": SCHEMA, "schema_version": SCHEMA_VERSION,
         "generated_utc": _dt.datetime.now(_dt.timezone.utc).isoformat(timespec="seconds"),
@@ -107,15 +151,20 @@ def audit_record(run: Any, ds: Any) -> dict[str, Any]:
                    "resume": run.resume_reason(ds) or "resumable" if run.status in ("partial", "cancelled") else
                    run.resume_reason(ds), "provisional_adjustment": run.status != "complete",
                    "fit_rules_of_rows": (run.engine or {}).get("fit_rules"),
-                   "historical_old_rules": ((run.engine or {}).get("fit_rules") or 0) < engine.FIT_RULES},
+                   "historical_old_rules": ((run.engine or {}).get("fit_rules") or 0) < engine.FIT_RULES,
+                   "parent_id": getattr(run, "parent_id", "") or None, "lineage": getattr(run, "lineage", None) or None},
         "settings": s.to_dict(),
-        "environment": {"engine": run.engine, "python": platform.python_version(), "os": platform.platform(terse=True)},
-        "data": {"file": Path(getattr(src, "path", "") or "").name, "format": getattr(src, "format", ""),
-                 "sha256": getattr(src, "sha256", ""), "fingerprint_algorithm": "SHA-256 of the source file; row / "
-                 "response / design / grouping fingerprints per fit (identity schema 2)",
-                 "n_sample": run.n_sample, "snapshot": run.data_snapshot, "row_level_data": "not included"},
-        "grammar": {"version": run.grammar, "strategy": s.strategy, "exact_space_size": count_candidates(s),
-                    "stored_total": run.total, "candidate_order": list(s.candidates), "required": list(s.required),
+        "environment": {"engine": run.engine, "engine_label": "R / package versions that fitted this search's rows",
+                        "export_generated_with": {"python": platform.python_version(),
+                                                  "os": platform.platform(terse=True), "statexplore": _app_version()}},
+        # AUD134-07: the historical analysis is authoritative; the current project is a separate, labelled block
+        "data": {"historical": historical_data(run), "row_level_data": "not included",
+                 **({"current_context": current_context(run, ds)} if include_current and ds is not None else {})},
+        "grammar": {"version": run.grammar, "strategy": s.strategy, "stored_total": run.total,
+                    "current_grammar": GRAMMAR_VERSION,
+                    "space_size_under_current_grammar": count_candidates(s),
+                    "current_grammar_note": "" if count_candidates(s) == run.total else (
+                        "recomputed under the CURRENT grammar; the search itself declared stored_total candidates"), "candidate_order": list(s.candidates), "required": list(s.required),
                     "max_predictors": s.max_predictors, "min_candidates": s.min_predictors, "max_order": s.max_order,
                     "include_main": s.include_main, "time_eligible": bool(getattr(s, "time_eligible", False)),
                     "mode": s.mode, "budgets": run.budget_text(), "alpha": s.alpha, "correction": s.correction,
@@ -156,14 +205,15 @@ def report_md(rec: dict[str, Any]) -> str:
          "## Search", f"- Status: {s['status_label']}" + (f" ({s['stop_reason']})" if s.get("stop_reason") else ""),
          f"- Fit identity: `{s['fit_identity']}`; data signature `{s['data_signature']}`",
          f"- Resume: {s.get('resume') or 'n/a'}",
-         f"- Candidates: {g['attempted']:,} attempted of {g['exact_space_size']:,} (grammar {g['version']}, strategy "
+         f"- Candidates: {g['attempted']:,} attempted of {g.get('stored_total', g.get('exact_space_size')):,} declared (grammar "
+         f"{g['version']}; the current grammar {g.get('current_grammar', '?')} defines "
+         f"{g.get('space_size_under_current_grammar', g.get('exact_space_size')):,} for these settings; strategy "
          f"{g['strategy']}, mode {g['mode']}); {g['speculative']:,} after the stop point; {g['reused']:,} reused fits",
          f"- Candidate order: {', '.join(g['candidate_order'])}; required: {', '.join(g['required']) or 'none'}",
          f"- Budgets: {g['budgets']}",
          f"- Multiplicity: {g['correction']} within each test-type family, alpha = {g['alpha']}"
          + ("; PROVISIONAL (incomplete search)" if s.get("provisional_adjustment") else ""),
-         "", "## Data", f"- File: {rec['data']['file']} (SHA-256 `{rec['data']['sha256']}`)",
-         f"- Shared sample: {rec['data']['n_sample']}", "", "## Environment"]
+         "", "## Data analysed by this search (historical record)"] + _data_lines(rec) + ["", "## Environment"]
     eng = rec["environment"].get("engine") or {}
     L.append(f"- R {eng.get('r_version', '?')}; packages: "
              + ", ".join(f"{k} {v}" for k, v in (eng.get("packages") or {}).items()))
@@ -181,6 +231,24 @@ def report_md(rec: dict[str, Any]) -> str:
                      f"{v.get('pool_label')}; search identity `{v.get('search_identity')}`")
     L += ["", "## Limitations"] + [f"- {x}" for x in rec["limitations"]]
     return "\n".join(L) + "\n"
+
+
+def _data_lines(rec: dict[str, Any]) -> list[str]:
+    d = rec["data"]
+    if "historical" not in d:          # audit schema 1 (v1.3.4): one block that mixed export-time and historical data
+        return [f"- File: {d.get('file')} (SHA-256 `{d.get('sha256')}`) - schema-1 record: this file description may be "
+                "the export-time project, not the analysed data", f"- Shared sample: {d.get('n_sample')}"]
+    h = d["historical"]
+    out = [f"- Source file: {h['source_file']} (source-file SHA-256 `{h['source_sha256']}`)",
+           f"- Analysed-content signature `{h['analysis_signature']}`; fit identity `{h['fit_identity']}`",
+           f"- Shared sample: {h['n_sample']}"]
+    c = d.get("current_context")
+    if c:
+        out += ["", "## Export-time project context (not the analysed data unless stated)",
+                f"- {c['source_file']} (SHA-256 `{c['source_sha256']}`): "
+                + ("matches the analysed data view" if c["matches_analysis"] else
+                   "DIFFERS from the analysed data: " + "; ".join(c.get("differences") or []))]
+    return out
 
 
 def _atomic_write(path: Path, text: str) -> None:

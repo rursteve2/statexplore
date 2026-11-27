@@ -583,6 +583,10 @@ class DiscoveryPage(QWidget):
         self.min_pred = QSpinBox()
         self.min_pred.setRange(1, MAX_PREDICTORS_LIMIT)
         self.min_pred.setValue(1)
+        self.min_pred.setToolTip("Smallest number of CANDIDATE predictors in a model (required covariates such as time are "
+                                 "added to every model and are not counted).\nApplies to every fixed-effect strategy: a "
+                                 "focal pair has 2 candidates, a triple 3; in subset mode the subset size counts.\nNot "
+                                 "used by workflow B (one locked fixed part).")
         self.min_obs = QSpinBox()
         self.min_obs.setRange(0, 10_000_000)
         self.min_obs.setSpecialValueText("no minimum")
@@ -635,7 +639,7 @@ class DiscoveryPage(QWidget):
         self.max_params.setValue(40)
         for label, w in [("Search strategy", self.strategy), ("", self.include_main),
                          ("Max distinct predictors per model", self.max_pred),
-                         ("Min distinct predictors per model", self.min_pred),
+                         ("Min candidate predictors per model", self.min_pred),
                          ("Maximum interaction order", self.order),
                          ("Covariate adjustment (focal strategy)", self.cov_mode),
                          ("All-two-way models (subset mode)", self.all2), ("Missing data", self.sample),
@@ -672,7 +676,13 @@ class DiscoveryPage(QWidget):
                                    "currently set above (it applies to the models added by this continuation).")
         self.resume_btn.setEnabled(False)
         self.resume_btn.clicked.connect(self._resume)
-        for b in (self.estimate_btn, self.start_btn, self.cancel_btn, self.resume_btn):
+        self.restart_btn = QPushButton("New search from this one")     # AUD134-03: explicit, never automatic
+        self.restart_btn.setToolTip("Start a NEW search (new ID, linked to the selected one) with the same declared "
+                                    "settings under the current grammar and fit rules: every candidate is fitted again. "
+                                    "The selected search stays unchanged.")
+        self.restart_btn.setEnabled(False)
+        self.restart_btn.clicked.connect(self._restart)
+        for b in (self.estimate_btn, self.start_btn, self.cancel_btn, self.resume_btn, self.restart_btn):
             btns.addWidget(b)
         cl.addLayout(btns)
         self.resume_reason = QLabel()          # V134-009: why Resume is unavailable for the selected search
@@ -1002,6 +1012,13 @@ class DiscoveryPage(QWidget):
             has_cluster = bool(self.cluster_combo.currentData())
             self.id_policy.setEnabled(has_cluster)           # hidden choices keep their values (one state)
             self.cluster_compare.setEnabled(has_cluster and wf == "structure")
+        # AUD134-04: controls a strategy does not use are disabled with the reason (never silently ignored)
+        wf_b = long and self.workflow.currentData() == "structure"
+        for w in (self.min_pred, self.strategy, self.order, self.include_main):
+            w.setEnabled(not wf_b)
+        self.min_pred.setStatusTip("Not used by workflow B: the fixed part is locked." if wf_b else "")
+        if not wf_b:
+            self._strategy_changed()
 
         # progressive disclosure (UI-28): the cluster sub-options take space only once a cluster is chosen
         show = long and bool(self.cluster_combo.currentData())
@@ -1351,7 +1368,8 @@ class DiscoveryPage(QWidget):
         coding_txt = ("<br>" + " · ".join(extra)) if extra else ""
         warn = "".join(f"<br><span style='color:#8d6e00'>⚠ {html.escape(w)}</span>" for w in info["warnings"])
         blocks = " + ".join(f"{n:,} {name}" for name, n in info.get("blocks", [])) if len(info.get("blocks", [])) > 1 else ""
-        work = (f" · workload: up to <b>{info['fits']:,}</b> model fits"
+        work = (f" · workload: about <b>{info['fits']:,}</b> model fits (estimate; at most "
+                f"{info.get('fits_bound', info['fits']):,} without reuse)"
                 + (f" ({blocks})" if blocks else "")) if info.get("fits") else ""
         self.estimate.setText(f"<b>{info['total']:,}</b> candidate models{work} · {fam} · shared complete-case "
                               f"sample: <b>{info['n_shared']:,}</b> of {info['n_rows']:,} rows{coding_txt}{warn}")
@@ -1394,12 +1412,39 @@ class DiscoveryPage(QWidget):
         self.resume_btn.setToolTip("Continue the selected partial search (same search ID, same specification) from "
                                    "where it stopped, with the model / time budget currently set above."
                                    + (f"\nUnavailable: {why}." if why else ""))
+        # AUD134-03: an incompatible partial search is never continued in place; it can seed an explicit new search
+        incompatible = run is not None and run.status in ("partial", "cancelled") and bool(run.compatibility())
+        self.restart_btn.setEnabled(bool(incompatible) and not running)
 
     def _resume(self) -> None:
         if self.run is not None and self.run.resumable and not self.run.resume_reason(self.state.dataset):
             self.run.settings.max_models = self.max_models.value() or None
             self.run.settings.max_minutes = self.max_minutes.value() or None
             self._launch(self.run)
+
+    def _restart(self) -> None:
+        run, ds = self.run, self.state.dataset
+        if run is None or ds is None:
+            return
+        why = run.compatibility(ds) or run.resume_reason(ds)
+        if QMessageBox.question(
+                self, "New search from this one",
+                f"Search {run.id} cannot be continued in place: {why}.\n\nStart a NEW search with the same declared "
+                "settings under the current grammar and fit rules? Every candidate is fitted again (including the "
+                f"{len(run.rows):,} already in the old search); the old search stays unchanged and viewable, and the new "
+                "one records it as its parent.") != QMessageBox.Yes:
+            return
+        try:
+            new = engine.restart_from(run, ds)
+        except (SearchSpaceError, ValueError) as e:
+            QMessageBox.information(self, "New search from this one", f"Not possible: {e}")
+            return
+        if self.state.project is not None:
+            self.state.project.searches.append(new)
+            self.state.dirty = True
+        self.run = new
+        self._refresh_history()
+        self._launch(new)
 
     def _launch(self, run: engine.DiscoveryRun) -> None:
         ds = self.state.dataset
@@ -1433,8 +1478,7 @@ class DiscoveryPage(QWidget):
         self.progress.setValue(min(done, run.total) // getattr(self, "_pscale", 1))
         rate = done / run.elapsed_s if run.elapsed_s > 0 else 0
         remaining = (run.total - run.n_done) / rate if rate > 0 else None
-        sig = sum(1 for r in run.rows if r["status"] in ("ok", "warning") and r.get("p") is not None
-                  and r["p"] < run.settings.alpha)
+        sig = sum(1 for r in run.rows if engine._qualifies(r, run.settings.alpha))
         eta = f" · about {remaining / 60:.1f} min left at this rate" if remaining is not None else ""
         self.progress_label.setText(f"{done:,} of {run.total:,} evaluated · {sig:,} with raw p < "
                                     f"{run.settings.alpha:g} · {run.elapsed_s:.0f} s{eta}")

@@ -6,7 +6,8 @@ Defined before any search runs. Implemented in `discovery/space.py` (enumeration
 
 **Inputs:** outcome *Y*; candidate predictors *P* (ordered as selected, ≤ 39); required covariates *R*;
 maximum distinct predictors *k* (1–6, default 6; required covariates and a fixed time effect count toward it;
-the participant ID never does); minimum distinct predictors (default 1); maximum interaction order (2 or 3).
+the participant ID never does); minimum number of CANDIDATE predictors (default 1; required covariates such as time are
+never counted; grammar 4 applies it to every fixed-effect strategy); maximum interaction order (2 or 3).
 
 ## Canonical model specification
 
@@ -114,6 +115,15 @@ search) the v1.3.3 grammar is unchanged (the 30-predictor regression space stays
 **Time × each predictor strategy.** The minimum number of candidate predictors is now honoured (a time-focal model with
 k − 1 candidates is enumerated only when k − 1 ≥ minimum). Older time-strategy searches with a minimum above 1 cannot be
 resumed under grammar 3 (the reason is shown); a new search uses the corrected grammar.
+
+**Single focal interaction strategy (grammar 4, v1.3.5, AUD134-04).** The minimum number of candidate predictors now
+applies here too: in 'Focal' covariate mode a model has only its focal variables, so a pair counts 2 candidates and a
+triple 3 (pairs are not enumerated when the minimum is 3; with two-way interactions only the search is empty and refused
+with the reason); in 'Subsets' mode the subset size counts, so with a minimum of 3 only subsets of at least 3 candidates
+are enumerated (3 candidates, required Time, minimum 3, maximum 4 distinct predictors: exactly the 3 focal pairs of
+{X01, X02, X03}, each with the third candidate as covariate). The maximum still counts required covariates once. A
+focal search of grammar <= 3 with a minimum above 2 has a different candidate list under grammar 4: it is not resumed,
+its whole-procedure validation is refused, and its fixed candidates are validated from their saved specification.
 
 **Candidate order (V134-013).** The order of the selected candidates (shown as 1., 2., … and changed with the Order
 controls or by dragging) is the enumeration order and defines candidate indices. An exhaustive search evaluates the

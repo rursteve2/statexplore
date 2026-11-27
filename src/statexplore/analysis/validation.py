@@ -238,6 +238,17 @@ TARGETS = {
 }
 
 
+SCORE_R = (
+    "# AUD134-01: selection and significance use the natural-log tail of each candidate's primary test (sx_primary_logp,\n"
+    "# shared with AMD validation); ordinary p is kept for display only (two underflowed p-values are both 0 but their\n"
+    "# log tails differ)\n"
+    "sx_run_one <- function(a) tryCatch(do.call(sx_discover_one, a), error = function(e) NULL)\n"
+    "sx_scores <- function() { rs <- lapply(sx_cands, sx_run_one)\n"
+    "  list(p = vapply(rs, function(r) if (is.null(r) || is.null(r$p) || !length(r$p)) NA_real_ else as.numeric(r$p)[1], 0),\n"
+    "       lp = vapply(rs, sx_primary_logp, 0)) }\n"
+    "sx_pvals <- function() sx_scores()$p     # display only (kept for scripts written for earlier versions)\n")
+
+
 def _discovery_setup(ds: Dataset, run: Any) -> tuple[str, list[Any], str | None]:
     from ..discovery.rcode import candidate_args, setup_script
     from ..discovery.space import enumerate_candidates
@@ -260,8 +271,7 @@ def _discovery_setup(ds: Dataset, run: Any) -> tuple[str, list[Any], str | None]
     else:
         lines.append("sx_dd$sx_group <- rownames(sx_dd)")
     lines.append("sx_cands <- list(" + ",\n  ".join(f"list({candidate_args(ds, c)})" for c in cands) + ")")
-    lines.append("sx_pvals <- function() vapply(sx_cands, function(a) tryCatch(do.call(sx_discover_one, a)$p, "
-                 "error = function(e) NA_real_), 0)")
+    lines.append(SCORE_R)
     return "\n".join(lines) + "\n", cands, idv
 
 
@@ -277,25 +287,35 @@ def stability(session: RSession, ds: Dataset, run: Any, rs: ResampleSpec) -> tup
         f"sx_labels <- {r_vec(labels)}",
         f"set.seed({int(rs.seed)})",
         "sx_full <- sx_dd; sx_units <- unique(sx_full$sx_group)",
-        f"sx_P <- matrix(NA_real_, {int(rs.resamples)}, length(sx_cands))",
+        f"sx_LP <- matrix(NA_real_, {int(rs.resamples)}, length(sx_cands))",
         f"for (sx_b in seq_len({int(rs.resamples)})) {{",
         f"  sx_take <- sample(sx_units, floor({r_num(rs.fraction)} * length(sx_units)))",
         "  sx_dd <- sx_full[sx_full$sx_group %in% sx_take, , drop = FALSE]",
-        "  sx_P[sx_b, ] <- sx_pvals()",
+        "  sx_LP[sx_b, ] <- sx_scores()$lp",
         "}",
         "sx_dd <- sx_full",
-        "sx_p_full <- sx_pvals()",
-        "sx_top <- apply(sx_P, 1, function(p) if (all(is.na(p))) NA_integer_ else which.min(p))",
+        "sx_sf <- sx_scores()",
+        "sx_top <- apply(sx_LP, 1, sx_select_min)        # smallest log p; exact ties: lower candidate position",
         f"sx_idx <- {r_vec([float(c.index) for c in cands])}",
-        "sx_freq <- data.frame(candidate = sx_idx, model = sx_labels, p_full_data = sx_p_full,",
-        f"  selected_significant = colMeans(sx_P < {r_num(run.settings.alpha)}, na.rm = TRUE),",
-        "  ranked_first = vapply(seq_along(sx_cands), function(j) mean(sx_top == j, na.rm = TRUE), 0))",
-        "sx_freq <- sx_freq[order(-sx_freq$selected_significant, sx_freq$p_full_data), ]",
+        "sx_freq <- data.frame(candidate = sx_idx, model = sx_labels, p_full_data = sx_sf$p,",
+        "  log10_p_full_data = sx_sf$lp / log(10),",
+        f"  selected_significant = colMeans(sx_LP < log({r_num(run.settings.alpha)}), na.rm = TRUE),",
+        "  ranked_first = vapply(seq_along(sx_cands), function(j) mean(sx_top == j, na.rm = TRUE), 0),",
+        "  resamples_scored = colSums(!is.na(sx_LP)))",
+        "sx_freq <- sx_freq[order(-sx_freq$selected_significant, sx_freq$log10_p_full_data, sx_freq$candidate,",
+        "                         na.last = TRUE), ]",
+        "sx_trace <- data.frame(resample = rep(seq_len(nrow(sx_LP)), times = ncol(sx_LP)),",
+        "  candidate = rep(sx_idx, each = nrow(sx_LP)), log10_p = as.vector(sx_LP) / log(10),",
+        "  selected = as.vector(sapply(seq_len(ncol(sx_LP)), function(j) sx_top == j)))",
         "sx_result <- list(tables = list(sx_table(\"Discovery stability\", sx_freq, notes = paste0(\"Share of \",",
         f"  {int(rs.resamples)}, \" subsamples (\", {int(round(rs.fraction * 100))}, \"% of \", "
         + ("\"participants\"" if idv else "\"rows\"") + ", \") in which each model's interaction had p < \", "
         + r_num(run.settings.alpha) + ", \", and how often it ranked first. A frequency is not a p-value: \",",
-        "  \"it shows how much the discovery depends on which observations happened to be sampled.\"))),",
+        "  \"it shows how much the discovery depends on which observations happened to be sampled. Ranking and the \",",
+        "  \"threshold use each test's natural-log tail (log10 p column), so p-values below the double range stay \",",
+        "  \"ordered.\")),",
+        "  sx_table(\"Selection trace (log10 p of every candidate in every resample)\", sx_trace,",
+        "    notes = \"NA = the candidate could not be tested in that resample (failed, invalid or withheld): it never wins.\")),",
         "  n_used = nrow(sx_full))",
     ]) + "\n"
     res, art, raw = _finish(session, ds, "discovery_stability", "Discovery stability (resampling)", body,
@@ -328,6 +348,7 @@ def procedure_cv(session: RSession, ds: Dataset, run: Any, rs: ResampleSpec) -> 
     body += "\n".join([
         f"sx_labels <- {r_vec(labels)}",
         f"sx_rhs <- {r_vec([rhs(c) for c in cands])}",
+        f"sx_idx <- {r_vec([float(c.index) for c in cands])}",
         f"sx_family <- {r_str(run.family)}",
         f"set.seed({int(rs.seed)})",
         "sx_full <- sx_dd; sx_units <- unique(sx_full$sx_group)",
@@ -336,15 +357,19 @@ def procedure_cv(session: RSession, ds: Dataset, run: Any, rs: ResampleSpec) -> 
         "sx_rows <- list()",
         f"for (sx_f in seq_len({int(rs.folds)})) {{",
         "  sx_dd <- sx_full[sx_fold != sx_f, , drop = FALSE]      # selection uses the training fold only",
-        "  sx_p <- sx_pvals(); sx_j <- which.min(sx_p)",
+        "  sx_sc <- sx_scores(); sx_p <- sx_sc$p; sx_j <- sx_select_min(sx_sc$lp)",
+        "  if (is.na(sx_j)) stop(paste(\"fold\", sx_f, \": no candidate could be tested on the training part\"))",
         "  sx_train <- sx_dd; sx_test <- sx_full[sx_fold == sx_f, , drop = FALSE]",
         f"  sx_m <- stats::glm(stats::as.formula(paste(\"sx_y ~\", sx_rhs[sx_j])), data = sx_train, family = {fam})",
         "  sx_vars <- all.vars(stats::as.formula(paste(\"~\", sx_rhs[sx_j])))",
         "  sx_test <- sx_complete(sx_test, c(\"sx_y\", sx_vars)); sx_test <- sx_test[sx_seen(sx_train, sx_test, sx_vars), , drop = FALSE]",
         "  sx_pred <- stats::predict(sx_m, newdata = sx_test, type = \"response\")",
-        "  sx_dd <- sx_test; sx_p_test <- tryCatch(do.call(sx_discover_one, sx_cands[[sx_j]])$p, error = function(e) NA_real_)",
-        "  sx_rows[[sx_f]] <- data.frame(fold = sx_f, selected = sx_labels[sx_j], p_training = sx_p[sx_j],",
-        "    p_test_fold = sx_p_test, n_test = nrow(sx_test), t(sx_metrics(sx_test$sx_y, sx_pred, sx_family)))",
+        "  sx_dd <- sx_test; sx_rt <- sx_run_one(sx_cands[[sx_j]])",
+        "  sx_p_test <- if (is.null(sx_rt) || is.null(sx_rt$p)) NA_real_ else as.numeric(sx_rt$p)[1]",
+        "  sx_rows[[sx_f]] <- data.frame(fold = sx_f, selected = sx_labels[sx_j], selected_index = sx_idx[sx_j],",
+        "    p_training = sx_p[sx_j], log10_p_training = sx_sc$lp[sx_j] / log(10),",
+        "    p_test_fold = sx_p_test, log10_p_test_fold = sx_primary_logp(sx_rt) / log(10), n_test = nrow(sx_test),",
+        "    t(sx_metrics(sx_test$sx_y, sx_pred, sx_family)))",
         "}",
         "sx_dd <- sx_full",
         "sx_cvp <- do.call(rbind, sx_rows)",
@@ -494,8 +519,8 @@ def procedure_cv_longitudinal(session: RSession, ds: Dataset, run: Any,
         setup,
         "sx_cands <- list(" + ",\n  ".join(f"list({candidate_args(v, c, s)})" for c in cands) + ")",
         f"sx_labels <- {r_vec(labels)}",
-        "sx_pvals <- function() vapply(sx_cands, function(a) tryCatch(do.call(sx_discover_one, a)$p, "
-        "error = function(e) NA_real_), 0)",
+        SCORE_R,
+        f"sx_idx <- {r_vec([float(c.index) for c in cands])}",
         "sx_fit_selected <- function(a, d) {",
         "  f <- stats::reformulate(if (length(a$full)) a$full else \"1\", response = \"sx_y\")",
         "  d <- sx_complete(d, c(\"sx_y\", a$vars, \"sx_gid\", if (sx_disc_has_cluster) \"sx_cluster\",",
@@ -532,9 +557,9 @@ def procedure_cv_longitudinal(session: RSession, ds: Dataset, run: Any,
         "  \"). Rows of the same participant are never split at random instead.\"))",
         "for (sx_f in seq_along(sx_folds)) {",
         "  sx_dd <- sx_full[sx_folds[[sx_f]]$train, , drop = FALSE]      # the whole search sees the training part only",
-        "  sx_p <- sx_pvals()",
-        "  if (all(is.na(sx_p))) { sx_skip <- c(sx_skip, paste0(\"fold \", sx_f, \": no candidate could be fitted\")); next }",
-        "  sx_j <- which.min(sx_p)",
+        "  sx_sc <- sx_scores(); sx_p <- sx_sc$p",
+        "  sx_j <- sx_select_min(sx_sc$lp)     # AUD134-01: smallest log tail; exact ties -> lower candidate position",
+        "  if (is.na(sx_j)) { sx_skip <- c(sx_skip, paste0(\"fold \", sx_f, \": no candidate could be tested\")); next }",
         "  sx_m <- tryCatch(sx_fit_selected(sx_cands[[sx_j]], sx_dd), error = function(e) e)",
         "  if (inherits(sx_m, \"error\")) { sx_skip <- c(sx_skip, paste0(\"fold \", sx_f, \": \", conditionMessage(sx_m))); next }",
         "  sx_test <- sx_full[sx_folds[[sx_f]]$test, , drop = FALSE]",
@@ -547,7 +572,8 @@ def procedure_cv_longitudinal(session: RSession, ds: Dataset, run: Any,
         "  sx_ok <- is.finite(sx_pred)",
         "  if (!any(sx_ok)) { sx_skip <- c(sx_skip, paste0(\"fold \", sx_f, \": no test row could be predicted\")); next }",
         "  sx_rows[[length(sx_rows) + 1]] <- data.frame(fold = sx_folds[[sx_f]]$label, selected = sx_labels[sx_j],",
-        "    p_training = sx_p[sx_j], n_train = nrow(sx_dd), n_test = sum(sx_ok), test_units =",
+        "    selected_index = sx_idx[sx_j], p_training = sx_p[sx_j], log10_p_training = sx_sc$lp[sx_j] / log(10),",
+        "    n_train = nrow(sx_dd), n_test = sum(sx_ok), test_units =",
         f"    length(unique(as.character(sx_test${unit}[sx_ok]))), t(sx_metrics(sx_test$sx_y[sx_ok], sx_pred[sx_ok], \"gaussian\")))",
         "}",
         "sx_dd <- sx_full",

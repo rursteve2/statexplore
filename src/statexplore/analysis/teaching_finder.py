@@ -27,6 +27,15 @@ def find(project: Project, alpha: float = 0.05, limit: int = 200) -> list[Exampl
     return out[:limit]
 
 
+def _pt(p: float, lp: float | None) -> str:
+    """'3.2e-05', or the log10 magnitude when p is below the double range (never a literal 0)."""
+    import math
+
+    if lp is not None and lp == lp and lp / math.log(10) < -300:
+        return f"< 1e-300 (log10 p = {lp / math.log(10):.1f})" if math.isfinite(lp) else "< 1e-300"
+    return f"{p:.3g}"
+
+
 def _from_searches(project: Project, alpha: float) -> list[Example]:
     from ..discovery.engine import results_frame
 
@@ -36,11 +45,13 @@ def _from_searches(project: Project, alpha: float) -> list[Example]:
         if df.empty:
             continue
         fam = run.settings
-        for _, r in df[df["sig_adj"]].sort_values("p").head(5).iterrows():
+        key = ["log_p", "idx"] if "log_p" in df else ["p", "idx"]      # AUD134-02: log tails order underflowed p
+        for _, r in df[df["sig_adj"]].sort_values(key, kind="stable").head(5).iterrows():
             out.append(Example("Significant interaction (after adjustment)", r["formula"],
-                               f"p = {r['p']:.3g}, adjusted p = {r['p_adj']:.3g}; {r['interaction']}",
+                               f"p = {_pt(r['p'], r.get('log_p'))}, adjusted p = {_pt(r['p_adj'], r.get('log_p_adj'))}; "
+                               f"{r['interaction']}",
                                f"search {run.id} #{int(r['idx'])}"))
-        lost = df[df["sig_raw"] & ~df["sig_adj"]].sort_values("p").head(5)
+        lost = df[df["sig_raw"] & ~df["sig_adj"]].sort_values(key, kind="stable").head(5)
         for _, r in lost.iterrows():
             out.append(Example("Significant before but not after multiple-testing adjustment", r["formula"],
                                f"p = {r['p']:.3g} but adjusted p = {r['p_adj']:.3g} ({fam.correction}); "

@@ -19,6 +19,38 @@ DISCOVERY_HELPERS = r"""# ---- StatExplore: discovery helpers ----
 # with the row identities, plus the estimation context (family, structure, cluster, REML/ML, GEE family and working
 # correlation, optimizer rules) and the sample context set by the caller. Row names, counts or formulas alone never
 # justify reuse; validation resets the cache for every training part and bootstrap draw (sx_cache_reset).
+# AUD134-01: the primary-test score shared by EVERY selection path (AMD validation and the legacy stability / procedure
+# CV): the natural-log upper tail of tests[[1]], taken from the test distribution itself (log.p = TRUE). NA when the fit
+# is not ok / warning, the test was withheld or has no p: never log(0) and never a substituted value.
+sx_primary_logp <- function(r) {
+  if (is.null(r) || !(r$status %in% c("ok", "warning")) || !length(r$tests)) return(NA_real_)
+  t1 <- r$tests[[1]]
+  if (!is.null(t1$withheld) || is.null(t1$log_p) || !length(t1$log_p)) return(NA_real_)
+  as.numeric(t1$log_p)[1]
+}
+# argmin with the declared tie rule: the smallest score wins; exact ties -> the lower candidate position; NA never wins
+sx_select_min <- function(score) {
+  ok <- which(!is.na(score))
+  if (!length(ok)) NA_integer_ else ok[which.min(score[ok])]
+}
+# AUD134-10: hard budget of model-fitting invocations (validation sets a finite cap per chunk). Every call of a model
+# fitter counts - full, reduced, null and selected refits - each optimizer retry counts as one more, and so do the
+# auxiliary fits (binary separation check, GEE QIC independence refit). Cache hits are counted apart and cost nothing.
+sx_fit_budget <- new.env()
+sx_budget_reset <- function(cap = Inf) {
+  sx_fit_budget$cap <- cap; sx_fit_budget$used <- 0; sx_fit_budget$retries <- 0; sx_fit_budget$aux <- 0
+}
+sx_budget_reset()
+sx_budget_take <- function(kind = "fit") {
+  if (sx_fit_budget$used >= sx_fit_budget$cap)
+    stop(structure(class = c("sx_budget", "error", "condition"), list(call = NULL, message = sprintf(
+      "fit budget reached: %d model-fitting invocations of the %s allowed", as.integer(sx_fit_budget$used),
+      format(sx_fit_budget$cap)))))
+  sx_fit_budget$used <- sx_fit_budget$used + 1
+  if (kind == "retry") sx_fit_budget$retries <- sx_fit_budget$retries + 1
+  if (kind == "aux") sx_fit_budget$aux <- sx_fit_budget$aux + 1
+  invisible(TRUE)
+}
 sx_disc_cache <- new.env()            # fit key -> fit statistics (with the producing fit's own diagnostics)
 sx_disc_ctx <- "search"               # sample context: "search", or a validation split / bootstrap draw id
 sx_disc_cache_log <- new.env()        # hits / misses (audit)
@@ -79,6 +111,7 @@ sx_fit_lmm <- function(f, d, st, reml, clustered = sx_disc_clustered) {
 }
 sx_fit_model <- function(f, d) {
   st <- sx_disc_struct
+  if (sx_disc_family != "lmm" || startsWith(st, "mmrm")) sx_budget_take()     # nlme / lme4 attempts count themselves
   switch(sx_disc_family,
     lmm = sx_fit_lmm(f, d, st, sx_disc_reml, sx_disc_clustered),
     glmm = lme4::glmer(sx_add(f, if (st == "glmer_rs") "(1 + sx_time | sx_gid)" else "(1 | sx_gid)"), data = d,
@@ -320,6 +353,7 @@ sx_discover_one <- function(full, tests, vars, focal_vars, struct = NULL, cluste
     ctab <- stats::coef(sm)
     crit <- stats::qt(1 - (1 - sx_disc_conf) / 2, m1$df.residual)
   } else if (sx_disc_family == "binomial") {
+    sx_budget_take("aux")
     sep <- stats::glm(f1, data = d, family = stats::binomial(), method = detectseparation::detect_separation)
     if (isTRUE(sep$outcome)) res$flags <- c(res$flags, "separation (infinite estimates)")
     ph <- stats::fitted(m1); res$r2 <- mean(ph[d$sx_y == 1]) - mean(ph[d$sx_y == 0])  # Tjur
@@ -370,6 +404,7 @@ sx_discover_one <- function(full, tests, vars, focal_vars, struct = NULL, cluste
     # QIC refits the independence model from the stored call (formula `f`, data `d`): give it both (P1-07)
     # V134-005: QIC, QICu and CIC of the ACTUAL fit (native geepack definitions), kept in their own fields
     qic_env <- list2env(list(f = f1, d = d), parent = environment())
+    sx_budget_take("aux")        # QIC refits the independence model (outside the tryCatch: a budget stop is not a flag)
     q <- tryCatch(geepack::QIC(m1, env = qic_env),
                   error = function(e) { res$flags <<- c(res$flags, paste("QIC unavailable:", conditionMessage(e))); NULL })
     pick <- function(nm) if (!is.null(q) && nm %in% names(q)) as.numeric(q[[nm]]) else NA_real_

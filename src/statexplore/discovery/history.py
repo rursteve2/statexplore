@@ -15,7 +15,13 @@ from ..core.dataset import Dataset
 
 
 def snapshot(ds: Dataset) -> dict[str, Any]:
-    return {"schema": 1, "source_sha256": ds.source.sha256,
+    """Schema 2 (v1.3.5, AUD134-07) adds the source file NAME (never its path), format, size and row count, so a
+    historical record can describe its own data without consulting the current project."""
+    from pathlib import PureWindowsPath
+
+    return {"schema": 2, "source_sha256": ds.source.sha256,
+            "source_file": PureWindowsPath(ds.source.path or "").name, "source_format": ds.source.format,
+            "source_size_bytes": ds.source.size_bytes, "source_rows": int(len(ds.raw)),
             "variables": [v.to_dict() for v in ds.variables.values()],
             "derived": [d.to_dict() for d in ds.derived.values()],
             "filters": [f.to_dict() for f in ds.filters],

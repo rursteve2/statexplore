@@ -625,14 +625,15 @@ def test_52d_partial_search_resumable_with_reason_states():
     work = Path(os.environ.get("TEMP", "."))
     p = Project.open(FX / "StatExplore_Test52D_Persistence.sxp")
     run = next(r for r in p.searches if r.id == "ea77ac2fedc4")
-    assert run.status == "partial" and run.n_done == 5 and run.total == 15 and run.resumable
-    assert run.resume_reason(p.dataset) == ""
+    # v1.3.5 (AUD134-03): its rows were fitted under fit rules 3, so it is no longer resumable (reason shown)
+    assert run.status == "partial" and run.n_done == 5 and run.total == 15 and not run.resumable
+    assert "fit rules 3" in run.resume_reason(p.dataset)
     done = next(r for r in p.searches if r.status == "complete")
     assert done.resume_reason(p.dataset) == "the search is complete"
     ds = p.dataset
     old = list(ds.filters)
     ds.filters = [FilterSpec(variable="Time", op="<=", value=3.0)]
-    assert "data signature differs" in run.resume_reason(ds)
+    assert run.resume_reason(ds)           # still refused (compatibility is checked first)
     ds.filters = old
     run.settings.strategy, run.settings.min_predictors, run.grammar = "time", 2, 2
     assert not run.resumable and "grammar 3" in run.resume_reason(ds)
@@ -643,26 +644,22 @@ def test_52d_partial_search_resumable_with_reason_states():
 @pytest.mark.slow
 @pytest.mark.timeout(3600)
 def test_52d_resume_continues_same_search_to_15(tmp_path):
-    """True restart path at the engine level: reopen the owner's project from disk, resume the 5/15 partial search with
-    a budget of 10: same ID, the original 5 kept, candidates 5-14 evaluated once, 15/15 complete."""
+    """v1.3.5 (AUD134-03) supersedes the v1.3.4 expectation: the owner's 52D partial search (fit rules 3) is refused at
+    the engine level and stays unchanged on disk; the same-version 5 + 10 continuation is covered by
+    test_v135::test_same_version_partial_resumes_to_exact_15_and_engine_mismatch_refused."""
     from statexplore.core.project import Project
     from statexplore.discovery import engine
 
     src = tmp_path / "p.sxp"
     shutil.copy(FX / "StatExplore_Test52D_Persistence.sxp", src)
     p = Project.open(src)
-    p.dataset.raw  # data embedded in the project (source file absent on this machine)
     run = next(r for r in p.searches if r.id == "ea77ac2fedc4")
     first5 = {r["idx"]: (r["loglik"], r["p"]) for r in run.rows}
     run.settings.max_models = 10
-    engine.execute(run, p.dataset, cache=engine.cache_from(run, p.searches, p.dataset))
-    assert run.id == "ea77ac2fedc4" and run.status == "complete" and run.n_done == 15
-    idx = [r["idx"] for r in run.rows]
-    assert sorted(idx) == list(range(15)) and len(idx) == 15
-    assert {i: (r["loglik"], r["p"]) for r in run.rows for i in [r["idx"]] if i < 5} == first5
-    p.save(src)
-    again = next(r for r in Project.open(src).searches if r.id == "ea77ac2fedc4")
-    assert again.status == "complete" and len(again.rows) == 15 and not again.resumable
+    with pytest.raises(engine.ResumeRefused, match="fit rules 3"):
+        engine.execute(run, p.dataset, cache=engine.cache_from(run, p.searches, p.dataset))
+    assert run.status == "partial" and run.n_done == 5 and len(run.executions) == 1
+    assert {r["idx"]: (r["loglik"], r["p"]) for r in run.rows} == first5
 
 
 # ---- V134-010: diagnostic attribution --------------------------------------------------------------------------------
@@ -739,9 +736,11 @@ def test_audit_record_roundtrip_and_refusals(tmp_path):
     run = next(r for r in p.searches if r.id == "ea77ac2fedc4")
     files = write_audit(run, p.dataset, tmp_path)
     rec = read_audit(files[0])
-    assert rec["search"]["id"] == "ea77ac2fedc4" and rec["grammar"]["exact_space_size"] == 15
-    assert rec["search"]["resume"] == "resumable" and rec["search"]["historical_old_rules"] is True
-    assert len(rec["candidates"]) == 5 and rec["data"]["file"] == "StatExplore_Test51F_Null_13.csv"
+    # audit schema 2 (v1.3.5, AUD134-07): historical vs current data blocks; the 52D search is no longer resumable
+    assert rec["search"]["id"] == "ea77ac2fedc4" and rec["grammar"]["stored_total"] == 15
+    assert "fit rules 3" in rec["search"]["resume"] and rec["search"]["historical_old_rules"] is True
+    assert len(rec["candidates"]) == 5
+    assert rec["data"]["current_context"]["source_file"] == "StatExplore_Test51F_Null_13.csv"
     txt = files[0].read_text(encoding="utf-8")
     assert "vivi_" not in txt and "NaN" not in txt and "Infinity" not in txt
     assert "audit report" in files[1].read_text(encoding="utf-8")

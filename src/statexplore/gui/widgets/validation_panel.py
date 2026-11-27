@@ -39,6 +39,29 @@ class ValidationPanel(QWidget):
         for k, label in V.PIPELINES.items():
             self.pipeline.addItem(label, k)
         self.candidate = QComboBox()
+        # AUD134-06: which declared candidates the training parts search (explicit; adaptive history is disclosed)
+        self.scope = QComboBox()
+        for k, label in V.POOL_SCOPES.items():
+            self.scope.addItem(label, k)
+        self.prefix_n = QSpinBox()
+        self.prefix_n.setRange(1, 2_000_000_000)
+        self.prefix_n.setValue(100)
+        self.prefix_n.setToolTip("Restricted pool: the first N candidates in the declared order")
+        self.max_fits = QSpinBox()
+        self.max_fits.setRange(1, 2_000_000_000)
+        self.max_fits.setValue(V.ValidationConfig().max_fits)
+        self.max_fits.setToolTip("Hard budget of model-fitting invocations (full, reduced, null and selected refits, "
+                                 "optimizer retries, auxiliary fits). A validation whose conservative bound exceeds it is "
+                                 "refused; if it is reached anyway, the remaining parts are not run and the result is "
+                                 "partial.")
+        scope_row = QWidget()
+        sl = QHBoxLayout(scope_row)
+        sl.setContentsMargins(0, 0, 0, 0)
+        sl.addWidget(self.scope, 1)
+        sl.addWidget(QLabel("N"))
+        sl.addWidget(self.prefix_n)
+        sl.addWidget(QLabel("fit budget"))
+        sl.addWidget(self.max_fits)
         self.rule = QComboBox()
         for k, label in V.RULES.items():
             self.rule.addItem(label, k)
@@ -75,7 +98,8 @@ class ValidationPanel(QWidget):
             nl.addWidget(w)
         nl.addStretch()
         for label, w in (("Prediction target", self.target), ("Procedure", self.pipeline),
-                         ("Candidate (fixed mode)", self.candidate), ("Selection rule (pipeline)", self.rule),
+                         ("Candidate (fixed mode)", self.candidate), ("Candidate pool (pipeline)", scope_row),
+                         ("Selection rule (pipeline)", self.rule),
                          ("Modes", modes), ("Settings", nums)):
             form.addRow(label, w)
         lay.addLayout(form)
@@ -112,8 +136,10 @@ class ValidationPanel(QWidget):
         self.view = QTextBrowser()
         self.view.setMinimumHeight(320)
         lay.addWidget(self.view, 1)
-        for w in (self.target, self.pipeline, self.candidate, self.rule):
+        for w in (self.target, self.pipeline, self.candidate, self.rule, self.scope):
             w.currentIndexChanged.connect(self.refresh)
+        self.prefix_n.valueChanged.connect(self.refresh)
+        self.max_fits.valueChanged.connect(self.refresh)
         for c in self.mode_checks.values():
             c.toggled.connect(self.refresh)
         for w in (self.k, self.repeats, self.B, self.seed):
@@ -128,7 +154,9 @@ class ValidationPanel(QWidget):
             target=self.target.currentData(), modes=[k for k, c in self.mode_checks.items() if c.isChecked()],
             pipeline=self.pipeline.currentData(), candidate=self.candidate.currentData(), rule=self.rule.currentData(),
             holdout_fraction=round(self.fraction.value(), 4), k=self.k.value(), repeats=self.repeats.value(),
-            B=self.B.value(), seed=self.seed.value())
+            B=self.B.value(), seed=self.seed.value(), pool=self.scope.currentData() or "cumulative",
+            prefix_n=self.prefix_n.value() if self.scope.currentData() == "prefix" else None,
+            max_fits=self.max_fits.value())
 
     def set_config(self, cfg: V.ValidationConfig) -> None:
         for combo, val in ((self.target, cfg.target), (self.pipeline, cfg.pipeline), (self.rule, cfg.rule),
@@ -138,6 +166,12 @@ class ValidationPanel(QWidget):
                 combo.setCurrentIndex(i)
         for k, c in self.mode_checks.items():
             c.setChecked(k in cfg.modes)
+        i = self.scope.findData("original" if cfg.pool == "declared" else cfg.pool)
+        if i >= 0:
+            self.scope.setCurrentIndex(i)
+        if cfg.prefix_n:
+            self.prefix_n.setValue(int(cfg.prefix_n))
+        self.max_fits.setValue(int(cfg.max_fits))
         self.fraction.setValue(cfg.holdout_fraction)
         self.k.setValue(cfg.k)
         self.repeats.setValue(cfg.repeats)
@@ -198,6 +232,8 @@ class ValidationPanel(QWidget):
         fixed = self.pipeline.currentData() == "fixed"
         self.candidate.setEnabled(fixed)
         self.rule.setEnabled(not fixed)
+        self.scope.setEnabled(not fixed)
+        self.prefix_n.setEnabled(not fixed and self.scope.currentData() == "prefix")
         if run is None or ds is None:
             self.feas.setText("Configure now; validation runs on a completed search (or automatically when it finishes "
                               "if ticked above).")
@@ -214,7 +250,10 @@ class ValidationPanel(QWidget):
                  f"{info.get('clusters', '—')} · units for this target {info.get('units', '—')}"
                  + (f" · eligible clusters {info['eligible_clusters']}" if "eligible_clusters" in info else "")
                  + (f" (ineligible: {len(info['ineligible_clusters'])})" if info.get("ineligible_clusters") else "")
-                 + f" · about {info.get('fits', 0):,} model fits."]
+                 + f" · at most {info.get('fits', 0):,} model-fitting invocations (conservative bound; estimate about "
+                 f"{info.get('fits_estimate', 0):,}; budget {self.max_fits.value():,})."]
+        if info.get("pool_label") and not fixed:
+            parts.append("Candidate pool: " + html.escape(info["pool_label"]))
         parts += [f"<span style='color:#c62828'>✖ {html.escape(p)}</span>" for p in info["problems"]]
         parts += [f"<span style='color:#8d6e00'>⚠ {html.escape(w)}</span>" for w in info["warnings"]]
         self.feas.setText("<br>".join(parts))
@@ -320,13 +359,15 @@ class ValidationPanel(QWidget):
                 QMessageBox.Yes | QMessageBox.No | QMessageBox.Cancel)
             if ans == QMessageBox.Cancel:
                 return
-            from ...discovery.space import view
-
             run = self.get_run()
             ds = self.get_dataset()
-            try:
-                vds = view(ds, run.settings) if ds is not None and run is not None else None
-            except Exception:  # noqa: BLE001
-                vds = None
-            files = V.export(self.current, d, ds=vds, include_data=ans == QMessageBox.Yes)
-            QMessageBox.information(self, "Validation", f"{len(files)} files written to {d}.")
+            # AUD134-07: the export verifies that the project's data are the analysed data (or rebuilds them from the
+            # search's snapshot); otherwise it writes results and metadata only
+            files = V.export(self.current, d, ds=ds, include_data=ans == QMessageBox.Yes, run=run)
+            from pathlib import Path
+
+            note = ""
+            if (Path(d) / "REPRODUCTION_UNAVAILABLE.txt").exists():
+                note = ("\n\nNo runnable reproduction was written: the project's data are not the data this validation "
+                        "analysed (see REPRODUCTION_UNAVAILABLE.txt). The historical results and code were exported.")
+            QMessageBox.information(self, "Validation", f"{len(files)} files written to {d}.{note}")

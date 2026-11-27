@@ -376,6 +376,8 @@ class ResultFrameModel(FrameModel):
                 lp = pd.Series(tw, index=col.index, dtype=float)
                 col = lp.where(~np.isneginf(lp), -1e308).where(lp.notna(), pd.to_numeric(col, errors="coerce"))
         num = pd.to_numeric(col, errors="coerce").astype(float)
+        if "log10 p" in str(name) or str(name).startswith("log_p"):     # AUD134-02: -inf = smallest, not missing
+            num = num.where(~np.isneginf(num.to_numpy()), -1e308)
         finite = np.isfinite(num.to_numpy())
         if col.dtype == object or pd.api.types.is_string_dtype(col):
             text = col.astype(str).str.strip()

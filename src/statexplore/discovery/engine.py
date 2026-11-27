@@ -83,6 +83,8 @@ class DiscoveryRun:
     data_snapshot: dict[str, Any] = field(default_factory=dict)     # v1.3.2: the data view used (STAT-39)
     validation_runs: list[dict[str, Any]] = field(default_factory=list)  # v1.3.3: immutable AMD validation runs (J7)
     grammar: int = 2                                           # v1.3.4: candidate grammar version (2 = v1.2-v1.3.3)
+    parent_id: str = ""                                        # v1.3.5: search this one was restarted from (AUD134-03)
+    lineage: dict[str, Any] = field(default_factory=dict)      # v1.3.5: why / how it was restarted
 
     @property
     def is_complete(self) -> bool:
@@ -90,7 +92,63 @@ class DiscoveryRun:
 
     @property
     def resumable(self) -> bool:
-        return self.status in ("partial", "cancelled") and self.n_done < self.total and not self.grammar_problem()
+        return self.status in ("partial", "cancelled") and self.n_done < self.total and not self.compatibility()
+
+    def compatibility(self, ds: Dataset | None = None, deep: bool = False) -> str:
+        """AUD134-03: '' when every retained result can be continued in place under THIS version; otherwise why not.
+        Checks the candidate grammar, the fit rules and engine provenance of the retained rows, their fit identity (with
+        `ds`: recomputed on the current data view), and the saved progress (row indices and keys, the contiguous done
+        prefix). `deep` also re-enumerates the retained candidates and compares their keys (done once per execution;
+        the R / package versions of the workers are checked by `execute` before anything is committed). Missing
+        provenance never counts as compatible."""
+        g = self.grammar_problem()
+        if g:
+            return g
+        if not self.rows:
+            return ""
+        eng = self.engine or {}
+        n = len(self.rows)
+        if not eng:
+            return (f"the {n:,} retained results have no recorded R / package versions, so their compatibility with "
+                    "this version is not established")
+        fr = eng.get("fit_rules")
+        if fr != FIT_RULES:
+            return (f"the {n:,} retained results were fitted under fit rules {fr if fr is not None else '(not recorded)'}; "
+                    f"this version uses fit rules {FIT_RULES} (statistics changed definition: v1.3.4 cache, log tails, "
+                    "GEE working correlation, diagnostics), so old and new rows cannot share one search or one "
+                    "multiplicity family")
+        if not self.fit_id:
+            return "the search has no recorded fit identity, so its retained results cannot be verified"
+        idx = [r.get("idx") for r in self.rows]
+        if any(not isinstance(i, (int, np.integer)) for i in idx) or len(set(idx)) != len(idx):
+            return "the saved progress is inconsistent (duplicate or invalid candidate indices)"
+        if min(idx) < 0 or max(idx) >= self.total or not 0 <= self.n_done <= self.total:
+            return "the saved progress is inconsistent (candidate index or done count outside the search space)"
+        missing = set(range(self.n_done)) - set(idx)
+        if missing:
+            return (f"the saved progress is inconsistent: {len(missing):,} candidate(s) before the continuation point "
+                    f"{self.n_done:,} have no result")
+        if any(not r.get("key") for r in self.rows):
+            return "some retained results have no candidate key, so their identity cannot be verified"
+        if ds is not None:
+            try:
+                if fit_identity(ds, self.settings, self.family) != self.fit_id:
+                    return ("the fit identity of the current data view differs from the one the retained results "
+                            "were fitted with")
+            except Exception as e:  # noqa: BLE001 - a variable of the search no longer exists, invalid settings, ...
+                return f"the search's fit identity cannot be recomputed on the current data ({e})"
+        if deep:
+            from .space import candidate_key as _key
+
+            want = {int(r["idx"]): r["key"] for r in self.rows}
+            hi = max(want)
+            for c in enumerate_candidates(self.settings):
+                if c.index > hi:
+                    break
+                if c.index in want and _key(c) != want[c.index]:
+                    return (f"retained candidate #{c.index} is not the candidate this grammar produces at that position "
+                            "(its key differs)")
+        return ""
 
     def grammar_problem(self) -> str:
         """Why this search's candidate order cannot be reproduced by the current grammar (V134-009), or ''."""
@@ -99,10 +157,14 @@ class DiscoveryRun:
         s = self.settings
         if self.grammar > GRAMMAR_VERSION:
             return "it was created by a newer StatExplore grammar"
-        if self.grammar < 3 and s.strategy == "time" and s.min_predictors > 1 and not (s.participant and
-                                                                                    s.workflow == "structure"):
+        b = bool(s.participant and s.workflow == "structure")
+        if self.grammar < 3 and s.strategy == "time" and s.min_predictors > 1 and not b:
             return ("the time strategy now honours the minimum number of candidate predictors (grammar 3), so its "
                     "candidate order differs from the one this search was started with")
+        if self.grammar < 4 and s.strategy == "focal" and s.min_predictors > 2 and not b:
+            return ("the single-focal-interaction strategy now honours the minimum number of candidate predictors "
+                    f"(grammar 4; minimum {s.min_predictors}), so its candidate list differs from the one this search "
+                    "was started with")
         return ""
 
     def resume_reason(self, ds: Dataset | None = None) -> str:
@@ -116,9 +178,9 @@ class DiscoveryRun:
                     }.get(self.status, f"the search is {self.status}")
         if self.n_done >= self.total:
             return "every candidate has been evaluated"
-        g = self.grammar_problem()
+        g = self.compatibility()
         if g:
-            return g + "; start a new search"
+            return g + "; the search stays as it is - start a new search from it to refit every candidate"
         if ds is not None:
             try:
                 if self.signature != data_signature(view(ds, self.settings)):
@@ -126,6 +188,9 @@ class DiscoveryRun:
                             "differs): restore them, or start a new search")
             except Exception as e:  # noqa: BLE001 - a variable of the search no longer exists
                 return f"the search's variables are not available in the current data ({e})"
+            g = self.compatibility(ds)
+            if g:
+                return g + "; start a new search from it"
         return ""
 
     def budget_text(self) -> str:
@@ -145,7 +210,8 @@ class DiscoveryRun:
         return {k: getattr(self, k) for k in ("id", "family", "total", "signature", "created_at", "status",
                                                "stop_reason", "n_done", "stop_index", "elapsed_s",
                                                "n_sample", "engine", "warnings", "coding", "fit_id", "n_times",
-                                               "executions", "data_snapshot", "validation_runs", "grammar")} | {
+                                               "executions", "data_snapshot", "validation_runs", "grammar",
+                                               "parent_id", "lineage")} | {
             "settings": self.settings.to_dict(), "validation": {str(k): v for k, v in self.validation.items()}}
 
     @classmethod
@@ -164,6 +230,8 @@ class DiscoveryRun:
         run.data_snapshot = dict(meta.get("data_snapshot") or {})
         run.validation_runs = list(meta.get("validation_runs") or [])
         run.grammar = int(meta.get("grammar") or 2)
+        run.parent_id = str(meta.get("parent_id") or "")
+        run.lineage = dict(meta.get("lineage") or {})
         run.validation = {int(k): v for k, v in (meta.get("validation") or {}).items()}
         run.rows = rows
         return run
@@ -218,6 +286,32 @@ def create_run(ds: Dataset, s: SearchSettings) -> DiscoveryRun:
     dep = dependence_warning(ds, s)
     if dep:
         run.warnings.append(dep)
+    return run
+
+
+def restart_from(parent: DiscoveryRun, ds: Dataset) -> DiscoveryRun:
+    """AUD134-03: an explicit NEW search (new ID) with the parent's declared settings under the CURRENT grammar and fit
+    rules: every candidate is enumerated and fitted again (nothing is carried over from the parent, whose history stays
+    unchanged and viewable). Refused when the parent's specification cannot be expressed by this version."""
+    import copy
+
+    from .space import GRAMMAR_VERSION, SearchSpaceError
+
+    if parent.grammar > GRAMMAR_VERSION:
+        raise SearchSpaceError("This search was created by a newer StatExplore grammar: its candidate specification "
+                               "cannot be reproduced by this version.")
+    s = copy.deepcopy(parent.settings)
+    run = create_run(ds, s)
+    run.parent_id = parent.id
+    run.lineage = {"parent": parent.id, "reason": parent.compatibility(ds) or parent.resume_reason(ds),
+                   "parent_grammar": parent.grammar, "grammar": run.grammar,
+                   "parent_fit_rules": (parent.engine or {}).get("fit_rules"), "fit_rules": FIT_RULES,
+                   "parent_total": parent.total, "total": run.total, "parent_rows": len(parent.rows),
+                   "policy": "new search under the current grammar and fit rules; every candidate refitted; the parent "
+                             "is unchanged and never part of this search's multiplicity families"}
+    if run.total != parent.total:
+        run.warnings.append(f"Restarted from search {parent.id}: the current grammar defines {run.total:,} candidates "
+                            f"for these settings (the original search declared {parent.total:,}).")
     return run
 
 
@@ -291,29 +385,44 @@ def cache_from(run: DiscoveryRun, previous: list[DiscoveryRun], ds: Dataset | No
     return out
 
 
+class ResumeRefused(ValueError):
+    """AUD134-03: a continuation that would mix incompatible results. Raised BEFORE the run is changed."""
+
+
 def execute(run: DiscoveryRun, ds: Dataset, *, rscript: str | None = None,
             progress: Callable[[DiscoveryRun], None] | None = None,
             cancel: threading.Event | None = None, workdir: str | Path | None = None,
-            cache: dict[str, dict[str, Any]] | None = None) -> DiscoveryRun:
-    """Run (or resume) a search. Blocks; call from a background thread."""
+            cache: dict[str, dict[str, Any]] | None = None,
+            clock: Callable[[], float] = time.monotonic) -> DiscoveryRun:
+    """Run (or resume) a search. Blocks; call from a background thread.
+
+    AUD134-03: a resume is allowed only when every retained row is compatible (`compatibility`), and the R / package
+    versions of EVERY started worker equal the versions that fitted the retained rows; a refusal raises `ResumeRefused`
+    and leaves the run exactly as it was (status, executions, rows). AUD134-09: `clock` is monotonic (injectable for
+    tests); cancellation is checked before the workers start, before every batch and before cached rows are committed."""
     s = run.settings
-    ds = view(ds, s)
-    if run.signature != data_signature(ds):
-        raise ValueError("The data or variable settings changed since this search was created; "
-                         "start a new search.")
+    vds = view(ds, s)
+    if run.signature != data_signature(vds):
+        raise ResumeRefused("The data or variable settings changed since this search was created; "
+                            "start a new search.")
     if run.status not in ("not_started", "partial", "cancelled"):
-        raise ValueError(f"A {run.status} search cannot be resumed.")
-    if run.grammar_problem():
-        raise ValueError(f"This search cannot be resumed: {run.grammar_problem()}.")
+        raise ResumeRefused(f"A {run.status} search cannot be resumed.")
+    why = run.compatibility(ds, deep=True)
+    if why:
+        raise ResumeRefused(f"This search cannot be resumed: {why}.")
+    ds = vds
     cancel = cancel or threading.Event()
+    if cancel.is_set():          # acknowledged before any work: nothing starts or is committed
+        run.status, run.stop_reason = "cancelled", "cancelled before the execution started"
+        return run
     own_workdir = workdir is None
     workdir = Path(workdir or tempfile.mkdtemp(prefix="sx_discovery_"))
     setup = setup_script(ds, s, run.family)
     n_workers = default_workers(s)
     pooled: list[_PooledSession] = []
-    run.status, run.stop_reason = "running", ""
-    run.executions.append({"start": run.n_done, "max_models": s.max_models, "max_minutes": s.max_minutes})
-    t_start = time.perf_counter()
+    before = (run.status, run.stop_reason)
+    started = False
+    t_start = clock()
     elapsed_before = run.elapsed_s
     try:
         with ThreadPoolExecutor(max_workers=n_workers) as ex:
@@ -326,19 +435,38 @@ def execute(run: DiscoveryRun, ds: Dataset, *, rscript: str | None = None,
                 starts.append(ex.submit(lambda p=ps: (p.session.worker.start(), p.ensure(ds))))
             for f in starts:
                 f.result()
+            # AUD134-03: the runtime environment of EVERY worker, checked before anything is committed
+            envs = [{**p.session.worker.request("versions", {"packages": ENGINE_PACKAGES}).result, "fit_rules": FIT_RULES}
+                    for p in pooled]
+            current = envs[0]
+            if any(_engine_id(e) != _engine_id(current) for e in envs[1:]):
+                raise ResumeRefused("the R workers run different R / package versions; restart StatExplore")
+            if run.rows and _engine_id(run.engine or {}) != _engine_id(current):
+                raise ResumeRefused("the retained results were fitted with " + _engine_text(run.engine) + "; this "
+                                    "session runs " + _engine_text(current) + ". Continuing would mix fits from "
+                                    "different engines in one search: start a new search from this one")
+            if cancel.is_set():
+                run.status, run.stop_reason = "cancelled", "cancelled before the execution started"
+                return run
+            started = True
+            run.status, run.stop_reason = "running", ""
+            run.executions.append({"start": run.n_done, "max_models": s.max_models, "max_minutes": s.max_minutes})
             run.n_sample = pooled[0].n_sample if s.sample == "shared" else None
-            current = pooled[0].session.worker.request("versions", {"packages": ENGINE_PACKAGES}).result
-            current = {**current, "fit_rules": FIT_RULES}
             if not run.engine:
                 run.engine = current
             # cached fits are reused only when R and the fitting packages are the same versions (F6)
             usable = {k: r for k, r in (cache or {}).items() if r.get("_engine") == _engine_id(current)}
-            _dispatch(run, ds, pooled, ex, cancel, progress, t_start, elapsed_before, usable)
+            _dispatch(run, ds, pooled, ex, cancel, progress, t_start, elapsed_before, usable, clock=clock)
+    except ResumeRefused:
+        run.status, run.stop_reason = before
+        raise
     except Exception as e:
-        run.status, run.stop_reason = "failed", str(e)
+        if started:
+            run.status, run.stop_reason = "failed", str(e)
         raise
     finally:
-        run.elapsed_s = elapsed_before + (time.perf_counter() - t_start)
+        if started:
+            run.elapsed_s = elapsed_before + (clock() - t_start)
         for p in pooled:
             p.session.worker.stop()
         if own_workdir:
@@ -348,9 +476,23 @@ def execute(run: DiscoveryRun, ds: Dataset, *, rscript: str | None = None,
     return run
 
 
+def _engine_text(e: dict[str, Any] | None) -> str:
+    e = e or {}
+    if not e:
+        return "no recorded R / package versions"
+    pk = e.get("packages") or {}
+    return (f"R {e.get('r_version') or '?'} (fit rules {e.get('fit_rules') or 'not recorded'}; "
+            + ", ".join(f"{k} {pk.get(k)}" for k in ENGINE_PACKAGES if pk.get(k)) + ")")
+
+
 def _dispatch(run: DiscoveryRun, ds: Dataset, pooled: list[_PooledSession], ex: ThreadPoolExecutor,
               cancel: threading.Event, progress, t_start: float, elapsed_before: float,
-              cache: dict[str, dict[str, Any]]) -> None:
+              cache: dict[str, dict[str, Any]], clock: Callable[[], float] = time.monotonic) -> None:
+    """Stopping precedence (AUD134-09), checked before every new batch - cached or not - and after every wait:
+    1. cancellation, 2. time budget (monotonic clock), 3. model budget (candidate ATTEMPTS, cached or fitted), 4. the
+    significance target (modes A/B, replayed deterministically from the rows), 5. exhaustion. A cancel or deadline
+    acknowledged before a batch commits nothing new; batches already running when a cancel arrives are killed and not
+    recorded; a cancel that arrives after the last candidate was committed leaves the search complete."""
     s = run.settings
     have = {int(r["idx"]) for r in run.rows}
     # resume: candidates evaluated after an interrupted batch already have rows and are not fitted twice
@@ -366,8 +508,24 @@ def _dispatch(run: DiscoveryRun, ds: Dataset, pooled: list[_PooledSession], ex: 
     reason = ""
     aborted: list[int] = []           # first candidate index of each batch interrupted by a cancellation
     n_sig = sum(1 for r in run.rows if _qualifies(r, s.alpha))
+    last_progress = clock()
+
+    def interrupted() -> str:
+        if cancel.is_set():
+            return "cancelled"
+        if deadline is not None and clock() > deadline:
+            return "time budget reached"
+        return ""
+
     while True:
         while not stop and idle:
+            why = interrupted()
+            if why:
+                stop, reason = True, why
+                break
+            if target is not None and n_sig >= target:
+                stop, reason = True, "target reached"
+                break
             size = s.batch_size if budget is None else min(s.batch_size, budget)
             batch = list(islice(it, size)) if size > 0 else []
             if not batch:
@@ -381,6 +539,10 @@ def _dispatch(run: DiscoveryRun, ds: Dataset, pooled: list[_PooledSession], ex: 
                 budget -= len(batch)
             dispatched_to = batch[-1].index + 1
             cached = [c for c in batch if candidate_key(c) in cache]
+            if cached and interrupted():       # never commit cached rows after an acknowledged cancel / deadline
+                stop, reason = True, interrupted()
+                dispatched_to = batch[0].index
+                break
             for c in cached:  # identical model already fitted on identical data: reuse its result
                 src = cache[candidate_key(c)]
                 row = {k: v for k, v in src.items() if not k.startswith("_")}
@@ -392,6 +554,10 @@ def _dispatch(run: DiscoveryRun, ds: Dataset, pooled: list[_PooledSession], ex: 
                 n_sig += _qualifies(row, s.alpha)
             batch = [c for c in batch if candidate_key(c) not in cache]
             if not batch:
+                if progress and clock() - last_progress > 0.5:      # cache-only stretches stay visible / responsive
+                    run.n_done = dispatched_to
+                    progress(run)
+                    last_progress = clock()
                 continue
             ps = idle.pop()
             fut = ex.submit(ps.run_batch, ds, batch_script(ds, batch, s), len(batch))
@@ -433,16 +599,18 @@ def _dispatch(run: DiscoveryRun, ds: Dataset, pooled: list[_PooledSession], ex: 
                 run.rows.append(row)
                 n_sig += _qualifies(row, s.alpha)
         if not stop:
-            if cancel.is_set():
-                stop, reason = True, "cancelled"
-            elif deadline is not None and time.perf_counter() > deadline:
-                stop, reason = True, "time budget reached"
+            why = interrupted()
+            if why:
+                stop, reason = True, why
             elif target is not None and n_sig >= target:
                 stop, reason = True, "target reached"
         if progress:
             run.n_done = dispatched_to
-            run.elapsed_s = elapsed_before + (time.perf_counter() - t_start)
+            run.elapsed_s = elapsed_before + (clock() - t_start)
             progress(run)
+            last_progress = clock()
+    if not exhausted and not aborted and dispatched_to >= run.total and len({r["idx"] for r in run.rows}) >= run.total:
+        exhausted = True        # cancel / deadline acknowledged after the last candidate was committed: complete
     if aborted:
         dispatched_to = min(aborted)        # contiguous prefix of evaluated candidates (later rows are kept)
     run.n_done = dispatched_to
@@ -894,7 +1062,9 @@ def structure_tests(run: DiscoveryRun) -> dict[int, list[dict[str, Any]]]:
             "test_id": len(out.get(int(b["idx"]), [])), "type": "structure",
             "label": f"{STRUCTURES[large][0].split(' — ')[0]} vs {STRUCTURES[small][0].split(' — ')[0]}: {what}",
             "statistic": t["LR"], "LR_raw": t["LR_raw"], "df1": float(dfv or 0),
-            "p": t["p"] if status != "withheld" else None, "ci_applicable": "unavailable", "ci_method": "",
+            "p": t["p"] if status != "withheld" else None,
+            "log_p": t["log_p"] if status != "withheld" else None,      # AUD134-02: native log tail here too
+            "ci_applicable": "unavailable", "ci_method": "",
             "structure_method": "likelihood-ratio test, " + ("boundary-corrected 50:50 chi-square mixture"
                                                              if ref == "mixture" else f"chi-square({dfv})"),
             "reference_distribution": "50:50 chi-square mixture" if ref == "mixture" else f"chi-square({dfv})",
@@ -1360,14 +1530,32 @@ def interpret_row(r: dict[str, Any], s: SearchSettings, family: str = "gaussian"
     return text
 
 
+# every probability column -> its canonical natural-log sort key (AUD134-02): ordinary p underflows to 0, its log does not
+LOG_KEYS = {"p": "log_p", "log_p": "log_p", "log10_p": "log_p", "p_adj": "log_p_adj", "log_p_adj": "log_p_adj",
+            "p_bh": "log_p_bh", "log_p_bh": "log_p_bh", "p_holm": "log_p_holm", "log_p_holm": "log_p_holm"}
+ADJUSTED_KEYS = {"log_p_adj", "log_p_bh", "log_p_holm"}
+
+
 def discovery_ranking(df: pd.DataFrame, by: str = "log_p") -> pd.DataFrame:
-    """Primary p-value ranking on the log scale (V134-002); exact ties by candidate index, then test id."""
+    """Primary p-value ranking on the log scale (V134-002, AUD134-02). Every probability column (raw, selected adjusted,
+    BH, Holm, and their log / log10 twins) sorts by its natural-log tail, never by the ordinary p that underflows to 0.
+    Adjusted p-values belong to their test-type family, so an adjusted ranking is WITHIN each family (families in their
+    fixed order); a raw ranking keeps the v1.3.4 single list. Ties: raw log p, then candidate index, then test id.
+    Missing values last; an underflowed p with no recorded magnitude (-inf, older searches) sorts first but is labelled
+    in `log_p_source` (its precise order is unknown)."""
     if df.empty:
         return df
-    if by == "p" and "log_p" in df:
-        by = "log_p"
-    keys = [by, "idx"] + (["test_id"] if "test_id" in df else [])
-    return df[df["in_family"]].sort_values(keys, kind="stable", na_position="last")
+    key = LOG_KEYS.get(by, by)
+    sub = df[df["in_family"]]
+    if key not in sub:
+        key = "log_p"
+    keys = [key] + (["log_p"] if key != "log_p" else []) + ["idx"] + (["test_id"] if "test_id" in sub else [])
+    sub = sub.assign(**{k: pd.to_numeric(sub[k], errors="coerce") for k in keys if k in ("log_p", key)})
+    if key in ADJUSTED_KEYS and "test_type" in sub:
+        order = {t: i for i, t in enumerate(FAMILY_ORDER)}
+        sub = sub.assign(_fam=sub["test_type"].map(order).fillna(len(FAMILY_ORDER)))
+        return sub.sort_values(["_fam"] + keys, kind="stable", na_position="last").drop(columns=["_fam"])
+    return sub.sort_values(keys, kind="stable", na_position="last")
 
 
 def support_ranking(df: pd.DataFrame) -> pd.DataFrame:

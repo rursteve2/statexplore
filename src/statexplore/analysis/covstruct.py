@@ -188,6 +188,8 @@ sx_fit_attempts <- function(fit, optimizers) {
   attempts <- list(); warns <- character(); m <- NULL; err <- NULL
   for (opt in optimizers) {
     w <- character()
+    # AUD134-10: every optimizer attempt is a fitting invocation (outside the tryCatch: a budget stop is not a fit error)
+    if (exists("sx_budget_take", mode = "function")) sx_budget_take(if (length(attempts)) "retry" else "fit")
     m <- withCallingHandlers(tryCatch(fit(opt), error = function(e) e),
       warning = function(x) { w <<- c(w, conditionMessage(x)); invokeRestart("muffleWarning") },
       message = function(x) invokeRestart("muffleMessage"))

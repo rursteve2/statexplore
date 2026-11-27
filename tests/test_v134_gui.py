@@ -39,89 +39,130 @@ def _page(w):
 
 
 def test_reopened_partial_search_shows_resume_and_reasons(window, tmp_path):
+    """v1.3.5 (AUD134-03) supersedes the v1.3.4 expectation: the owner's 52D partial search was fitted under fit rules 3,
+    so Resume is disabled WITH the reason and 'New search from this one' is offered instead."""
     src = tmp_path / "p52d.sxp"
     shutil.copy(FX / "StatExplore_Test52D_Persistence.sxp", src)
     window.open_project(str(src))
     pg = _page(window)
-    assert pg.run.id == "ea77ac2fedc4" and pg.resume_btn.isEnabled() and pg.resume_reason.text() == ""
+    pg.run = next(r for r in window.state.project.searches if r.id == "ea77ac2fedc4")
+    pg._show_run()
+    assert not pg.resume_btn.isEnabled() and "fit rules 3" in pg.resume_reason.text()
+    assert pg.restart_btn.isEnabled()
     # a complete search: disabled, and the tooltip says why
     done = next(r for r in window.state.project.searches if r.status == "complete")
     pg.run = done
     pg._show_run()
-    assert not pg.resume_btn.isEnabled() and "complete" in pg.resume_btn.toolTip()
+    assert not pg.resume_btn.isEnabled() and "complete" in pg.resume_btn.toolTip() and not pg.restart_btn.isEnabled()
     # _set_running(False) never re-enables Resume for a search that cannot resume (v1.3.3 did)
     pg._set_running(True)
     pg._set_running(False)
     assert not pg.resume_btn.isEnabled()
-    # changed filter: disabled with the reason visible
-    pg.run = next(r for r in window.state.project.searches if r.id == "ea77ac2fedc4")
+    # a compatible partial search with a changed filter: disabled with the data-signature reason
     from statexplore.core.derive import FilterSpec
+    from statexplore.discovery.space import candidate_key, enumerate_candidates
 
+    old = next(r for r in window.state.project.searches if r.id == "ea77ac2fedc4")
+    from statexplore.discovery import engine
+
+    fresh = engine.create_run(window.state.dataset, old.settings)
+    fresh.status, fresh.n_done = "partial", 5
+    fresh.engine = {"r_version": "x", "packages": {}, "fit_rules": engine.FIT_RULES}
+    fresh.rows = [dict(r, run_id=fresh.id) for r in old.rows]          # complete display rows (same keys)
+    assert [r["key"] for r in fresh.rows] == [candidate_key(c) for c in enumerate_candidates(old.settings)
+                                             if c.index < 5]
+    pg.run = fresh
+    pg._show_run()
+    assert pg.resume_btn.isEnabled() and pg.resume_reason.text() == ""
     ds = window.state.dataset
     ds.filters = [FilterSpec(variable="Time", op="<=", value=3.0)]
     pg._show_run()
     assert not pg.resume_btn.isEnabled() and "data signature differs" in pg.resume_reason.text()
 
 
-STAGE = r'''
-import json, sys, time
-from PySide6.QtWidgets import QApplication
+STAGE = r"""
+import hashlib, json, sys, time
+from PySide6.QtWidgets import QApplication, QMessageBox
 app = QApplication.instance() or QApplication(sys.argv)
 from statexplore.gui.main_window import MainWindow
 from statexplore.gui.state import AppState
+QMessageBox.question = staticmethod(lambda *a, **k: QMessageBox.Yes)      # the owner confirms the new search
 path, stage, out = sys.argv[1], sys.argv[2], sys.argv[3]
 w = MainWindow(AppState()); w.show(); w.open_project(path); app.processEvents()
 pg = w.pages["Automated Model Discovery"]
-rec = {"run": pg.run.id, "status": pg.run.status, "n_done": pg.run.n_done, "resume_enabled": pg.resume_btn.isEnabled(),
-       "start_enabled": pg.start_btn.isEnabled(), "history": pg.history.currentText(), "n_searches": len(w.state.project.searches)}
-if stage == "resume":
-    pg.max_models.setValue(10)
-    pg.resume_btn.click()
+runs = {r.id: r for r in w.state.project.searches}
+old = runs["ea77ac2fedc4"]
+fp = lambda r: hashlib.sha256(json.dumps([r.status, r.n_done, r.executions, r.rows], sort_keys=True, default=str).encode()).hexdigest()
+rec = {"old_fp": fp(old), "old_status": old.status, "old_rows": len(old.rows), "n_searches": len(runs)}
+def wait():
     t0 = time.time()
     while pg.cancel_btn.isEnabled() or time.time() - t0 < 1:
         app.processEvents(); time.sleep(0.05)
         if time.time() - t0 > 1200: break
     app.processEvents()
+if stage == "restart":
+    pg.run = old; pg._show_run()
+    rec.update(resume_enabled=pg.resume_btn.isEnabled(), restart_enabled=pg.restart_btn.isEnabled(),
+               reason=pg.resume_reason.text())
+    pg.max_models.setValue(5)
+    pg.restart_btn.click(); wait()
+    new = pg.run
+    rec.update(new_id=new.id, new_parent=new.parent_id, new_status=new.status, new_n=len(new.rows))
+    w._save_to(__import__("pathlib").Path(path))
+elif stage == "resume":
+    new = next(r for r in w.state.project.searches if r.parent_id == "ea77ac2fedc4")
+    pg.run = new; pg._show_run()
+    rec.update(new_id=new.id, resume_enabled=pg.resume_btn.isEnabled(), reason=pg.resume_reason.text())
+    pg.max_models.setValue(10)
+    pg.resume_btn.click(); wait()
     run = pg.run
     rec.update(after_status=run.status, after_id=run.id, after_n=len(run.rows), idx=sorted(r["idx"] for r in run.rows),
                n_searches_after=len(w.state.project.searches), resume_after=pg.resume_btn.isEnabled(),
                executions=run.executions)
     pix = w.grab(); pix.save(out.replace(".json", ".png"))
     w._save_to(__import__("pathlib").Path(path))
+else:
+    new = next(r for r in w.state.project.searches if r.parent_id == "ea77ac2fedc4")
+    rec.update(new_id=new.id, new_status=new.status, new_n=new.n_done, idx=sorted(r["idx"] for r in new.rows),
+               lineage=new.lineage)
 json.dump(rec, open(out, "w"), default=str)
 w.state.dirty = False; w.state.shutdown_r(); w.close()
-'''
+"""
 
 
 @pytest.mark.r
 @pytest.mark.slow
 @pytest.mark.timeout(3600)
 def test_resume_after_real_restart_two_processes(tmp_path):
-    """V134-009: process 1 opens the owner's 52D project and resumes its 5/15 search with budget 10 through the Resume
-    button, then saves and exits; process 2 (cold start) reopens the file: same search ID, 15/15 complete, every
-    candidate exactly once, no new search created, Resume now disabled."""
+    """V134-009 + AUD134-03 (v1.3.5): process 1 opens the owner's 52D project; its fit-rules-3 partial search cannot
+    resume, so 'New search from this one' starts a NEW linked search (budget 5) and saves; process 2 (cold start)
+    resumes that compatible partial with budget 10 through the Resume button and saves; process 3 reopens: the new
+    search is 15/15 complete, every candidate exactly once; the original 52D search is byte-for-byte unchanged."""
     src = tmp_path / "p52d.sxp"
     shutil.copy(FX / "StatExplore_Test52D_Persistence.sxp", src)
     (tmp_path / "stage.py").write_text(STAGE, encoding="utf-8")
     env = dict(os.environ, QT_QPA_PLATFORM="offscreen")
-    for stage in ("resume", "check"):
+    for stage in ("restart", "resume", "check"):
         out = tmp_path / f"{stage}.json"
         r = subprocess.run([sys.executable, str(tmp_path / "stage.py"), str(src), stage, str(out)], capture_output=True,
                            text=True, timeout=1800, env=env)
         assert r.returncode == 0, r.stderr[-3000:]
-    a = json.loads((tmp_path / "resume.json").read_text())
-    b = json.loads((tmp_path / "check.json").read_text())
-    assert a["run"] == "ea77ac2fedc4" and a["status"] == "partial" and a["resume_enabled"]
-    assert a["after_id"] == "ea77ac2fedc4" and a["after_status"] == "complete" and a["idx"] == list(range(15))
-    assert a["n_searches_after"] == a["n_searches"] == 8 and not a["resume_after"]
-    assert [e.get("start") for e in a["executions"]] == [0, 5]
-    assert b["run"] == "ea77ac2fedc4" and b["status"] == "complete" and b["n_done"] == 15 and not b["resume_enabled"]
+    a, b, c = (json.loads((tmp_path / f"{s}.json").read_text()) for s in ("restart", "resume", "check"))
+    assert not a["resume_enabled"] and a["restart_enabled"] and "fit rules 3" in a["reason"]
+    assert a["new_parent"] == "ea77ac2fedc4" and a["new_status"] == "partial" and a["new_n"] == 5
+    assert b["new_id"] == a["new_id"] and b["resume_enabled"] and b["reason"] == ""
+    assert b["after_id"] == a["new_id"] and b["after_status"] == "complete" and b["idx"] == list(range(15))
+    assert b["n_searches_after"] == a["n_searches"] + 1 and not b["resume_after"]
+    assert [e.get("start") for e in b["executions"]] == [0, 5]
+    assert c["new_status"] == "complete" and c["new_n"] == 15 and c["idx"] == list(range(15))
+    assert c["lineage"]["parent"] == "ea77ac2fedc4" and c["lineage"]["parent_fit_rules"] == 3
+    assert a["old_fp"] == b["old_fp"] == c["old_fp"] and c["old_status"] == "partial" and c["old_rows"] == 5
     evidence = os.environ.get("STATEXPLORE_EVIDENCE")
     if evidence:
         Path(evidence).mkdir(parents=True, exist_ok=True)
-        for f in ("resume.json", "check.json", "resume.png"):
+        for f in ("restart.json", "resume.json", "check.json", "resume.png"):
             if (tmp_path / f).exists():
-                shutil.copy(tmp_path / f, Path(evidence) / f"V134-009_{f}")
+                shutil.copy(tmp_path / f, Path(evidence) / f"AUD134-03_{f}")
 
 
 def test_candidate_reorder_controls(window):

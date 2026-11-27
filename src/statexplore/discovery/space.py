@@ -25,7 +25,10 @@ from ..core.variables import Measure, Storage
 
 # Candidate grammar version (recorded with every search; a search is resumed only under its own grammar).
 # 2 = v1.2-v1.3.3; 3 = v1.3.4: opt-in time-eligible interactions (V134-007), minimum candidates in the time strategy.
-GRAMMAR_VERSION = 3
+# 4 = v1.3.5 (AUD134-04): the minimum number of CANDIDATE predictors also applies to the single-focal-interaction
+#     strategy (a focal pair has 2 candidates, a triple 3; in subset mode the subset size counts). Grammars <= 3 ignored
+#     it there, so a focal search with a minimum above 2 has a different candidate list under grammar 4.
+GRAMMAR_VERSION = 4
 
 MAX_VARIABLES = 40          # outcome + candidates + required (§7)
 MAX_PREDICTORS_LIMIT = 6    # hard cap on distinct predictors per model (§7.1)
@@ -393,6 +396,9 @@ def empty_reason(s: SearchSettings) -> str:
     fixes = []
     if s.strategy in ("combinations", "factorial", "focal", "time") and room < 2:
         fixes.append("raise the maximum predictors (interactions need room for two candidates)")
+    if s.strategy == "focal" and s.min_predictors > 2 and s.covariate_mode == "focal" and s.max_order < 3:
+        fixes.append("choose 'Subsets' covariate adjustment or three-way interactions (in 'Focal' covariate mode a model "
+                     f"has only its focal pair: 2 candidate predictors, below the minimum of {s.min_predictors})")
     if s.strategy == "combinations" and not s.include_main:
         fixes.append("tick 'include main-effects models'")
     if s.min_predictors > min(room, len(s.candidates)):
@@ -561,6 +567,9 @@ def _enum_time(s: SearchSettings, idx: int, start: int) -> Iterator[Candidate]:
         for o in orders:
             if o - 1 < lo:
                 continue
+            if idx + comb(len(names), o - 1) <= start:      # AUD134-08: skip whole blocks
+                idx += comb(len(names), o - 1)
+                continue
             for f in combinations(names, o - 1):
                 if idx >= start:
                     yield Candidate(idx, (t,) + f, (), req)
@@ -569,7 +578,14 @@ def _enum_time(s: SearchSettings, idx: int, start: int) -> Iterator[Candidate]:
     for k in range(2, room + 1):
         if k - 1 < lo:
             continue
+        per = sum(comb(k - 1, o - 1) for o in orders if o <= k)
+        if idx + comb(len(names), k - 1) * per <= start:
+            idx += comb(len(names), k - 1) * per
+            continue
         for rest in combinations(names, k - 1):
+            if idx + per <= start:
+                idx += per
+                continue
             for o in orders:
                 if o > k:
                     continue
@@ -600,14 +616,22 @@ def count_candidates(s: SearchSettings) -> int:
     return sum(n for _, n in _block_counts(s))
 
 
+def _focal_min(s: SearchSettings) -> int:
+    """AUD134-04: smallest number of candidate predictors of a focal-strategy model (grammar 4). Required covariates are
+    never counted; a focal pair has 2 candidates, a triple 3, a subset-mode model its subset size."""
+    return max(1, int(s.min_predictors))
+
+
+def _focal_per_subset(s: SearchSettings, size: int) -> int:
+    return sum(comb(size, o) for o in _orders(s)) + (1 if s.all_two_way and size >= 3 else 0)
+
+
 def _count_focal(s: SearchSettings) -> int:
     p, r = len(s.candidates), len(s.required)
-    orders = _orders(s)
+    orders, lo = _orders(s), _focal_min(s)
     if s.covariate_mode == "focal":
-        return sum(comb(p, o) for o in orders)
-    extra = lambda size: 1 if s.all_two_way and size >= 3 else 0  # noqa: E731
-    return sum(comb(p, size) * (sum(comb(size, o) for o in orders) + extra(size))
-               for size in range(2, s.max_predictors - r + 1))
+        return sum(comb(p, o) for o in orders if o >= lo)
+    return sum(comb(p, size) * _focal_per_subset(s, size) for size in range(max(2, lo), s.max_predictors - r + 1))
 
 
 def enumerate_candidates(s: SearchSettings, start: int = 0) -> Iterator[Candidate]:
@@ -679,7 +703,7 @@ def _enum_focal(s: SearchSettings, base: int, start: int) -> Iterator[Candidate]
     """v1.1 grammar. Focal mode: all pairs, then all triples (lexicographic). Subset mode: by subset
     size, then subset (lexicographic), then focal pairs, then triples."""
     names, req = s.candidates, tuple(s.required)
-    orders = _orders(s)
+    orders, lo = _orders(s), _focal_min(s)
     idx = base
 
     def emit(focal_idx: tuple[int, ...], subset_idx: tuple[int, ...]) -> Candidate:
@@ -688,13 +712,26 @@ def _enum_focal(s: SearchSettings, base: int, start: int) -> Iterator[Candidate]
 
     if s.covariate_mode == "focal":
         for o in orders:
+            if o < lo:                      # AUD134-04: fewer candidate predictors than the declared minimum
+                continue
+            n = comb(len(names), o)
+            if idx + n <= start:            # AUD134-08: skip whole blocks by their exact counts
+                idx += n
+                continue
             for f in combinations(range(len(names)), o):
                 if idx >= start:
                     yield emit(f, f)
                 idx += 1
         return
-    for size in range(2, s.max_predictors - len(req) + 1):
+    for size in range(max(2, lo), s.max_predictors - len(req) + 1):
+        per = _focal_per_subset(s, size)
+        if idx + comb(len(names), size) * per <= start:
+            idx += comb(len(names), size) * per
+            continue
         for subset in combinations(range(len(names)), size):
+            if idx + per <= start:
+                idx += per
+                continue
             for o in orders:
                 for f in combinations(subset, o):
                     if idx >= start:
@@ -935,13 +972,15 @@ def describe_space(ds: Dataset, s: SearchSettings) -> dict[str, Any]:
                            f"{k - 1} coefficients per term (one per non-reference category)")
                         + "; the parameter limit applies to the total, so fewer predictors fit.")
     return {"family": family, "total": total, "n_shared": n_shared, "n_rows": n_all, "warnings": warnings,
-            "coding": coding(ds, s, family), "blocks": _block_counts(s), "fits": estimate_fits(s, total)}
+            "coding": coding(ds, s, family), "blocks": _block_counts(s), "fits": estimate_fits(s, total),
+            # AUD134-10: an estimate is not a bound; the conservative uncached maximum is reported beside it
+            "fits_bound": total * max_candidate_fits(s)}
 
 
 def estimate_fits(s: SearchSettings, total: int, sample: int = 2000) -> int:
-    """Upper bound on R model fits: each candidate's full model plus one reduced model per planned
-    test (reduced fits shared between candidates are cached on the shared sample, so the real number
-    is usually lower). Averaged over the first `sample` candidates."""
+    """ESTIMATE (not a bound, AUD134-10) of R model fits: each candidate's full model plus one reduced model per planned
+    test, averaged over the first `sample` candidates (early candidates are the simplest, so this can be low; reduced
+    fits shared between candidates are cached, so the real number can also be lower). See `max_candidate_fits`."""
     from itertools import islice
 
     first = list(islice(enumerate_candidates(s), sample))
@@ -949,6 +988,28 @@ def estimate_fits(s: SearchSettings, total: int, sample: int = 2000) -> int:
         return 0
     per = sum(1 + len(candidate_tests(c)) for c in first) / len(first)
     return int(round(per * total))
+
+
+def candidate_fits(c: Candidate) -> int:
+    """Uncached model fits of one candidate (AUD134-10): its full model plus one reduced model per planned test."""
+    return 1 + len(candidate_tests(c))
+
+
+def max_candidate_fits(s: SearchSettings) -> int:
+    """Analytic upper bound of `candidate_fits` over every candidate the grammar can produce (no enumeration)."""
+    if s.participant and s.workflow == "structure":
+        return 1
+    k = max(0, min(_room(s), len(s.candidates)))
+    mains = 2 + k if k > 1 else 2                     # overall + one test per main effect (main-effects-only model)
+    blocks = [mains] if (s.include_main or s.strategy == "main") else []
+    if s.strategy in ("focal", "time"):
+        blocks.append(2)                              # one focal (or joint all-two-way) test
+    if s.strategy in ("combinations", "factorial"):
+        v = k + (1 if time_eligible(s) else 0)
+        inter = sum(comb(v, o) for o in range(2, min(s.max_order, v) + 1))
+        blocks.append(1 + 1 + inter + 1)              # full + joint + every top-level term + overall
+        blocks.append(mains)
+    return max(blocks or [2])
 
 
 def binomial_levels(ds: Dataset, s: SearchSettings) -> tuple[Any, Any]:
