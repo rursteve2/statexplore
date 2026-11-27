@@ -9,11 +9,12 @@ variables, runs standard statistical tests, searches automatically for interacti
 draws graphs with a short plain-English interpretation underneath. It also shows you the exact
 statistical code behind every result.
 
-**Current version: 1.3.3** (November 2026) — [download](https://github.com/rursteve2/statexplore/releases/latest) ·
-[release notes](docs/RELEASE_NOTES_v1.3.3.md). New in 1.3.3: a model opened from Discovery keeps every term through
-any refit (editable fixed-term list, origin and "modified" status), comparisons keep the covariance structure, a
-Validation tab in Automated Model Discovery (holdout, grouped cross-validation, bootstrap stability for new schools or
-new participants), and portable reproducibility bundles from every analysis view. Earlier highlights are listed below
+**Current version: 1.3.4** (November 2026) — [download](https://github.com/rursteve2/statexplore/releases/latest) ·
+[release notes](docs/RELEASE_NOTES_v1.3.4.md). 1.3.4 is a corrective release: bootstrap validation no longer reuses
+another resample's reduced-model fits, p-values below the double range keep their exact magnitude (log scale) in
+ranking, adjustment and selection, GEE structures fit their own working correlation with QIC / QICu / CIC, validation
+selects only on training data from the declared search space, and Discovery gains time-eligible interactions
+(opt-in), candidate reordering, resume reasons, educational R code and an exportable audit trail. Earlier highlights are listed below
 and in the release notes.
 
 **New in 1.1:** a *Measurement Review* that flags variables whose declared level looks wrong (for
@@ -81,9 +82,9 @@ yourself (see 2B).
 ### Download it (for most people)
 1. Go to the **[Releases page](https://github.com/rursteve2/statexplore/releases/latest)**.
 2. Under **Assets**, download **one** of:
-   - **`StatExplore-1.3.3-Setup.exe`**: the installer (recommended). Double-click it and click
+   - **`StatExplore-1.3.4-Setup.exe`**: the installer (recommended). Double-click it and click
      through; then start **StatExplore** from the Start menu or the desktop shortcut.
-   - **`StatExplore-1.3.3-portable.zip`**: no installation. Right-click ▸ *Extract All…* into, for
+   - **`StatExplore-1.3.4-portable.zip`**: no installation. Right-click ▸ *Extract All…* into, for
      example, your Documents folder, open the extracted `StatExplore` folder and double-click
      **`StatExplore.exe`**.
 3. **If Windows says "Windows protected your PC":** click **More info**, then **Run anyway**. This
@@ -474,6 +475,16 @@ undoable setting.
   models are refused in Discovery with a reason. Crossed or multiple-membership designs are not supported.
 - Results from before 1.3.2 carry no identity fingerprints: their refits are reported as unverifiable.
 
+**New in 1.3.4:** corrective release (`docs/RELEASE_NOTES_v1.3.4.md`, evidence in `docs/v1.3.4/`): per-sample,
+content-keyed fit caches (bootstrap draws never share reduced fits); native log-tail p-values everywhere (display
+`< 1e-300 (log10 p = …)`), log-scale BH / Holm; GEE working correlation per structure, read back from geepack, with
+QIC / QICu / CIC in their own columns; information criteria ranked only on identical rows; validation pools are the
+declared search space with the search's stopping rule replayed on training data, counts by candidate identity, every
+coefficient of a multi-df test, a complete portable `validation_reproduce.R`; opt-in *Include time in eligible
+interactions*; candidate Order controls; Resume shows why it is unavailable; Educational R code beside the complete
+script; *Export audit trail* (versioned JSON + report). Searches from older versions are kept as history and are not
+reused as cached fits.
+
 **New in 1.3.3:** Full Analysis shows the exact fixed terms of a transferred model (presets only fill the list; any
 other set is shown as Custom), keeps them on every refit, marks changed models as modified with the exact difference
 and checks every fit against what R actually fitted; time-form comparisons keep AR(1) / CAR(1), random effects and the
@@ -505,8 +516,8 @@ for the 1.1 upgrade: **[docs/spec-compliance-v1.1.md](docs/spec-compliance-v1.1.
 **[docs/spec-compliance-v1.2.md](docs/spec-compliance-v1.2.md)** (with a feature matrix); for 1.3 (defect
 traceability, test evidence, limitations): **[docs/spec-compliance-v1.3.md](docs/spec-compliance-v1.3.md)**,
 [1.3.1](docs/spec-compliance-v1.3.1.md), [1.3.2](docs/v1.3.2/spec-compliance-v1.3.2.md),
-[1.3.3](docs/v1.3.3/evidence_report_v1.3.3.md).
-Release notes: [docs/RELEASE_NOTES_v1.3.3.md](docs/RELEASE_NOTES_v1.3.3.md), [1.3.2](docs/RELEASE_NOTES_v1.3.2.md), [1.3.1](docs/RELEASE_NOTES_v1.3.1.md),
+[1.3.3](docs/v1.3.3/evidence_report_v1.3.3.md), [1.3.4](docs/v1.3.4/evidence_report_v1.3.4.md).
+Release notes: [docs/RELEASE_NOTES_v1.3.4.md](docs/RELEASE_NOTES_v1.3.4.md), [1.3.3](docs/RELEASE_NOTES_v1.3.3.md), [1.3.2](docs/RELEASE_NOTES_v1.3.2.md), [1.3.1](docs/RELEASE_NOTES_v1.3.1.md),
 [1.3.0](docs/RELEASE_NOTES_v1.3.0.md), [1.2.0](docs/RELEASE_NOTES_v1.2.0.md),
 [1.1.0](docs/RELEASE_NOTES_v1.1.0.md).
 The discovery grammar is in [docs/formula-grammar.md](docs/formula-grammar.md).

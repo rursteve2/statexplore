@@ -773,3 +773,25 @@ def test_educational_script_runs_and_is_labelled(tmp_path):
     shutil.copy(FX / "StatExplore_Test51D_CombinedInteractions.csv", tmp_path / "your_data.csv")
     res = rscript(txt, tmp_path)
     assert res.returncode == 0, res.stderr[-2000:]
+
+
+# ---- v1.3.3 project compatibility (owner's saved projects) -----------------------------------------------------------
+
+def test_v133_projects_open_as_labelled_history(tmp_path):
+    from statexplore.core.project import Project
+    from statexplore.discovery import engine
+
+    for name in ("StatExplore_Test50_Reproducibility.sxp", "StatExplore_Test52D_Persistence.sxp"):
+        src = tmp_path / name
+        shutil.copy(FX / name, src)
+        p = Project.open(src)
+        assert p.searches and all(r.grammar == 2 for r in p.searches)
+        for r in p.searches:
+            assert (r.engine or {}).get("fit_rules") == 3          # older rules: kept as history, never reused
+            assert engine.tests_frame(r, interpret=False) is not None
+        p.save(src)
+        q = Project.open(src)
+        assert [r.id for r in q.searches] == [r.id for r in p.searches]
+        assert [len(r.rows) for r in q.searches] == [len(r.rows) for r in p.searches]
+    p50 = Project.open(tmp_path / "StatExplore_Test50_Reproducibility.sxp")
+    assert p50.searches[0].signature.startswith("86f2c8977182b627")

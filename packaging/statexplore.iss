@@ -6,10 +6,10 @@
 [Setup]
 LicenseFile=..\LICENSE
 AppName=StatExplore
-AppVersion=1.3.3
+AppVersion=1.3.4
 AppPublisher=Stephen
 AppPublisherURL=https://github.com/rursteve2/statexplore
-OutputBaseFilename=StatExplore-1.3.3-Setup
+OutputBaseFilename=StatExplore-1.3.4-Setup
 DefaultDirName={autopf}\StatExplore
 DefaultGroupName=StatExplore
 OutputDir=..\dist\installer

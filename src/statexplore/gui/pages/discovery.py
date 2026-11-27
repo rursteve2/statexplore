@@ -1409,7 +1409,9 @@ class DiscoveryPage(QWidget):
         previous = list(self.state.project.searches) if self.state.project else []
         cache = engine.cache_from(run, previous, ds)
         self._set_running(True)
-        self.progress.setRange(0, max(1, run.total))
+        # V134-016: QProgressBar holds 32-bit ints; huge spaces are shown on a scaled range (counts stay exact in text)
+        self._pscale = max(1, -(-int(run.total) // 2_000_000_000))
+        self.progress.setRange(0, max(1, int(run.total) // self._pscale))
         self.state.run_io(
             lambda: engine.execute(run, ds, rscript=rscript, cancel=cancel, cache=cache,
                                    progress=lambda r: self.bridge.progress.emit(r)),
@@ -1428,7 +1430,7 @@ class DiscoveryPage(QWidget):
 
     def _on_progress(self, run: engine.DiscoveryRun) -> None:
         done = len(run.rows)
-        self.progress.setValue(min(done, run.total))
+        self.progress.setValue(min(done, run.total) // getattr(self, "_pscale", 1))
         rate = done / run.elapsed_s if run.elapsed_s > 0 else 0
         remaining = (run.total - run.n_done) / rate if rate > 0 else None
         sig = sum(1 for r in run.rows if r["status"] in ("ok", "warning") and r.get("p") is not None

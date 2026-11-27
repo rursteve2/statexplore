@@ -93,3 +93,29 @@ rank-deficient design, or (longitudinal) has fewer than 10 participants with 2+ 
 slope. *Flags* (tested, excluded from support tiers A/B, shown separately from significance): sparse cells
 (< 5), |r| > .9 between continuous predictors, separation, non-convergence (full or reduced model),
 singular fits, ill-conditioned Hessians, < 10 events per parameter, R warnings.
+
+## v1.3.4 changes (grammar version 3)
+
+Every search records its grammar version (`DiscoveryRun.grammar`; searches without one are grammar 2). A search is
+resumed only when the current grammar reproduces its candidate order (`DiscoveryRun.grammar_problem`).
+
+**Time in eligible interactions (opt-in, V134-007).** With *Include time in eligible interactions*, time (which must be
+a required fixed effect, so its main effect is in every model) joins every candidate subset's interaction sets in the
+*All eligible interaction combinations* and *Full factorial* strategies. Time is counted once among the predictors and
+is never an optional candidate; other required covariates never become eligible. For a subset S of optional
+candidates the interaction sets are the hierarchical sets on S ∪ {Time} (all parents present; three-way terms only
+with all their two-way parents). The count is Σₖ C(p, k) · (N(k + 1, order) − [main-only excluded]), where N(m, o) is
+the number of hierarchical interaction sets on m variables. Example (51D): optional Sleep, Anxiety; required Time,
+Attendance, Gender; two-way; main-only included: {Sleep}: none, Time:Sleep; {Anxiety}: none, Time:Anxiety;
+{Sleep, Anxiety}: the 2³ = 8 subsets of {Sleep:Anxiety, Time:Sleep, Time:Anxiety} → 12 candidates, one of which is
+`Sleep + Anxiety + Sleep:Anxiety + Time:Sleep` (+ required). Off (the default, and for every saved form or older
+search) the v1.3.3 grammar is unchanged (the 30-predictor regression space stays 147,713,444 / 147,539,008).
+
+**Time × each predictor strategy.** The minimum number of candidate predictors is now honoured (a time-focal model with
+k − 1 candidates is enumerated only when k − 1 ≥ minimum). Older time-strategy searches with a minimum above 1 cannot be
+resumed under grammar 3 (the reason is shown); a new search uses the corrected grammar.
+
+**Candidate order (V134-013).** The order of the selected candidates (shown as 1., 2., … and changed with the Order
+controls or by dragging) is the enumeration order and defines candidate indices. An exhaustive search evaluates the
+same set in any order; a budget-limited, early-stopping or cancelled search evaluates a prefix, so the order can change
+which candidates were evaluated. A reordered list starts a new search; stored searches are never changed.
