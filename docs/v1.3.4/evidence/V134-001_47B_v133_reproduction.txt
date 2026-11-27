@@ -1,0 +1,7 @@
+statexplore from <v1.3.3 worktree>\src\statexplore\__init__.py
+{'SCHOOL': ('continuous', 'numeric'), 'ID': ('nominal', 'numeric'), 'TIME': ('continuous', 'numeric'), 'GROUP': ('nominal', 'numeric'), 'Y': ('continuous', 'numeric'), 'GROUP2': ('nominal', 'numeric')}
+0 Y ~ TIME * GROUP  [random = list(SCHOOL = pdDiag(~1), ID = pdSymm(~1 + TIME)), corAR1(~ occasion | SCHOOL/ID)] ok -1681.0103173278592 2.2043273790507348e-11
+1 Y ~ TIME * GROUP2  [random = list(SCHOOL = pdDiag(~1), ID = pdSymm(~1 + TIME)), corAR1(~ occasion | SCHOOL/ID)] ok -1685.2653282626986 6.91694438806539e-12
+bootstrap draws 1–10 of 20
+bootstrap draws 11–20 of 20
+app selection: [(1, 'fitted', 1.0, ''), (2, 'fitted', 1.0, ''), (3, 'fitted', 0.0, ''), (4, 'fitted', 1.0, ''), (5, 'fitted', 0.0, ''), (6, 'fitted', 1.0, ''), (7, 'fitted', 1.0, ''), (8, 'fitted', 1.0, ''), (9, 'fitted', 0.0, ''), (10, 'fitted', 1.0, ''), (11, 'fitted', 1.0, ''), (12, 'failed', nan, 'no candidate could be fitted on this resample'), (13, 'fitted', 1.0, ''), (14, 'failed', nan, 'no candidate could be fitted on this resample'), (15, 'failed', nan, 'no candidate could be fitted on this resample'), (16, 'failed', nan, 'no candidate could be fitted on this resample'), (17, 'fitted', 0.0, ''), (18, 'failed', nan, 'no candidate could be fitted on this resample'), (19, 'failed', nan, 'no candidate could be fitted on this resample'), (20, 'failed', nan, 'no candidate could be fitted on this resample')]

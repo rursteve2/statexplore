@@ -1,0 +1,36 @@
+{
+ "baseline": {
+  "tag": "v1.3.3",
+  "commit": "90305ecb09608062442a4c80b651942c767a181a",
+  "spec_commit": "df249322ad24d4c96f5b7111a0e3b4b525753e47 (code identical; 90305ec adds docs only)"
+ },
+ "suites": {
+  "v1.3.3 baseline": {
+   "tests": "493",
+   "failures": "1",
+   "errors": "0",
+   "skipped": "1",
+   "time": "1112.959"
+  },
+  "v1.3.4 tests on v1.3.3 (red)": {
+   "tests": "44",
+   "failures": "37",
+   "errors": "0",
+   "skipped": "0",
+   "time": "115.839"
+  },
+  "v1.3.4 final": {
+   "tests": "538",
+   "failures": "0",
+   "errors": "0",
+   "skipped": "1",
+   "time": "1244.967"
+  }
+ },
+ "environment": {
+  "python": "3.11.1",
+  "machine": "Windows-10-10.0.19045-SP0",
+  "cpu_count": 16,
+  "R": "4.6.2 (2026-10-29 ucrt)"
+ }
+}

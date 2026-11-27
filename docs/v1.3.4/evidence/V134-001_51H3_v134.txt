@@ -1,0 +1,37 @@
+statexplore from <repo>\src\statexplore\__init__.py
+{'School': ('continuous', 'numeric'), 'StudentID': ('continuous', 'numeric'), 'Time': ('continuous', 'numeric'), 'Sleep': ('continuous', 'numeric'), 'Anxiety': ('continuous', 'numeric'), 'Attendance': ('continuous', 'numeric'), 'Gender': ('nominal', 'numeric'), 'TestScore': ('continuous', 'numeric')}
+search complete 18
+0 TestScore ~ Sleep + Time + Gender + (1 | School) + (1 + Time | StudentID) ok 
+1 TestScore ~ Anxiety + Time + Gender + (1 | School) + (1 + Time | StudentID) ok 
+2 TestScore ~ Attendance + Time + Gender + (1 | School) + (1 + Time | StudentID) warning convergence: Model failed to converge with max|grad| = 0.012854 (tol = 0.002, co
+3 TestScore ~ Sleep + Anxiety + Time + Gender + (1 | School) + (1 + Time | StudentID) warning convergence: Model failed to converge with max|grad| = 0.00890578 (tol = 0.002, 
+4 TestScore ~ Sleep * Anxiety + Time + Gender + (1 | School) + (1 + Time | StudentID) warning convergence: Model failed to converge with max|grad| = 0.0117413 (tol = 0.002, c
+5 TestScore ~ Sleep + Attendance + Time + Gender + (1 | School) + (1 + Time | StudentID) warning convergence: Model failed to converge with max|grad| = 0.00261884 (tol = 0.002, 
+6 TestScore ~ Sleep * Attendance + Time + Gender + (1 | School) + (1 + Time | StudentID) ok 
+7 TestScore ~ Anxiety + Attendance + Time + Gender + (1 | School) + (1 + Time | StudentID) warning convergence: Model failed to converge with max|grad| = 0.0035811 (tol = 0.002, c
+8 TestScore ~ Anxiety * Attendance + Time + Gender + (1 | School) + (1 + Time | StudentID) warning convergence: Model failed to converge with max|grad| = 0.00361235 (tol = 0.002, 
+9 TestScore ~ Sleep + Anxiety + Attendance + Time + Gender + (1 | School) + (1 + Time | StudentID) ok 
+10 TestScore ~ Sleep * Anxiety + Attendance + Time + Gender + (1 | School) + (1 + Time | StudentID) warning convergence: Model failed to converge with max|grad| = 0.00471138 (tol = 0.002, 
+11 TestScore ~ Sleep * Attendance + Anxiety + Time + Gender + (1 | School) + (1 + Time | StudentID) warning convergence: Model failed to converge with max|grad| = 0.00450365 (tol = 0.002, 
+12 TestScore ~ Anxiety * Attendance + Sleep + Time + Gender + (1 | School) + (1 + Time | StudentID) warning convergence: Model failed to converge with max|grad| = 0.00261671 (tol = 0.002, 
+13 TestScore ~ Sleep + Anxiety + Attendance + Sleep:Anxiety + Sleep:Attendance + Time + Gender + (1 | School) + (1 + Time | StudentID) ok 
+14 TestScore ~ Sleep + Anxiety + Attendance + Sleep:Anxiety + Anxiety:Attendance + Time + Gender + (1 | School) + (1 + Time | StudentID) warning convergence: Model failed to converge with max|grad| = 0.00630743 (tol = 0.002, 
+15 TestScore ~ Sleep + Anxiety + Attendance + Sleep:Attendance + Anxiety:Attendance + Time + Gender + (1 | School) + (1 + Time | StudentID) warning convergence: Model failed to converge with max|grad| = 0.0021481 (tol = 0.002, c
+16 TestScore ~ Sleep + Anxiety + Attendance + Sleep:Anxiety + Sleep:Attendance + Anxiety:Attendance + Time + Gender + (1 | School) + (1 + Time | StudentID) ok 
+17 TestScore ~ Sleep * Anxiety * Attendance + Time + Gender + (1 | School) + (1 + Time | StudentID) ok 
+bootstrap draws 1–10 of 20
+bootstrap draws 11–20 of 20
+validation complete [] 77.2 s
+selected_index per draw: [17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17]
+stability: [('Sleep × Anxiety, Sleep × Attendance, Anxiety × Attendance, Sleep × Anxiety × Attendance [#17]', 20)]
+coefficients: [('v004:v005:v006', 1.6064513294946778), ('v004:v005:v006', 1.574032818337392), ('v004:v005:v006', 1.5432371273126015), ('v004:v005:v006', 1.5390412800572923), ('v004:v005:v006', 1.5754644946121843), ('v004:v005:v006', 1.5032505435064833), ('v004:v005:v006', 1.481797308853363), ('v004:v005:v006', 1.5703163935378326), ('v004:v005:v006', 1.5526071795054883), ('v004:v005:v006', 1.5366552107898879), ('v004:v005:v006', 1.4235186261710233), ('v004:v005:v006', 1.450142605466421), ('v004:v005:v006', 1.353569937736633), ('v004:v005:v006', 1.5482392135667618), ('v004:v005:v006', 1.5138670037450517), ('v004:v005:v006', 1.530575573355288), ('v004:v005:v006', 1.526115151562157), ('v004:v005:v006', 1.5411537602076029), ('v004:v005:v006', 1.5574647170461022), ('v004:v005:v006', 1.6205436286742803)]
+owner draw rows 32000 regenerated 32000 identical: True
+matches owner app selection: False
+merge: {'both': 360, 'left_only': 0, 'right_only': 0} rows 360
+Full_LL            max |diff| 0.134  rel 2.84e-05
+Fresh_reduced_LL   max |diff| 4.55e-12  rel 9.89e-16
+Fresh_LRT          max |diff| 0.269  rel 0.0101
+df                 max |diff| 0  rel 0
+log10 p max |diff| 0.06042046878280072  rel 0.009116391974069285
+oracle log selection: [17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17]
+app flags: 214 ref flags: 221 oracle singular: 89 oracle diag: 211

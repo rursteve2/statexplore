@@ -1,0 +1,198 @@
+{
+ "version": "1.3.3",
+ "python": "3.11.1",
+ "machine": "Windows-10-10.0.19045-SP0",
+ "cpu_count": 16,
+ "repeats": 3,
+ "workloads": {
+  "52A": [
+   {
+    "fresh": {
+     "wall_s": 3.437,
+     "peak_mb": 541,
+     "attempted": 15,
+     "reused": 0,
+     "status": "complete",
+     "sig_bh": 0
+    },
+    "reused": {
+     "wall_s": 0.961,
+     "peak_mb": 375,
+     "attempted": 15,
+     "reused": 15,
+     "status": "complete",
+     "sig_bh": 0
+    }
+   },
+   {
+    "fresh": {
+     "wall_s": 3.417,
+     "peak_mb": 543,
+     "attempted": 15,
+     "reused": 0,
+     "status": "complete",
+     "sig_bh": 0
+    },
+    "reused": {
+     "wall_s": 0.874,
+     "peak_mb": 376,
+     "attempted": 15,
+     "reused": 15,
+     "status": "complete",
+     "sig_bh": 0
+    }
+   },
+   {
+    "fresh": {
+     "wall_s": 3.338,
+     "peak_mb": 543,
+     "attempted": 15,
+     "reused": 0,
+     "status": "complete",
+     "sig_bh": 0
+    },
+    "reused": {
+     "wall_s": 0.88,
+     "peak_mb": 376,
+     "attempted": 15,
+     "reused": 15,
+     "status": "complete",
+     "sig_bh": 0
+    }
+   }
+  ],
+  "53A": {
+   "runs": [
+    {
+     "wall_s": 14.22,
+     "peak_mb": 1120,
+     "attempted": 435,
+     "reused": 0,
+     "status": "complete",
+     "sig_bh": 11
+    },
+    {
+     "wall_s": 13.849,
+     "peak_mb": 1121,
+     "attempted": 435,
+     "reused": 0,
+     "status": "complete",
+     "sig_bh": 11
+    },
+    {
+     "wall_s": 13.754,
+     "peak_mb": 1124,
+     "attempted": 435,
+     "reused": 0,
+     "status": "complete",
+     "sig_bh": 11
+    }
+   ],
+   "median_s": 13.849,
+   "range_s": [
+    13.754,
+    14.22
+   ]
+  },
+  "53B": {
+   "count": 147713444,
+   "preview_total": 147713444,
+   "fits_estimate": 584502098,
+   "wall_s": 0.804,
+   "peak_mb": 96
+  },
+  "53C_budget100": {
+   "runs": [
+    {
+     "wall_s": 6.231,
+     "peak_mb": 908,
+     "attempted": 100,
+     "reused": 0,
+     "status": "partial",
+     "sig_bh": 120
+    },
+    {
+     "wall_s": 6.399,
+     "peak_mb": 908,
+     "attempted": 100,
+     "reused": 0,
+     "status": "partial",
+     "sig_bh": 120
+    },
+    {
+     "wall_s": 6.214,
+     "peak_mb": 911,
+     "attempted": 100,
+     "reused": 0,
+     "status": "partial",
+     "sig_bh": 120
+    }
+   ],
+   "median_s": 6.231,
+   "range_s": [
+    6.214,
+    6.399
+   ]
+  },
+  "53C_cancel": [
+   {
+    "cancel_latency_s": 1.959,
+    "total_s": 4.96,
+    "status": "cancelled",
+    "recorded": 0,
+    "n_done": 0,
+    "rscript_after": 0
+   },
+   {
+    "cancel_latency_s": 1.855,
+    "total_s": 4.856,
+    "status": "cancelled",
+    "recorded": 0,
+    "n_done": 0,
+    "rscript_after": 0
+   },
+   {
+    "cancel_latency_s": 1.821,
+    "total_s": 4.823,
+    "status": "cancelled",
+    "recorded": 0,
+    "n_done": 0,
+    "rscript_after": 0
+   }
+  ],
+  "54B": {
+   "runs": [
+    {
+     "wall_s": 49.918,
+     "peak_mb": 977,
+     "attempted": 15,
+     "reused": 0,
+     "status": "complete",
+     "sig_bh": 2
+    },
+    {
+     "wall_s": 48.78,
+     "peak_mb": 949,
+     "attempted": 15,
+     "reused": 0,
+     "status": "complete",
+     "sig_bh": 2
+    },
+    {
+     "wall_s": 50.316,
+     "peak_mb": 958,
+     "attempted": 15,
+     "reused": 0,
+     "status": "complete",
+     "sig_bh": 2
+    }
+   ],
+   "median_s": 49.918,
+   "range_s": [
+    48.78,
+    50.316
+   ],
+   "load_s": 1.43
+  }
+ }
+}

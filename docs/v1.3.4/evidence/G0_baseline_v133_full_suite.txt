@@ -1,0 +1,47 @@
+...................................................F.................... [ 14%]
+........................................................................ [ 29%]
+........................................................................ [ 43%]
+........................................................................ [ 58%]
+........................................................................ [ 73%]
+.......................................................s................ [ 87%]
+.............................................................            [100%]
+================================== FAILURES ===================================
+________________ test_N_output_messages_warnings_errors_plots _________________
+
+tmp_path = WindowsPath('E:/sx_tmp/base134/test_N_output_messages_warning0')
+small_ds = <statexplore.core.dataset.Dataset object at 0x0000013C450B3590>
+user_lib_root = WindowsPath('E:/sx_tmp/base134/test_N_output_messages_warning0/userroot')
+
+    def test_N_output_messages_warnings_errors_plots(tmp_path, small_ds, user_lib_root):
+        c = RConsole(tmp_path / "c")
+        c.set_dataset(small_ds)
+        r = c.run("message('hello'); warning('careful')\nplot(my_data$x)\nlibrary(ggplot2)\n"
+                  "print(ggplot(my_data, aes(x)) + geom_histogram(bins = 10))\nprint('done')")
+>       assert kinds(r, "message") == ["hello"] and kinds(r, "warning") == ["Warning: careful"]
+E       AssertionError: assert (['hello'] == ['hello']
+E         
+E         Use -v to get more diff and ['Warning: ca...ut of memory'] == ['Warning: careful']
+E         
+E         Left contains one more item: 'Warning: processing of the plot ran out of memory'
+E         Use -v to get more diff)
+
+tests\test_console_packages.py:80: AssertionError
+============================== warnings summary ===============================
+tests/test_v13.py::test_P1_04_likelihood_parameter_count
+tests/test_v13.py::test_P1_04_likelihood_parameter_count
+tests/test_v13.py::test_P1_04_likelihood_parameter_count
+  <v1.3.3 worktree>\src\statexplore\discovery\engine.py:940: Pandas4Warning: 'bool' is not supported as a fill value for float64 dtype. In a future version, calling fillna with an incompatible value will raise. Explicitly cast to a common dtype before filling.
+    df[c] = df[c].fillna(False).astype(bool)
+
+tests/test_v13.py::test_P1_04_likelihood_parameter_count
+  <v1.3.3 worktree>\src\statexplore\discovery\engine.py:941: Pandas4Warning: 'str' is not supported as a fill value for float64 dtype. In a future version, calling fillna with an incompatible value will raise. Explicitly cast to a common dtype before filling.
+    df["tier"] = df["tier"].fillna("")
+
+tests/test_v13.py::test_P1_04_likelihood_parameter_count
+  <v1.3.3 worktree>\src\statexplore\discovery\engine.py:942: Pandas4Warning: 'str' is not supported as a fill value for float64 dtype. In a future version, calling fillna with an incompatible value will raise. Explicitly cast to a common dtype before filling.
+    df["validation"] = df["validation"].fillna("")
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+SKIPPED [1] tests\test_v132_gui.py:192: screenshots only when STATEXPLORE_SHOTS is set (evidence run, not a functional test)
+1 failed, 491 passed, 1 skipped, 5 warnings in 1113.10s (0:18:33)

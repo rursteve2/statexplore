@@ -532,10 +532,17 @@ separate owner-approved deferrals if unavailable; never reported as PASS; they d
 | V134-011 | `sx_val_coef` returns `cols[1]` |
 
 ## Plan
-- [ ] G0 baseline suite + red reproductions (001/002/003/004/005/009 + 007 counts)
-- [ ] G1 fit context + content-keyed, per-sample caches; log-domain inference/adjustment/ranking; GEE corstr + readback + QIC/QICu/CIC; comparability; FIT_RULES 4; legacy-identity no-reuse
-- [ ] G2 candidate identity in stability; training-only pipeline with replayed stopping; time-eligible grammar (opt-in); validation manifest identity/realized sizes/portable script; per-fit diagnostic attribution; multi-coefficient estimands; workload caps
-- [ ] G3 resume after reopen (reason states); Educational vs Complete R code; audit JSON + report; migration
-- [ ] G4 candidate reordering; teaching wording; code Ctrl+F; DPI simulation
-- [ ] G5 full suite + references + benchmarks + build + frozen self-test
-- [ ] G6 docs (register, evidence report, release notes), release
+- [x] G0 baseline suite + red reproductions (001/002/003/004/005/009 + 007 counts)
+- [x] G1 fit context + content-keyed, per-sample caches; log-domain inference/adjustment/ranking; GEE corstr + readback + QIC/QICu/CIC; comparability; FIT_RULES 4; legacy-identity no-reuse
+- [x] G2 candidate identity in stability; training-only pipeline with replayed stopping; time-eligible grammar (opt-in); validation manifest identity/realized sizes/portable script; per-fit diagnostic attribution; multi-coefficient estimands; workload caps
+- [x] G3 resume after reopen (reason states); Educational vs Complete R code; audit JSON + report; migration
+- [x] G4 candidate reordering; teaching wording; code Ctrl+F; DPI simulation
+- [x] G5 full suite + references + benchmarks + build + frozen self-test
+- [x] G6 docs (register, evidence report, release notes), release
+
+### Review (v1.3.4)
+- Tests 493 -> 538 (537 pass + 1 screenshot skip); 44 new tests, 37 red on v1.3.3. Register 111 rows: 103 PASS,
+  5 N/A, 3 NOT RUN (owner-approved deferrals). Frozen self-test OK. Benchmarks within 20 % (54B +5.7 %); 51H3
+  bootstrap 48 -> 79 s because wrong cross-draw reuse is gone.
+- Not reproduced: V134-009 greyed Resume (saved project reopens resumable on v1.3.3 too). Partial: 47C exact counts
+  (settings not supplied). Evidence: docs/v1.3.4/, E:\sx_v134_work.

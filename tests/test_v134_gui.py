@@ -213,7 +213,8 @@ app = QApplication(sys.argv)
 from statexplore.gui.main_window import MainWindow
 from statexplore.gui.state import AppState
 w = MainWindow(AppState()); w.resize(1366, 768); w.show(); app.processEvents()
-w.set_page("Automated Model Discovery") if hasattr(w, "set_page") else None
+from statexplore.gui.main_window import SECTIONS
+w.sidebar.setCurrentRow(SECTIONS.index("Automated Model Discovery"))
 app.processEvents()
 pix = w.grab(); pix.save(sys.argv[1])
 json.dump({"min_w": w.minimumSizeHint().width(), "dpr": app.devicePixelRatio(), "w": w.width()}, open(sys.argv[2], "w"))

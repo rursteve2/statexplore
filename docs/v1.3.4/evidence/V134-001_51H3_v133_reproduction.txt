@@ -1,0 +1,29 @@
+statexplore from <v1.3.3 worktree>\src\statexplore\__init__.py
+{'School': ('continuous', 'numeric'), 'StudentID': ('continuous', 'numeric'), 'Time': ('continuous', 'numeric'), 'Sleep': ('continuous', 'numeric'), 'Anxiety': ('continuous', 'numeric'), 'Attendance': ('continuous', 'numeric'), 'Gender': ('nominal', 'numeric'), 'TestScore': ('continuous', 'numeric')}
+search complete 18
+0 TestScore ~ Sleep + Time + Gender + (1 | School) + (1 + Time | StudentID) ok 
+1 TestScore ~ Anxiety + Time + Gender + (1 | School) + (1 + Time | StudentID) ok 
+2 TestScore ~ Attendance + Time + Gender + (1 | School) + (1 + Time | StudentID) warning convergence: Model failed to converge with max|grad| = 0.012854 (tol = 0.002, co
+3 TestScore ~ Sleep + Anxiety + Time + Gender + (1 | School) + (1 + Time | StudentID) warning convergence: Model failed to converge with max|grad| = 0.00890578 (tol = 0.002, 
+4 TestScore ~ Sleep * Anxiety + Time + Gender + (1 | School) + (1 + Time | StudentID) warning convergence: Model failed to converge with max|grad| = 0.0117413 (tol = 0.002, c
+5 TestScore ~ Sleep + Attendance + Time + Gender + (1 | School) + (1 + Time | StudentID) warning convergence: Model failed to converge with max|grad| = 0.00261884 (tol = 0.002, 
+6 TestScore ~ Sleep * Attendance + Time + Gender + (1 | School) + (1 + Time | StudentID) failed 
+7 TestScore ~ Anxiety + Attendance + Time + Gender + (1 | School) + (1 + Time | StudentID) warning convergence: Model failed to converge with max|grad| = 0.0035811 (tol = 0.002, c
+8 TestScore ~ Anxiety * Attendance + Time + Gender + (1 | School) + (1 + Time | StudentID) warning convergence: Model failed to converge with max|grad| = 0.00361235 (tol = 0.002, 
+9 TestScore ~ Sleep + Anxiety + Attendance + Time + Gender + (1 | School) + (1 + Time | StudentID) warning reduced model convergence: Model failed to converge with max|grad| = 0.0035811 (
+10 TestScore ~ Sleep * Anxiety + Attendance + Time + Gender + (1 | School) + (1 + Time | StudentID) warning convergence: Model failed to converge with max|grad| = 0.00471138 (tol = 0.002, 
+11 TestScore ~ Sleep * Attendance + Anxiety + Time + Gender + (1 | School) + (1 + Time | StudentID) warning convergence: Model failed to converge with max|grad| = 0.00450365 (tol = 0.002, 
+12 TestScore ~ Anxiety * Attendance + Sleep + Time + Gender + (1 | School) + (1 + Time | StudentID) warning convergence: Model failed to converge with max|grad| = 0.00261671 (tol = 0.002, 
+13 TestScore ~ Sleep + Anxiety + Attendance + Sleep:Anxiety + Sleep:Attendance + Time + Gender + (1 | School) + (1 + Time | StudentID) warning reduced model convergence: Model failed to converge with max|grad| = 0.00450365 
+14 TestScore ~ Sleep + Anxiety + Attendance + Sleep:Anxiety + Anxiety:Attendance + Time + Gender + (1 | School) + (1 + Time | StudentID) warning convergence: Model failed to converge with max|grad| = 0.00630743 (tol = 0.002, 
+15 TestScore ~ Sleep + Anxiety + Attendance + Sleep:Attendance + Anxiety:Attendance + Time + Gender + (1 | School) + (1 + Time | StudentID) warning convergence: Model failed to converge with max|grad| = 0.0021481 (tol = 0.002, c
+16 TestScore ~ Sleep + Anxiety + Attendance + Sleep:Anxiety + Sleep:Attendance + Anxiety:Attendance + Time + Gender + (1 | School) + (1 + Time | StudentID) warning reduced model convergence: Model failed to converge with max|grad| = 0.0021481 (
+17 TestScore ~ Sleep * Anxiety * Attendance + Time + Gender + (1 | School) + (1 + Time | StudentID) ok 
+bootstrap draws 1–10 of 20
+bootstrap draws 11–20 of 20
+validation complete [] 48.5 s
+selected_index per draw: [17, 13, 13, 13, 13, 13, 13, 16, 13, 13, 16, 17, 16, 17, 17, 17, 17, 17, 17, 17]
+stability: [('Sleep × Anxiety, Sleep × Attendance', 8), ('Sleep × Anxiety, Sleep × Attendance, Anxiety × Attendance', 3), ('Sleep × Anxiety, Sleep × Attendance, Anxiety × Attendance, Sleep × Anxiety × Attendance', 9)]
+coefficients: [('v004:v005', -2.291533495853854), ('v004:v005', -2.8106501811492466), ('v004:v005', -2.907790270539677), ('v004:v005', -2.5757326433092937), ('v004:v005', -2.6801718252781552), ('v004:v005', -2.6657899747535825), ('v004:v005', -2.3595295615796004), ('v004:v005', -2.6834392393826887), ('v004:v005', -2.55349038603939), ('v004:v005', -2.8037257719035966), ('v004:v005', -2.908769806290901), ('v004:v005', -2.4407505287600952), ('v004:v005', -2.5030532927315567), ('v004:v005', -2.46160476101073), ('v004:v005', -2.4236835499180174), ('v004:v005', -2.445807632090608), ('v004:v005', -2.451392811024828), ('v004:v005', -2.4371806054848286), ('v004:v005', -2.442894618453586), ('v004:v005', -2.333146052748898)]
+owner draw rows 32000 regenerated 32000 identical: True
+matches owner app selection: True

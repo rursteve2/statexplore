@@ -1,0 +1,844 @@
+statexplore from <v1.3.3 worktree>\src\statexplore\__init__.py
+.FFFFFFFFFFFFFFFFFFFFFFFFFFF.FFFFFF.FFFF....                             [100%]
+================================== FAILURES ===================================
+__________________________ test_fit_key_adversaries ___________________________
+
+r_worker = <statexplore.rbridge.worker.RWorker object at 0x00000151DF913450>
+
+    @pytest.mark.r
+    def test_fit_key_adversaries(r_worker):
+        """Same row names but altered response / covariate, equal n with other rows, other grouping or coding, another
+        structure or estimation regime, or another sample context: the key differs. Identical content: equal key."""
+        script = _helpers() + r'''
+    sx_disc_family <- "lmm"; sx_disc_struct <- "ri"; sx_disc_clustered <- FALSE; sx_disc_reml <- FALSE
+    sx_disc_gee_family <- "gaussian"; sx_disc_fit_rules <- "fit-rules-4"; sx_cache_reset("search")
+    set.seed(1); n <- 60
+    d <- data.frame(sx_y = rnorm(n), v001 = rnorm(n), sx_gid = factor(rep(1:12, each = 5)), sx_time = rep(0:4, 12))
+    d$sx_timef <- factor(d$sx_time); d$sx_occ <- as.integer(d$sx_timef); rownames(d) <- paste0("b", seq_len(n))
+    f <- sx_y ~ v001
+    k0 <- sx_fit_key(f, d)
+    d1 <- d; d1$sx_y[3] <- d1$sx_y[3] + 1                      # same row names, other response
+    d2 <- d; d2$v001 <- rev(d2$v001)                          # same row names, other covariate
+    d3 <- d; d3$sx_gid <- factor(rep(1:6, each = 10))         # other grouping
+    d4 <- d[sample(n), ]; rownames(d4) <- rownames(d)          # equal n, same labels, other rows in each position
+    d5 <- d; d5$v001 <- d5$v001                               # identical content
+    sx_disc_struct <- "rs"; k_struct <- sx_fit_key(f, d); sx_disc_struct <- "ri"
+    sx_disc_reml <- TRUE; k_reml <- sx_fit_key(f, d); sx_disc_reml <- FALSE
+    k_ctx <- { sx_cache_reset("boot2"); k <- sx_fit_key(f, d); sx_cache_reset("search"); k }
+    k_terms <- sx_fit_key(sx_y ~ v001 + sx_time, d)
+    sx_result <- list(resp = k0 != sx_fit_key(f, d1), cov = k0 != sx_fit_key(f, d2), grp = k0 != sx_fit_key(f, d3),
+                      rows = k0 != sx_fit_key(f, d4), same = k0 == sx_fit_key(f, d5), struct = k0 != k_struct,
+                      reml = k0 != k_reml, ctx = k0 != k_ctx, terms = k0 != k_terms)
+    '''
+>       out = r_worker.run(script, packages=["lme4", "nlme"], timeout=300).result
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\test_v134.py:108: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+<v1.3.3 worktree>\src\statexplore\rbridge\worker.py:203: in run
+    return self.request("run", {"script": script, "packages": packages or []}, timeout)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <statexplore.rbridge.worker.RWorker object at 0x00000151DF913450>
+cmd = 'run'
+args = {'script': '# ---- StatExplore helper functions ----\nsx_item_mean <- function(d, min_valid) {\n  n <- rowSums(!is.na(...ct,\n                  reml = k0 != k_reml, ctx = k0 != k_ctx, terms = k0 != k_terms)\n', 'packages': ['lme4', 'nlme']}
+timeout = 300
+
+    def request(self, cmd: str, args: dict[str, Any] | None = None, timeout: float = 120.0) -> RResponse:
+        with self._lock:
+            if not self.alive:
+                self.start()
+            req_id = str(next(self._ids))
+            payload = json.dumps({"id": req_id, "cmd": cmd, "args": args or {}}, ensure_ascii=True)
+            assert self._proc and self._proc.stdin
+            try:
+                self._proc.stdin.write(payload + "\n")
+                self._proc.stdin.flush()
+            except OSError as e:
+                self._proc = None
+                raise REngineError(f"Could not send request to R: {e}") from e
+            msg = self._await(req_id, timeout)
+        if not msg.get("ok"):
+>           raise RScriptError(msg.get("error") or "Unknown R error", (args or {}).get("script", ""))
+E           statexplore.rbridge.worker.RScriptError: could not find function "sx_cache_reset"
+
+<v1.3.3 worktree>\src\statexplore\rbridge\worker.py:196: RScriptError
+______________ test_reduced_cache_never_crosses_bootstrap_draws _______________
+
+r_worker = <statexplore.rbridge.worker.RWorker object at 0x00000151DF913450>
+
+    @pytest.mark.r
+    def test_reduced_cache_never_crosses_bootstrap_draws(r_worker):
+        """The v1.3.3 failure mechanism: two different resamples with identical row names b1..bn. The second draw's
+        reduced-model statistics must be refitted, not taken from the first draw."""
+        script = _helpers() + r'''
+    sx_disc_family <- "gaussian"; sx_disc_struct <- "ri"; sx_disc_clustered <- FALSE; sx_disc_reml <- FALSE
+    sx_disc_gee_family <- "gaussian"; sx_disc_fit_rules <- "fit-rules-4"; sx_cache_reset("search")
+    set.seed(2); n <- 80
+    mk <- function() { d <- data.frame(sx_y = rnorm(n), v001 = rnorm(n)); rownames(d) <- paste0("b", seq_len(n)); d }
+    a <- mk(); b <- mk()
+    sa <- sx_reduced_stats("v001", a); sb <- sx_reduced_stats("v001", b); sa2 <- sx_reduced_stats("v001", a)
+    sx_result <- list(a = sa$rss, b = sb$rss, ref_a = deviance(lm(sx_y ~ v001, a)), ref_b = deviance(lm(sx_y ~ v001, b)),
+                      src = c(sa$source, sb$source, sa2$source), hits = sx_disc_cache_log$hits)
+    '''
+>       out = r_worker.run(script, timeout=300).result
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\test_v134.py:126: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+<v1.3.3 worktree>\src\statexplore\rbridge\worker.py:203: in run
+    return self.request("run", {"script": script, "packages": packages or []}, timeout)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <statexplore.rbridge.worker.RWorker object at 0x00000151DF913450>
+cmd = 'run'
+args = {'script': '# ---- StatExplore helper functions ----\nsx_item_mean <- function(d, min_valid) {\n  n <- rowSums(!is.na(..., b)),\n                  src = c(sa$source, sb$source, sa2$source), hits = sx_disc_cache_log$hits)\n', 'packages': []}
+timeout = 300
+
+    def request(self, cmd: str, args: dict[str, Any] | None = None, timeout: float = 120.0) -> RResponse:
+        with self._lock:
+            if not self.alive:
+                self.start()
+            req_id = str(next(self._ids))
+            payload = json.dumps({"id": req_id, "cmd": cmd, "args": args or {}}, ensure_ascii=True)
+            assert self._proc and self._proc.stdin
+            try:
+                self._proc.stdin.write(payload + "\n")
+                self._proc.stdin.flush()
+            except OSError as e:
+                self._proc = None
+                raise REngineError(f"Could not send request to R: {e}") from e
+            msg = self._await(req_id, timeout)
+        if not msg.get("ok"):
+>           raise RScriptError(msg.get("error") or "Unknown R error", (args or {}).get("script", ""))
+E           statexplore.rbridge.worker.RScriptError: could not find function "sx_cache_reset"
+
+<v1.3.3 worktree>\src\statexplore\rbridge\worker.py:196: RScriptError
+________________ test_51h3_bootstrap_matches_fresh_log_oracle _________________
+
+r_session = <statexplore.analysis.session.RSession object at 0x00000151DFE8D3D0>
+
+    @pytest.mark.r
+    @pytest.mark.slow
+    @pytest.mark.timeout(3600)
+    def test_51h3_bootstrap_matches_fresh_log_oracle(r_session):
+        """V134-001/002/003/011: 51H3 (B = 20, seed 133, new schools, whole pipeline, p rule). Draw manifest = the owner's
+        export; every candidate in every draw vs the owner's independent fresh refits; selections = fresh log-tail oracle
+        (#17 in all 20); counts by identity sum to the successful draws; the reported estimand is the triple coefficient."""
+        from statexplore.discovery import validate as V
+    
+        d = fx("Test51C_ThreeWayInteraction")
+        run = search(d, **s51h())
+        assert run.total == 18 and len(run.rows) == 18
+        vr = V.ValidationRunner(r_session, d, run, V.ValidationConfig(target="cluster", modes=["bootstrap"], B=20,
+                                                                      seed=133)).execute()
+        mine = pd.DataFrame(vr["draws"])[["b", "row_id", "draw_participant", "draw_cluster"]]
+        owner = pd.read_csv(REF / "Test51H3_owner_draws.csv", dtype={"draw_cluster": str, "draw_gid": str})
+        assert np.array_equal(mine.to_numpy().astype(str), owner.to_numpy().astype(str))
+        assert vr["status"] == "complete"
+        sel = [int(b["selected_index"]) for b in vr["bootstrap"]]
+        O = pd.read_csv(REF / "Test51H3_Bootstrap_AllCandidates.csv")
+        oracle = O.loc[O.groupby("Draw")["Fresh_log10_p"].idxmin()].sort_values("Draw")["Candidate"].tolist()
+>       assert sel == oracle == [17] * 20
+E       assert [17, 13, 13, 13, 13, 13, ...] == [17, 17, 17, 17, 17, 17, ...]
+E         
+E         At index 1 diff: 13 != 17
+E         Use -v to get more diff
+
+tests\test_v134.py:152: AssertionError
+___________ test_47b_bootstrap_every_fit_matches_independent_refits ___________
+
+r_session = <statexplore.analysis.session.RSession object at 0x00000151E0A04510>
+
+    @pytest.mark.r
+    @pytest.mark.slow
+    @pytest.mark.timeout(3600)
+    def test_47b_bootstrap_every_fit_matches_independent_refits(r_session):
+        """V134-001: 47B3 (participants within schools, rs_ar1, seed 133, B = 20). 80 full / reduced fits vs the owner's
+        independent fresh fits; no artificial failed draws; selection = fresh selection in every draw."""
+        from statexplore.discovery import validate as V
+    
+        d = fx("Test47B3_CompetingInteractions")
+        run = search(d, **s47b())
+        vr = V.ValidationRunner(r_session, d, run, V.ValidationConfig(target="participant_in_cluster",
+                                                                      modes=["bootstrap"], B=20, seed=133)).execute()
+>       assert vr["status"] == "complete" and all(b["status"] == "fitted" for b in vr["bootstrap"])
+E       AssertionError: assert ('partial' == 'complete'
+E         
+E         - complete
+E         + partial)
+
+tests\test_v134.py:188: AssertionError
+___________ test_bootstrap_chunking_and_cache_do_not_change_results ___________
+
+r_session = <statexplore.analysis.session.RSession object at 0x00000151E2860B10>
+
+    @pytest.mark.r
+    @pytest.mark.slow
+    @pytest.mark.timeout(3600)
+    def test_bootstrap_chunking_and_cache_do_not_change_results(r_session):
+        """Batch sizes 1, 7 and 10 give identical per-draw statistics and selections (keyed by draw ID)."""
+        from statexplore.discovery import validate as V
+    
+        d = fx("Test47B3_CompetingInteractions")
+        run = search(d, **s47b())
+        out = []
+        for chunk in (10, 1, 7):
+            r = V.ValidationRunner(r_session, d, run, V.ValidationConfig(target="participant_in_cluster",
+                                                                         modes=["bootstrap"], B=7, seed=9))
+            r.chunk = chunk
+            v = r.execute()
+>           T = pd.DataFrame(v["trace"]).sort_values(["part", "candidate_index"]).reset_index(drop=True)
+                             ^^^^^^^^^^
+E           KeyError: 'trace'
+
+tests\test_v134.py:219: KeyError
+_____________ test_log_bh_holm_match_p_adjust_and_order_underflow _____________
+
+    def test_log_bh_holm_match_p_adjust_and_order_underflow():
+        from statsmodels.stats.multitest import multipletests
+    
+>       from statexplore.discovery.engine import log_bh, log_holm
+E       ImportError: cannot import name 'log_bh' from 'statexplore.discovery.engine' (<v1.3.3 worktree>\src\statexplore\discovery\engine.py)
+
+tests\test_v134.py:232: ImportError
+__________________ test_54b_extreme_tails_have_finite_log_p ___________________
+
+    def test_54b_extreme_tails_have_finite_log_p():
+        """The two 54B tests exported as p = 0 with no log10 p (LRT 54085.522401 and 23373.467504, df 1)."""
+        from statexplore.analysis.lrtest import lr_test
+    
+        for lr in (54085.522401, 23373.467504):
+            t = lr_test(0.0, lr / 2, 1, "chisq")
+            assert t["p"] == 0.0 or t["p"] < 1e-300
+>           assert t["log_p"] is not None and math.isfinite(t["log_p"])
+E           assert (-inf is not None and False)
+E            +  where False = <built-in function isfinite>(-inf)
+E            +    where <built-in function isfinite> = math.isfinite
+
+tests\test_v134.py:262: AssertionError
+__________________ test_51c_log_tails_ranking_and_adjustment __________________
+
+r_session = <statexplore.analysis.session.RSession object at 0x00000151E1F6AD50>
+
+    @pytest.mark.r
+    @pytest.mark.slow
+    @pytest.mark.timeout(3600)
+    def test_51c_log_tails_ranking_and_adjustment(r_session):
+        """51C: 18 candidates / 48 tests; whole-model and joint log10 p of the triple candidate ~ -485.20 / -419.54 (finite,
+        distinct, ordered); BH / Holm on the log scale; triple coefficient and LRT targets."""
+        from statexplore.discovery import engine
+    
+        d = fx("Test51C_ThreeWayInteraction")
+        run = search(d, **s51h())
+        tf = engine.tests_frame(run)
+        assert len(run.rows) == 18 and len(tf) == 48
+        t17 = tf[tf["idx"] == 17].set_index("test_type")
+>       assert t17.loc["overall", "log10_p"] == pytest.approx(-485.200773, abs=0.05)
+E       assert np.float64(nan) == -485.200773 ± 0.05
+E         
+E         comparison failed
+E         Obtained: nan
+E         Expected: -485.200773 ± 0.05
+
+tests\test_v134.py:279: AssertionError
+__________ test_48d_gee_structures_fit_their_own_working_correlation __________
+
+tmp_path = WindowsPath('E:/sx_tmp/red/test_48d_gee_structures_fit_th0')
+
+    @pytest.mark.r
+    def test_48d_gee_structures_fit_their_own_working_correlation(tmp_path):
+        from statexplore.discovery import engine
+    
+        d = fx("Test48D_GEE")
+        res = rscript(f'''suppressMessages(library(geepack))
+    d <- read.csv("{(FX / "StatExplore_Test48D_GEE.csv").as_posix()}"); d <- d[order(d$ID, d$TIME), ]
+    d$occ <- as.integer(factor(d$TIME)); out <- NULL
+    for (cs in c("independence", "exchangeable", "ar1")) {{
+      m <- geeglm(Y ~ TIME * X, id = ID, waves = occ, corstr = cs, data = d, family = gaussian()); q <- QIC(m)
+      out <- rbind(out, data.frame(corstr = m$corstr, QIC = q[["QIC"]], QICu = q[["QICu"]], CIC = q[["CIC"]],
+                                   alpha = if (length(m$geese$alpha)) m$geese$alpha[1] else NA, scale = m$geese$gamma[1],
+                                   se_x = sqrt(diag(m$geese$vbeta))[3]))
+    }}
+    write.csv(out, "gee.csv", row.names = FALSE)''', tmp_path)
+        assert res.returncode == 0, res.stderr
+        ref = pd.read_csv(tmp_path / "gee.csv").set_index("corstr")
+        assert ref.loc["independence", "QIC"] == pytest.approx(1146.36543260012, abs=1e-6)
+        names = {"gee_ind": "independence", "gee_exch": "exchangeable", "gee_ar1": "ar1"}
+        for order in (["gee_ind", "gee_exch", "gee_ar1"], ["gee_ar1", "gee_exch", "gee_ind"]):
+            run = search(d, outcome="Y", candidates=["X"], required=["TIME"], participant="ID", time="TIME",
+                         workflow="structure", structures=order, time_interactions=True, workers=1)
+            for r in run.rows:
+                cs = names[r["structure"]]
+>               assert r["gee"]["corstr"] == cs
+                       ^^^^^^^^
+E               KeyError: 'gee'
+
+tests\test_v134.py:322: KeyError
+___________________ test_gee_aic_rule_refused_in_validation ___________________
+
+    def test_gee_aic_rule_refused_in_validation():
+        from statexplore.discovery import validate as V
+        from statexplore.discovery.engine import DiscoveryRun
+        from statexplore.discovery.space import SearchSettings
+    
+        s = SearchSettings(outcome="Y", candidates=["X"], participant="ID", time="TIME", structure="gee_exch")
+        run = DiscoveryRun(settings=s, family="gee", total=2, signature="x")
+        d = fx("Test48D_GEE")
+        probs = V.feasibility(d, run, V.ValidationConfig(rule="aic", target="participant"))["problems"]
+>       assert any("no AIC" in p for p in probs)
+E       assert False
+E        +  where False = any(<generator object test_gee_aic_rule_refused_in_validation.<locals>.<genexpr> at 0x00000151E4EE6E90>)
+
+tests\test_v134.py:342: AssertionError
+___________ test_model_comparison_needs_identical_rows_not_equal_n ____________
+
+    def test_model_comparison_needs_identical_rows_not_equal_n():
+        from statexplore.discovery import engine
+        from statexplore.discovery.engine import DiscoveryRun
+        from statexplore.discovery.space import SearchSettings
+    
+        run = DiscoveryRun(settings=SearchSettings(outcome="Y", candidates=["A", "B"], sample="per_model"),
+                           family="gaussian", total=2, signature="x")
+        base = dict(status="ok", n=100, bic=10.0, loglik=-1.0, n_params=2, n_lik_params=3)
+        df = pd.DataFrame([dict(base, idx=0, aic=12.0, identity={"rows": "r1"}),
+                           dict(base, idx=1, aic=5.0, identity={"rows": "r2"})])      # equal n, different rows
+        cmp, note = engine.model_comparison(df, run)
+>       assert cmp["d_aic"].isna().all() and list(cmp["idx"]) == [0, 1] and "not comparable" in note
+E       assert (np.True_ and [1, 0] == [0, 1]
+E        +  where np.True_ = all()
+E        +    where all = 1    True\n0    True\nName: d_aic, dtype: bool.all
+E        +      where 1    True\n0    True\nName: d_aic, dtype: bool = isna()
+E        +        where isna = 1   NaN\n0   NaN\nName: d_aic, dtype: float64.isna
+E         
+E         At index 0 diff: 1 != 0
+E         Use -v to get more diff)
+
+tests\test_v134.py:358: AssertionError
+_________________ test_stability_counts_by_identity_not_label _________________
+
+    def test_stability_counts_by_identity_not_label():
+        from statexplore.discovery.validate import stability_table
+    
+        labels = ["TIME × GROUP [#0]", "TIME × GROUP2 [#1]", "TIME × GROUP [#2]"]
+        Bt = pd.DataFrame({"b": range(1, 7), "status": ["fitted"] * 5 + ["failed"],
+                           "selected": ["TIME × GROUP"] * 5 + [""], "selected_index": [0, 2, 2, 2, 1, np.nan],
+                           "estimate": [1.0, 2, 3, 4, -1, np.nan], "coefficient": ["c"] * 6, "diagnostics": ["clean"] * 6})
+>       st = stability_table(Bt, labels, [0, 1, 2], ["k0", "k1", "k2"])
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       TypeError: stability_table() takes 2 positional arguments but 4 were given
+
+tests\test_v134.py:373: TypeError
+_______________ test_validation_pool_ignores_full_data_outcomes _______________
+
+    def test_validation_pool_ignores_full_data_outcomes():
+        """The pool is the declared space in order: changing the full-data rows, statuses or stop point never changes it."""
+        from statexplore.discovery import validate as V
+        from statexplore.discovery.space import SearchSettings
+    
+        d = fx("Test47D_ValidationLeakage")
+        from statexplore.discovery import engine
+    
+        s = SearchSettings(outcome="Y", candidates=["GROUP", "GROUP2", "GROUP3"] + [f"NOISE{i:02d}" for i in range(1, 13)],
+                           participant="ID", time="TIME", cluster="SCHOOL", id_policy="local", structure="ri",
+                           strategy="focal", covariate_mode="focal", mode="A", max_predictors=3, study="longitudinal",
+                           required=["TIME"])
+        run = engine.create_run(d, s)
+        assert run.total == 105
+        pools = []
+        for rows, stop in (([], None), ([{"idx": i, "status": "invalid", "key": ""} for i in range(40)], 0)):
+            run.rows, run.stop_index = rows, stop
+            r = V.ValidationRunner(None, d, run, V.ValidationConfig(target="cluster", modes=["holdout"], max_fits=10**9))
+            pools.append([c.index for c in r.cands])
+        assert pools[0] == pools[1] == list(range(105))
+>       assert V.stop_target(run) == 1
+               ^^^^^^^^^^^^^
+E       AttributeError: module 'statexplore.discovery.validate' has no attribute 'stop_target'
+
+tests\test_v134.py:405: AttributeError
+__________ test_huge_space_validation_refused_without_materializing ___________
+
+    def test_huge_space_validation_refused_without_materializing():
+        import time as _t
+    
+        from statexplore.discovery import validate as V
+        from statexplore.discovery.engine import DiscoveryRun
+        from statexplore.discovery.space import SearchSettings, count_candidates
+    
+        s = SearchSettings(outcome="Y", candidates=[f"X{i:02d}" for i in range(1, 31)], required=["Time"],
+                           participant="StudentID", time="Time", strategy="combinations", include_main=True, max_predictors=6)
+        total = count_candidates(s)
+        assert total == 147_713_444
+        run = DiscoveryRun(settings=s, family="lmm", total=total, signature="x")
+        t0 = _t.perf_counter()
+        info = V.feasibility(fx("Test51F_Null_13"), run, V.ValidationConfig(target="participant", modes=["holdout"]))
+        assert _t.perf_counter() - t0 < 10
+>       assert info["pool"] == total and any("exceed the budget" in p for p in info["problems"])
+               ^^^^^^^^^^^^
+E       KeyError: 'pool'
+
+tests\test_v134.py:423: KeyError
+___________________ test_test_outcomes_never_reach_training ___________________
+
+r_session = <statexplore.analysis.session.RSession object at 0x00000151E0F429D0>
+
+    @pytest.mark.r
+    @pytest.mark.slow
+    @pytest.mark.timeout(3600)
+    def test_test_outcomes_never_reach_training(r_session):
+        """47D: perturbing the held-out rows' outcomes (+10000) changes the metrics but not one training fit, selection or
+        prediction (splits held fixed); the search's early stop (mode A) is replayed on the training data."""
+        from statexplore.discovery import engine
+        from statexplore.discovery import validate as V
+        from statexplore.discovery.space import SearchSettings
+    
+        d = fx("Test47D_ValidationLeakage")
+        s = dict(outcome="Y", candidates=["GROUP", "GROUP2", "NOISE01", "NOISE02"], required=["TIME"], participant="ID",
+                 time="TIME", cluster="SCHOOL", id_policy="local", structure="ri", strategy="focal",
+                 covariate_mode="focal", mode="A", max_predictors=3, study="longitudinal", workers=1, max_models=None,
+                 max_minutes=None)
+        cfg = V.ValidationConfig(target="cluster", modes=["holdout"], seed=4, max_fits=10**6)
+        run = engine.create_run(d, SearchSettings(**s))
+        engine.execute(run, d)
+        a = V.ValidationRunner(r_session, d, run, cfg)
+        test_rows = [r for r, f in a.splits[0]["folds"].items() if f == 1]
+        va = a.execute()
+        d2 = fx("Test47D_ValidationLeakage")
+        d2.raw.loc[d2.raw.index[np.array(test_rows) - 1], "Y"] += 10000
+        run2 = engine.create_run(d2, SearchSettings(**s))
+        engine.execute(run2, d2)
+        vb = V.ValidationRunner(r_session, d2, run2, cfg).execute()
+>       ta, tb = pd.DataFrame(va["trace"]), pd.DataFrame(vb["trace"])
+                              ^^^^^^^^^^^
+E       KeyError: 'trace'
+
+tests\test_v134.py:452: KeyError
+_________ test_time_eligible_count_matches_brute_force[2-2-5-True-1] __________
+
+p = 2, order = 2, max_pred = 5, include_main = True, minimum = 1
+
+    @pytest.mark.parametrize("p,order,max_pred,include_main,minimum", [(2, 2, 5, True, 1), (3, 2, 5, True, 1),
+                                                                       (3, 3, 6, False, 1), (4, 2, 6, True, 2),
+                                                                       (5, 3, 4, True, 1), (1, 2, 4, True, 1)])
+    def test_time_eligible_count_matches_brute_force(p, order, max_pred, include_main, minimum):
+        from statexplore.discovery.space import SearchSettings, candidate_key, count_candidates, enumerate_candidates
+    
+        cands = [f"X{i}" for i in range(p)]
+>       s = SearchSettings(outcome="Y", candidates=cands, required=["T", "R1", "R2"], participant="ID", time="T",
+                           strategy="combinations", include_main=include_main, max_predictors=max_pred, max_order=order,
+                           min_predictors=minimum, time_eligible=True)
+E       TypeError: SearchSettings.__init__() got an unexpected keyword argument 'time_eligible'
+
+tests\test_v134.py:492: TypeError
+_________ test_time_eligible_count_matches_brute_force[3-2-5-True-1] __________
+
+p = 3, order = 2, max_pred = 5, include_main = True, minimum = 1
+
+    @pytest.mark.parametrize("p,order,max_pred,include_main,minimum", [(2, 2, 5, True, 1), (3, 2, 5, True, 1),
+                                                                       (3, 3, 6, False, 1), (4, 2, 6, True, 2),
+                                                                       (5, 3, 4, True, 1), (1, 2, 4, True, 1)])
+    def test_time_eligible_count_matches_brute_force(p, order, max_pred, include_main, minimum):
+        from statexplore.discovery.space import SearchSettings, candidate_key, count_candidates, enumerate_candidates
+    
+        cands = [f"X{i}" for i in range(p)]
+>       s = SearchSettings(outcome="Y", candidates=cands, required=["T", "R1", "R2"], participant="ID", time="T",
+                           strategy="combinations", include_main=include_main, max_predictors=max_pred, max_order=order,
+                           min_predictors=minimum, time_eligible=True)
+E       TypeError: SearchSettings.__init__() got an unexpected keyword argument 'time_eligible'
+
+tests\test_v134.py:492: TypeError
+_________ test_time_eligible_count_matches_brute_force[3-3-6-False-1] _________
+
+p = 3, order = 3, max_pred = 6, include_main = False, minimum = 1
+
+    @pytest.mark.parametrize("p,order,max_pred,include_main,minimum", [(2, 2, 5, True, 1), (3, 2, 5, True, 1),
+                                                                       (3, 3, 6, False, 1), (4, 2, 6, True, 2),
+                                                                       (5, 3, 4, True, 1), (1, 2, 4, True, 1)])
+    def test_time_eligible_count_matches_brute_force(p, order, max_pred, include_main, minimum):
+        from statexplore.discovery.space import SearchSettings, candidate_key, count_candidates, enumerate_candidates
+    
+        cands = [f"X{i}" for i in range(p)]
+>       s = SearchSettings(outcome="Y", candidates=cands, required=["T", "R1", "R2"], participant="ID", time="T",
+                           strategy="combinations", include_main=include_main, max_predictors=max_pred, max_order=order,
+                           min_predictors=minimum, time_eligible=True)
+E       TypeError: SearchSettings.__init__() got an unexpected keyword argument 'time_eligible'
+
+tests\test_v134.py:492: TypeError
+_________ test_time_eligible_count_matches_brute_force[4-2-6-True-2] __________
+
+p = 4, order = 2, max_pred = 6, include_main = True, minimum = 2
+
+    @pytest.mark.parametrize("p,order,max_pred,include_main,minimum", [(2, 2, 5, True, 1), (3, 2, 5, True, 1),
+                                                                       (3, 3, 6, False, 1), (4, 2, 6, True, 2),
+                                                                       (5, 3, 4, True, 1), (1, 2, 4, True, 1)])
+    def test_time_eligible_count_matches_brute_force(p, order, max_pred, include_main, minimum):
+        from statexplore.discovery.space import SearchSettings, candidate_key, count_candidates, enumerate_candidates
+    
+        cands = [f"X{i}" for i in range(p)]
+>       s = SearchSettings(outcome="Y", candidates=cands, required=["T", "R1", "R2"], participant="ID", time="T",
+                           strategy="combinations", include_main=include_main, max_predictors=max_pred, max_order=order,
+                           min_predictors=minimum, time_eligible=True)
+E       TypeError: SearchSettings.__init__() got an unexpected keyword argument 'time_eligible'
+
+tests\test_v134.py:492: TypeError
+_________ test_time_eligible_count_matches_brute_force[5-3-4-True-1] __________
+
+p = 5, order = 3, max_pred = 4, include_main = True, minimum = 1
+
+    @pytest.mark.parametrize("p,order,max_pred,include_main,minimum", [(2, 2, 5, True, 1), (3, 2, 5, True, 1),
+                                                                       (3, 3, 6, False, 1), (4, 2, 6, True, 2),
+                                                                       (5, 3, 4, True, 1), (1, 2, 4, True, 1)])
+    def test_time_eligible_count_matches_brute_force(p, order, max_pred, include_main, minimum):
+        from statexplore.discovery.space import SearchSettings, candidate_key, count_candidates, enumerate_candidates
+    
+        cands = [f"X{i}" for i in range(p)]
+>       s = SearchSettings(outcome="Y", candidates=cands, required=["T", "R1", "R2"], participant="ID", time="T",
+                           strategy="combinations", include_main=include_main, max_predictors=max_pred, max_order=order,
+                           min_predictors=minimum, time_eligible=True)
+E       TypeError: SearchSettings.__init__() got an unexpected keyword argument 'time_eligible'
+
+tests\test_v134.py:492: TypeError
+_________ test_time_eligible_count_matches_brute_force[1-2-4-True-1] __________
+
+p = 1, order = 2, max_pred = 4, include_main = True, minimum = 1
+
+    @pytest.mark.parametrize("p,order,max_pred,include_main,minimum", [(2, 2, 5, True, 1), (3, 2, 5, True, 1),
+                                                                       (3, 3, 6, False, 1), (4, 2, 6, True, 2),
+                                                                       (5, 3, 4, True, 1), (1, 2, 4, True, 1)])
+    def test_time_eligible_count_matches_brute_force(p, order, max_pred, include_main, minimum):
+        from statexplore.discovery.space import SearchSettings, candidate_key, count_candidates, enumerate_candidates
+    
+        cands = [f"X{i}" for i in range(p)]
+>       s = SearchSettings(outcome="Y", candidates=cands, required=["T", "R1", "R2"], participant="ID", time="T",
+                           strategy="combinations", include_main=include_main, max_predictors=max_pred, max_order=order,
+                           min_predictors=minimum, time_eligible=True)
+E       TypeError: SearchSettings.__init__() got an unexpected keyword argument 'time_eligible'
+
+tests\test_v134.py:492: TypeError
+_______ test_51d_combined_grammar_twelve_candidates_and_off_by_default ________
+
+    def test_51d_combined_grammar_twelve_candidates_and_off_by_default():
+        from statexplore.discovery.space import SearchSettings, count_candidates, enumerate_candidates
+    
+        base = dict(outcome="TestScore", candidates=["Sleep", "Anxiety"], required=["Time", "Attendance", "Gender"],
+                    participant="StudentID", time="Time", strategy="combinations", include_main=True, max_predictors=5)
+>       s = SearchSettings(**base, time_eligible=True)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       TypeError: SearchSettings.__init__() got an unexpected keyword argument 'time_eligible'
+
+tests\test_v134.py:516: TypeError
+________________ test_time_strategy_honours_minimum_candidates ________________
+
+    def test_time_strategy_honours_minimum_candidates():
+        from statexplore.discovery.space import SearchSettings, count_candidates, enumerate_candidates
+    
+        s = SearchSettings(outcome="Y", candidates=["A", "B", "C"], participant="ID", time="T", strategy="time",
+                           covariate_mode="subsets", max_predictors=3, min_predictors=2)
+        cs = list(enumerate_candidates(s))
+>       assert count_candidates(s) == len(cs) == 6 and all(len(c.focal) - 1 + len(c.covariates) >= 2 for c in cs)
+E       AssertionError: assert (9 == 6)
+E        +  where 9 = len([Candidate(index=0, focal=('T', 'A'), covariates=(), required=(), kind='focal', inter=(), structure='', clustered=None...(index=5, focal=('T', 'A'), covariates=('C',), required=(), kind='focal', inter=(), structure='', clustered=None), ...])
+
+tests\test_v134.py:536: AssertionError
+______________ test_time_eligible_refused_without_required_time _______________
+
+    def test_time_eligible_refused_without_required_time():
+        from statexplore.discovery.space import SearchSettings, SearchSpaceError, validate_settings
+    
+        d = fx("Test51D_CombinedInteractions")
+>       s = SearchSettings(outcome="TestScore", candidates=["Sleep", "Anxiety"], required=["Attendance"], family="gaussian",
+                           participant="StudentID", time="Time", strategy="combinations", include_main=True,
+                           max_predictors=5, time_eligible=True)
+E       TypeError: SearchSettings.__init__() got an unexpected keyword argument 'time_eligible'
+
+tests\test_v134.py:545: TypeError
+_____________ test_51d_planted_candidate_matches_independent_lme4 _____________
+
+tmp_path = WindowsPath('E:/sx_tmp/red/test_51d_planted_candidate_mat0')
+
+    @pytest.mark.r
+    @pytest.mark.slow
+    @pytest.mark.timeout(3600)
+    def test_51d_planted_candidate_matches_independent_lme4(tmp_path):
+        d = fx("Test51D_CombinedInteractions")
+>       run = search(d, outcome="TestScore", candidates=["Sleep", "Anxiety"], required=["Time", "Attendance", "Gender"],
+                     participant="StudentID", time="Time", cluster="School", structure="rs", strategy="combinations",
+                     include_main=True, max_predictors=5, time_eligible=True)
+
+tests\test_v134.py:557: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+d = <statexplore.core.dataset.Dataset object at 0x00000151E0B36810>
+kw = {'outcome': 'TestScore', 'candidates': ['Sleep', 'Anxiety'], 'required': ['Time', 'Attendance', 'Gender'], 'participant': 'StudentID', ...}
+
+    def search(d, **kw):
+        from statexplore.discovery import engine
+        from statexplore.discovery.space import SearchSettings
+    
+        base = dict(family="gaussian", workers=2, max_models=None, max_minutes=None, study="longitudinal")
+        base.update(kw)
+>       run = engine.create_run(d, SearchSettings(**base))
+                                   ^^^^^^^^^^^^^^^^^^^^^^
+E       TypeError: SearchSettings.__init__() got an unexpected keyword argument 'time_eligible'
+
+tests\test_v134.py:48: TypeError
+________ test_validation_manifest_identity_and_relocated_reproduction _________
+
+r_session = <statexplore.analysis.session.RSession object at 0x00000151E1FDB550>
+tmp_path = WindowsPath('E:/sx_tmp/red/test_validation_manifest_ident0')
+
+    @pytest.mark.r
+    @pytest.mark.slow
+    @pytest.mark.timeout(3600)
+    def test_validation_manifest_identity_and_relocated_reproduction(r_session, tmp_path):
+        from statexplore.discovery import validate as V
+        from statexplore.discovery.space import view
+        from statexplore.rbridge.locate import find_rscript
+    
+        d = fx("Test43B_PositiveInteraction_Rerun")
+        run = search(d, outcome="Y", candidates=["GROUP"], required=["TIME"], participant="ID", time="TIME", cluster="SCHOOL",
+                     structure="ri", strategy="main", include_main=True)
+        cfg = V.ValidationConfig(target="cluster", modes=["holdout", "cv", "bootstrap"], k=5, B=3, seed=133,
+                                 pipeline="fixed", candidate=0)
+        v = V.ValidationRunner(r_session, d, run, cfg).execute()
+>       assert v["search_identity"] == run.fit_id and len(v["search_identity"]) == 64 and v["validation_id"]
+E       AssertionError: assert ('' == 'b9f582e25a2a...5127218c9b5c0'
+E         
+E         - b9f582e25a2a77a92c1604a6cc8c77c1b75cc6aafc05777fcc25127218c9b5c0)
+
+tests\test_v134.py:593: AssertionError
+____________ test_52d_partial_search_resumable_with_reason_states _____________
+
+    def test_52d_partial_search_resumable_with_reason_states():
+        from statexplore.core.project import Project
+        from statexplore.core.derive import FilterSpec
+    
+        work = Path(os.environ.get("TEMP", "."))
+        p = Project.open(FX / "StatExplore_Test52D_Persistence.sxp")
+        run = next(r for r in p.searches if r.id == "ea77ac2fedc4")
+        assert run.status == "partial" and run.n_done == 5 and run.total == 15 and run.resumable
+>       assert run.resume_reason(p.dataset) == ""
+               ^^^^^^^^^^^^^^^^^
+E       AttributeError: 'DiscoveryRun' object has no attribute 'resume_reason'
+
+tests\test_v134.py:629: AttributeError
+____________ test_reference_flags_make_only_their_test_provisional ____________
+
+tmp_path = WindowsPath('E:/sx_tmp/red/test_reference_flags_make_only0')
+
+    def test_reference_flags_make_only_their_test_provisional(tmp_path):
+        from statexplore.discovery import engine
+        from statexplore.discovery.engine import DiscoveryRun
+        from statexplore.discovery.space import SearchSettings, enumerate_candidates
+    
+        s = SearchSettings(outcome="Y", candidates=["A", "B"], strategy="combinations", include_main=True)
+        run = DiscoveryRun(settings=s, family="gaussian", total=1, signature="x", fit_id="f")
+        pd.DataFrame({"Y": np.arange(20.0) * 1.5, "A": np.arange(20.0) % 3 + 0.5, "B": np.arange(20.0) % 5 + 0.25}
+                     ).to_csv(tmp_path / "d.csv", index=False)
+        ds = import_file(tmp_path / "d.csv")
+        c = [c for c in enumerate_candidates(s) if c.kind == "combo"][0]
+        tests = [{"id": 0, "statistic": 5.0, "df1": 1, "p": 0.03, "log_p": math.log(0.03), "reference_flags": ""},
+                 {"id": 1, "statistic": 9.0, "df1": 3, "p": 0.001, "log_p": math.log(0.001),
+                  "reference_flags": "warning: reference model did not converge"}]
+        row = engine._row(ds, run, c, {"status": "ok", "flags": "", "tests": tests, "p": 0.03, "log_p": math.log(0.03)})
+        run.rows = [row]
+        tf = engine.tests_frame(run)
+>       assert list(tf["test_status"]) == ["", "provisional"]
+E       AssertionError: assert ['', ''] == ['', 'provisional']
+E         
+E         At index 1 diff: '' != 'provisional'
+E         Use -v to get more diff
+
+tests\test_v134.py:687: AssertionError
+________________ test_negative_delta_r2_and_underflow_wording _________________
+
+    def test_negative_delta_r2_and_underflow_wording():
+        from statexplore.discovery.engine import interpret_row
+        from statexplore.discovery.space import SearchSettings
+    
+        s = SearchSettings(outcome="Y", candidates=["A"])
+        r = {"status": "ok", "reason": "", "formula": "Score ~ A * B", "test_type": "interaction_term", "label": "A × B",
+             "interaction": "A × B", "p": 0.0, "p_adj": 0.0, "log_p": -1117.2, "log_p_adj": -1115.0, "effect": -0.059,
+             "family_size": 10, "sig_adj": True, "sig_raw": True, "estimate": -2.0, "ci_applicable": "same_estimand",
+             "ci_level": 0.95, "ci_low": -2.2, "ci_high": -1.8, "flags": "", "test_method": "LRT", "reference": "Y ~ A + B"}
+        txt = interpret_row(r, s, "lmm")
+>       assert "decreases by 5.9 percentage points" in txt and "rises by -" not in txt
+E       AssertionError: assert ('decreases by 5.9 percentage points' in 'Evidence that the A–Score relationship differs across B (p < .001, adjusted p < .001 among 10 individual interaction .... This is an association in the analysed data, not evidence of cause and effect, and it was selected from many models.')
+
+tests\test_v134.py:704: AssertionError
+_______ test_legacy_runs_without_identity_or_old_rules_are_never_reused _______
+
+    def test_legacy_runs_without_identity_or_old_rules_are_never_reused():
+        from statexplore.discovery import engine
+        from statexplore.discovery.engine import DiscoveryRun
+        from statexplore.discovery.space import SearchSettings
+    
+        s = SearchSettings(outcome="Y", candidates=["A"])
+        cur = DiscoveryRun(settings=s, family="gaussian", total=1, signature="sig", fit_id="F")
+        row = {"idx": 0, "key": "main|A", "status": "ok"}
+        legacy = DiscoveryRun(settings=s, family="gaussian", total=1, signature="sig", fit_id="", rows=[row])
+        old_rules = DiscoveryRun(settings=s, family="gaussian", total=1, signature="sig", fit_id="F", rows=[row],
+                                 engine={"fit_rules": 3})
+        good = DiscoveryRun(settings=s, family="gaussian", total=1, signature="sig", fit_id="F", rows=[row],
+                            engine={"fit_rules": engine.FIT_RULES})
+>       assert engine.cache_from(cur, [legacy, old_rules]) == {}
+E       AssertionError: assert {'main|A': {'.....), 3), ...}} == {}
+E         
+E         Left contains 1 more item:
+E         {'main|A': {'_engine': (None,
+E                                 (('detectseparation', None),
+E                                  ('lme4', None),
+E                                  ('ordinal', None),
+E                                  ('nnet', None),...
+E         
+E         ...Full output truncated, use '-vv' to show
+
+tests\test_v134.py:725: AssertionError
+__________________ test_audit_record_roundtrip_and_refusals ___________________
+
+tmp_path = WindowsPath('E:/sx_tmp/red/test_audit_record_roundtrip_an0')
+
+    def test_audit_record_roundtrip_and_refusals(tmp_path):
+        from statexplore.core.project import Project
+>       from statexplore.export.audit import AuditError, read_audit, validate_record, write_audit
+E       ModuleNotFoundError: No module named 'statexplore.export.audit'
+
+tests\test_v134.py:736: ModuleNotFoundError
+________________ test_educational_script_runs_and_is_labelled _________________
+
+tmp_path = WindowsPath('E:/sx_tmp/red/test_educational_script_runs_a0')
+
+    @pytest.mark.r
+    def test_educational_script_runs_and_is_labelled(tmp_path):
+>       from statexplore.discovery.rcode import educational_script
+E       ImportError: cannot import name 'educational_script' from 'statexplore.discovery.rcode' (<v1.3.3 worktree>\src\statexplore\discovery\rcode.py)
+
+tests\test_v134.py:761: ImportError
+____________ test_reopened_partial_search_shows_resume_and_reasons ____________
+
+window = <statexplore.gui.main_window.MainWindow(0x151dcdc0730) at 0x00000151E1F92440>
+tmp_path = WindowsPath('E:/sx_tmp/red/test_reopened_partial_search_s0')
+
+    def test_reopened_partial_search_shows_resume_and_reasons(window, tmp_path):
+        src = tmp_path / "p52d.sxp"
+        shutil.copy(FX / "StatExplore_Test52D_Persistence.sxp", src)
+        window.open_project(str(src))
+        pg = _page(window)
+>       assert pg.run.id == "ea77ac2fedc4" and pg.resume_btn.isEnabled() and pg.resume_reason.text() == ""
+                                                                             ^^^^^^^^^^^^^^^^
+E       AttributeError: 'DiscoveryPage' object has no attribute 'resume_reason'
+
+tests\test_v134_gui.py:46: AttributeError
+_______________________ test_candidate_reorder_controls _______________________
+
+window = <statexplore.gui.main_window.MainWindow(0x151e6371230) at 0x00000151E58C8F40>
+
+    def test_candidate_reorder_controls(window):
+        from statexplore.core.project import Project
+    
+        window.state.set_project(Project(import_file(FX / "StatExplore_Test51C_ThreeWayInteraction.csv")))
+        pg = _page(window)
+        sel = pg.cand_sel
+        sel.set_selected(["Sleep", "Anxiety", "Attendance"])
+        sel._regroup()
+        assert sel.selected() == ["Sleep", "Anxiety", "Attendance"]
+        item = next(it for it in sel.items() if it.data(0x0100) == "Attendance")
+        sel.list.setCurrentItem(item)
+>       sel.move_current(-1)
+        ^^^^^^^^^^^^^^^^
+E       AttributeError: 'VariableSelector' object has no attribute 'move_current'
+
+tests\test_v134_gui.py:138: AttributeError
+____________________ test_time_eligible_control_round_trip ____________________
+
+window = <statexplore.gui.main_window.MainWindow(0x151e816b6d0) at 0x00000151E7DE7A40>
+
+    def test_time_eligible_control_round_trip(window):
+        from statexplore.core.project import Project
+    
+        window.state.set_project(Project(import_file(FX / "StatExplore_Test51D_CombinedInteractions.csv")))
+        pg = _page(window)
+        st = pg.form_state()
+>       assert st["time_eligible"] is False                     # off by default (v1.3.3 grammar)
+               ^^^^^^^^^^^^^^^^^^^
+E       KeyError: 'time_eligible'
+
+tests\test_v134_gui.py:168: KeyError
+_______________________ test_code_dialog_modes_and_find _______________________
+
+window = <statexplore.gui.main_window.MainWindow(0x151e9d4dc80) at 0x00000151E7E57440>
+
+    def test_code_dialog_modes_and_find(window):
+        from statexplore.gui.pages.eda import CodeDialog
+    
+>       dlg = CodeDialog(None, window, title="t", script="sx_dd <- v001 + v002\n", educational="# EDUCATIONAL\nlm(y ~ x)\n")
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       TypeError: CodeDialog.__init__() got an unexpected keyword argument 'educational'
+
+tests\test_v134_gui.py:185: TypeError
+_______________________ test_audit_button_writes_files ________________________
+
+window = <statexplore.gui.main_window.MainWindow(0x151eb7e4640) at 0x00000151E7DDBBC0>
+tmp_path = WindowsPath('E:/sx_tmp/red/test_audit_button_writes_files0')
+
+    def test_audit_button_writes_files(window, tmp_path):
+        src = tmp_path / "p.sxp"
+        shutil.copy(FX / "StatExplore_Test52D_Persistence.sxp", src)
+        window.open_project(str(src))
+        pg = _page(window)
+        pg._quiet = True
+>       files = pg._export_audit(str(tmp_path / "audit"))
+                ^^^^^^^^^^^^^^^^
+E       AttributeError: 'DiscoveryPage' object has no attribute '_export_audit'
+
+tests\test_v134_gui.py:200: AttributeError
+=================================== PASSES ====================================
+=========================== short test summary info ===========================
+PASSED tests/test_v134.py::test_fixture_bytes_match_manifest
+PASSED tests/test_v134.py::test_52d_resume_continues_same_search_to_15
+PASSED tests/test_v134_gui.py::test_resume_after_real_restart_two_processes
+PASSED tests/test_v134_gui.py::test_simulated_display_scaling_layout[1]
+PASSED tests/test_v134_gui.py::test_simulated_display_scaling_layout[1.25]
+PASSED tests/test_v134_gui.py::test_simulated_display_scaling_layout[1.5]
+PASSED tests/test_v134_gui.py::test_simulated_display_scaling_layout[2]
+FAILED tests/test_v134.py::test_fit_key_adversaries - statexplore.rbridge.wor...
+FAILED tests/test_v134.py::test_reduced_cache_never_crosses_bootstrap_draws
+FAILED tests/test_v134.py::test_51h3_bootstrap_matches_fresh_log_oracle - ass...
+FAILED tests/test_v134.py::test_47b_bootstrap_every_fit_matches_independent_refits
+FAILED tests/test_v134.py::test_bootstrap_chunking_and_cache_do_not_change_results
+FAILED tests/test_v134.py::test_log_bh_holm_match_p_adjust_and_order_underflow
+FAILED tests/test_v134.py::test_54b_extreme_tails_have_finite_log_p - assert ...
+FAILED tests/test_v134.py::test_51c_log_tails_ranking_and_adjustment - assert...
+FAILED tests/test_v134.py::test_48d_gee_structures_fit_their_own_working_correlation
+FAILED tests/test_v134.py::test_gee_aic_rule_refused_in_validation - assert F...
+FAILED tests/test_v134.py::test_model_comparison_needs_identical_rows_not_equal_n
+FAILED tests/test_v134.py::test_stability_counts_by_identity_not_label - Type...
+FAILED tests/test_v134.py::test_validation_pool_ignores_full_data_outcomes - ...
+FAILED tests/test_v134.py::test_huge_space_validation_refused_without_materializing
+FAILED tests/test_v134.py::test_test_outcomes_never_reach_training - KeyError...
+FAILED tests/test_v134.py::test_time_eligible_count_matches_brute_force[2-2-5-True-1]
+FAILED tests/test_v134.py::test_time_eligible_count_matches_brute_force[3-2-5-True-1]
+FAILED tests/test_v134.py::test_time_eligible_count_matches_brute_force[3-3-6-False-1]
+FAILED tests/test_v134.py::test_time_eligible_count_matches_brute_force[4-2-6-True-2]
+FAILED tests/test_v134.py::test_time_eligible_count_matches_brute_force[5-3-4-True-1]
+FAILED tests/test_v134.py::test_time_eligible_count_matches_brute_force[1-2-4-True-1]
+FAILED tests/test_v134.py::test_51d_combined_grammar_twelve_candidates_and_off_by_default
+FAILED tests/test_v134.py::test_time_strategy_honours_minimum_candidates - As...
+FAILED tests/test_v134.py::test_time_eligible_refused_without_required_time
+FAILED tests/test_v134.py::test_51d_planted_candidate_matches_independent_lme4
+FAILED tests/test_v134.py::test_validation_manifest_identity_and_relocated_reproduction
+FAILED tests/test_v134.py::test_52d_partial_search_resumable_with_reason_states
+FAILED tests/test_v134.py::test_reference_flags_make_only_their_test_provisional
+FAILED tests/test_v134.py::test_negative_delta_r2_and_underflow_wording - Ass...
+FAILED tests/test_v134.py::test_legacy_runs_without_identity_or_old_rules_are_never_reused
+FAILED tests/test_v134.py::test_audit_record_roundtrip_and_refusals - ModuleN...
+FAILED tests/test_v134.py::test_educational_script_runs_and_is_labelled - Imp...
+FAILED tests/test_v134_gui.py::test_reopened_partial_search_shows_resume_and_reasons
+FAILED tests/test_v134_gui.py::test_candidate_reorder_controls - AttributeErr...
+FAILED tests/test_v134_gui.py::test_time_eligible_control_round_trip - KeyErr...
+FAILED tests/test_v134_gui.py::test_code_dialog_modes_and_find - TypeError: C...
+FAILED tests/test_v134_gui.py::test_audit_button_writes_files - AttributeErro...
+37 failed, 7 passed in 115.84s (0:01:55)
+exit 1

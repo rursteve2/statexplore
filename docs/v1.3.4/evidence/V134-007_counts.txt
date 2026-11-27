@@ -1,0 +1,16 @@
+12
+12 12
+0 ('Sleep',) ()
+1 ('Sleep',) (('Sleep', 'Time'),)
+2 ('Anxiety',) ()
+3 ('Anxiety',) (('Anxiety', 'Time'),)
+4 ('Sleep', 'Anxiety') ()
+5 ('Sleep', 'Anxiety') (('Sleep', 'Anxiety'),)
+6 ('Sleep', 'Anxiety') (('Sleep', 'Time'),)
+7 ('Sleep', 'Anxiety') (('Anxiety', 'Time'),)
+8 ('Sleep', 'Anxiety') (('Sleep', 'Anxiety'), ('Sleep', 'Time'))
+9 ('Sleep', 'Anxiety') (('Sleep', 'Anxiety'), ('Anxiety', 'Time'))
+10 ('Sleep', 'Anxiety') (('Sleep', 'Time'), ('Anxiety', 'Time'))
+11 ('Sleep', 'Anxiety') (('Sleep', 'Anxiety'), ('Sleep', 'Time'), ('Anxiety', 'Time'))
+147713444
+147539008

@@ -1,0 +1,7 @@
+statexplore from <repo>\src\statexplore\__init__.py
+gee_ind 0 gee_ind ok QIC 1146.3654326001204 QICu 1141.4893223549373 CIC 6.438055122591535 fitted corstr independence alpha [] 
+gee_ind 1 gee_exch ok QIC 1147.731437837328 QICu 1143.5707177357076 CIC 6.080360050810246 fitted corstr exchangeable alpha [0.4248709760843094] 
+gee_ind 2 gee_ar1 ok QIC 1149.2155306371558 QICu 1146.8439484667442 CIC 5.185791085205803 fitted corstr ar1 alpha [0.6573299545343346] 
+gee_ar1 0 gee_ar1 ok QIC 1149.2155306371558 QICu 1146.8439484667442 CIC 5.185791085205803 fitted corstr ar1 alpha [0.6573299545343346] 
+gee_ar1 1 gee_exch ok QIC 1147.731437837328 QICu 1143.5707177357076 CIC 6.080360050810246 fitted corstr exchangeable alpha [0.4248709760843094] 
+gee_ar1 2 gee_ind ok QIC 1146.3654326001204 QICu 1141.4893223549373 CIC 6.438055122591535 fitted corstr independence alpha [] 

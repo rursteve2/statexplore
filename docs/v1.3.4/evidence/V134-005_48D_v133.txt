@@ -1,0 +1,7 @@
+statexplore from <v1.3.3 worktree>\src\statexplore\__init__.py
+gee_ind 0 gee_ind ok QIC 1146.3654326001204 QICu None CIC None fitted corstr None alpha None 
+gee_ind 1 gee_exch ok QIC 1146.3654326001204 QICu None CIC None fitted corstr None alpha None 
+gee_ind 2 gee_ar1 ok QIC 1146.3654326001204 QICu None CIC None fitted corstr None alpha None 
+gee_ar1 0 gee_ar1 ok QIC 1149.2155306371558 QICu None CIC None fitted corstr None alpha None 
+gee_ar1 1 gee_exch ok QIC 1149.2155306371558 QICu None CIC None fitted corstr None alpha None 
+gee_ar1 2 gee_ind ok QIC 1149.2155306371558 QICu None CIC None fitted corstr None alpha None 
