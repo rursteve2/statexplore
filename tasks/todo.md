@@ -546,3 +546,41 @@ separate owner-approved deferrals if unavailable; never reported as PASS; they d
   bootstrap 48 -> 79 s because wrong cross-draw reuse is gone.
 - Not reproduced: V134-009 greyed Resume (saved project reopens resumable on v1.3.3 too). Partial: 47C exact counts
   (settings not supplied). Evidence: docs/v1.3.4/, E:\sx_v134_work.
+
+---
+
+# v1.3.5 corrective patch (prompt `E:\Downloads\StatExplore_v1.3.5_CORRECTIVE_PATCH_MASTER_PROMPT.md`; started 2026-11-27)
+
+Baseline: tag v1.3.4 = dd7313aebfaf8991e4b921feb42a3a37cf355fe6 (verified); source zip SHA-256 860b62cf… matches the
+prompt. Branch `release/v1.3.5`. Clean worktree `E:\sx_v134_base` (r/library junction). Work/evidence `E:\sx_v135_work`.
+Handoff reused: `E:\Downloads\StatExplore_v1.3.4_Developer_Handoff` (50 files hashed in logs/G0_handoff_SHA256.txt).
+Owner decision 2026-11-27: clean-machine install deferral APPROVED for v1.3.5 (explicitly, in this session); physical
+DPI recorded NOT RUN (no VM required).
+
+## Design decisions (v1.3.5)
+| # | Decision | Issue |
+|---|---|---|
+| K1 | One R primary-score helper `sx_primary_logp(r)` (log tail of tests[[1]], NA when withheld / not ok) used by the legacy stability + procedure CV and the AMD selector; legacy thresholds/argmin on log p; p kept for display + log10 column | 01 |
+| K2 | `discovery_ranking` maps every p column to its log twin (p, p_adj, p_bh, p_holm); adjusted rankings are within test-type family; ties: raw log p, idx, test id; -inf (unknown magnitude) labelled; GUI log10 column sorts -inf first | 02 |
+| K3 | `DiscoveryRun.compatibility()` = one resume gate: fit rules, engine provenance, fit identity, grammar, data signature, row keys/indices/progress; worker versions of ALL workers checked in `execute` before any mutation; refusal leaves the run untouched; `restart_from(run)` = new search (new ID, parent link) refitting everything | 03 |
+| K4 | Minimum CANDIDATE predictors applies to the focal strategy (pairs/triples/subsets); GRAMMAR 4; grammar_problem covers it; label says "candidate (required not counted)"; disabled for workflow B | 04 |
+| K5 | Fixed-candidate validation resolves the saved row (focal/covariates/kind/inter/structure) and verifies its key; no enumeration; R verifies the fitted terms; pipeline validation refuses on grammar change or pool-key mismatch | 05, 08 |
+| K6 | Validation pool scopes: original / cumulative (default for mode D) / space / prefix; from declared execution budgets; adaptive + truncated-continuation disclosure; legacy `declared` = original | 06 |
+| K7 | Audit: `historical` block from the run's snapshot (never current file); optional labelled `current_context`; validation/portable export refuses runnable bundles unless the current view reproduces the search signature (or rebuilt original) — else metadata-only | 07 |
+| K8 | Dispatch checks cancel/deadline before every batch (cached or not) and before committing cached rows; injectable monotonic clock; precedence cancel > deadline > budget > exhaustion | 09 |
+| K9 | Validation workload = conservative uncached bound (exact per-candidate plan for a materialized pool, analytic bound otherwise) + retry/aux factors; hard R-side fit-invocation cap with a budget condition; counts used/retries/aux/cache hits | 10 |
+| K10 | Reproduction script binds and checks predictions, folds (sizes), selections+keys, bootstrap coefs, trace; per-check CSV + nonzero exit; required-file presence by mode; NA-safe failed-draw comparison | 11 |
+
+## Plan
+- [x] G0 baseline suite on dd7313a + red reproducers for 01–11 (E:\sx_v135_work\repro)
+- [x] G1 K1 K2 K3 K4 K5 + tests
+- [x] G2 K6 K7 K8 K9 K10 + tests, GUI messages
+- [x] G3 full suite, independent R refs, benchmarks, build, frozen self-test
+- [x] G4 docs/v1.3.5 (register, traceability, evidence, methods, acceptance 55–61), release
+
+### Review (v1.3.5)
+- Baseline 537 + 1 skip; red: tests/test_v135.py 71 fail on dd7313a. Final 747 pass + 1 screenshot skip, 0 fail.
+  Register: 11 AUD + 3 discovered PASS; 17 V134 groups + 92 inherited PASS. Benchmarks within ±3 %. Frozen self-test OK.
+- 52D is now refused (fit rules 3) with 'New search from this one'; v1.3.4 tests expecting its resume were updated.
+- 55L fixture (n 6000) for legacy underflow: 51C/54B are longitudinal (legacy workspace is single-level).
+- Open: physical DPI NOT RUN; clean install = owner-approved deferral; in-place upgrade = owner step.

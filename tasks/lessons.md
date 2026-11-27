@@ -133,3 +133,12 @@
 ## Low memory on this machine
 - Chrome / BlueStacks leave ~2-3 GB free: parallel pytest + repro runs failed with "paging file is too small" and
   OpenBLAS allocation errors. Run heavy jobs one at a time and set OPENBLAS_NUM_THREADS=1 in helper .bat files.
+
+## pytest.main() from a helper script (v1.3.5)
+- `python runner.py` -> `pytest.main()` does NOT put the repo root on sys.path (`python -m pytest` does): every test
+  that imports `tests.<module>` errored with "No module named 'tests'" (12 false failures). Insert the repo root into
+  sys.path in any runner script, and compare a new runner's result with a `-m pytest` baseline before trusting it.
+
+## Fixtures for "below the double range" (v1.3.5)
+- Tune an underflow fixture with the EXACT test distribution in R (`pf(..., log.p = TRUE)`), not a chi-square
+  approximation (it overstated the tail by ~30 %), and check the margin on the resampled sizes (80 % subsamples) too.

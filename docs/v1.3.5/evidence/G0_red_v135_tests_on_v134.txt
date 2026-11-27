@@ -1,0 +1,2082 @@
+.FFFFFFFF..FFFFFFFFFFFF.FFF............FFFFFFFFFF............FFFFFFFFFF. [ 34%]
+........................................................................ [ 68%]
+......................................FFFFFFFFFFFFFFFFFFFFFFFFFFFF       [100%]
+================================== FAILURES ===================================
+___________ test_shared_selector_orders_underflowed_tails_and_ties ____________
+
+tmp_path = WindowsPath('E:/sx_tmp/G0_red_v135_tests_on_v134/test_shared_selector_orders_un0')
+
+    @pytest.mark.r
+    def test_shared_selector_orders_underflowed_tails_and_ties(tmp_path):
+        """Ordinary p of both is 0 (tie); the log tails (log10 -434 and -651) decide, in either input order; genuine ties
+        take the lower position; NA (failed / withheld) never wins; the primary score is NA for withheld or failed fits."""
+        code = helpers() + r"""
+    a <- c(-434, -651) * log(10)
+    stopifnot(identical(exp(a), c(0, 0)))
+    stopifnot(sx_select_min(a) == 2L, sx_select_min(rev(a)) == 1L)
+    stopifnot(sx_select_min(c(-5, -5, -1)) == 1L, sx_select_min(c(NA, -1, NA)) == 2L, is.na(sx_select_min(c(NA, NA))))
+    stopifnot(sx_select_min(c(NA, -Inf, -3)) == 2L)
+    ok <- list(status = "ok", tests = list(list(log_p = -3)))
+    stopifnot(sx_primary_logp(ok) == -3)
+    stopifnot(is.na(sx_primary_logp(list(status = "ok", tests = list(list(log_p = -3, withheld = "negative LR"))))))
+    stopifnot(is.na(sx_primary_logp(list(status = "invalid", tests = NULL))), is.na(sx_primary_logp(NULL)))
+    stopifnot(is.na(sx_primary_logp(list(status = "ok", tests = list(list(p = 0))))))
+    # ordinary representable values: the shared tails are R's own log upper tails
+    stopifnot(isTRUE(all.equal(stats::pchisq(30, 2, lower.tail = FALSE, log.p = TRUE), log(stats::pchisq(30, 2, lower.tail = FALSE)))))
+    cat("OK\n")
+    """
+        res = rscript(code, tmp_path)
+>       assert res.returncode == 0 and "OK" in res.stdout, res.stderr[-2000:]
+E       AssertionError: Error in sx_select_min(a) : could not find function "sx_select_min"
+E         Calls: stopifnot
+E         Execution halted
+E         
+E       assert (1 == 0)
+E        +  where 1 = CompletedProcess(args=['C:\\Program Files\\R\\R-4.6.2\\bin\\x64\\Rscript.exe', '--vanilla', 'E:\\sx_tmp\\G0_red_v135_t...'', stderr='Error in sx_select_min(a) : could not find function "sx_select_min"\nCalls: stopifnot\nExecution halted\n').returncode
+
+tests\test_v135.py:94: AssertionError
+________________ test_55l_legacy_stability_selects_by_log_tail ________________
+
+r_session = <statexplore.analysis.session.RSession object at 0x000001D4CD870590>
+tmp_path = WindowsPath('E:/sx_tmp/G0_red_v135_tests_on_v134/test_55l_legacy_stability_sele0')
+
+    @pytest.mark.r
+    @pytest.mark.slow
+    @pytest.mark.timeout(3600)
+    def test_55l_legacy_stability_selects_by_log_tail(r_session, tmp_path):
+        """Both strong interactions underflow (p == 0 in double precision). v1.3.4 tied them and picked the first (#0,
+        x1:x3); the log tails put x1:x2 (#1) first in every resample. Full-data log10 p equals an independent lm + pf."""
+        from statexplore.analysis import validation
+    
+        d = fx("Test55L_LegacyUnderflow")
+        run = _legacy_run(d)
+        oracle = _oracle_55l(tmp_path)
+        assert (oracle["log10_p"][:2] < -330).all() and oracle["log10_p"][1] < oracle["log10_p"][0]
+        res, _ = validation.stability(r_session, d, run, validation.ResampleSpec(resamples=5, fraction=0.8, seed=11))
+        t = res.tables[0]
+        tab = pd.DataFrame(t.rows, columns=t.columns).set_index("candidate")
+>       assert tab.loc[1, "ranked_first"] == 1.0 and tab.loc[0, "ranked_first"] == 0.0
+E       assert (np.int64(0) == 1.0)
+
+tests\test_v135.py:137: AssertionError
+______________ test_55l_legacy_procedure_cv_selects_by_log_tail _______________
+
+self = Index(['fold', 'selected', 'p_training', 'p_test_fold', 'n_test', 'RMSE',
+       'MAE', 'R2'],
+      dtype='str')
+key = 'selected_index'
+
+    def get_loc(self, key: Hashable) -> int | slice | npt.NDArray[np.bool_]:
+        """
+        Get integer location, slice or boolean mask for requested label.
+    
+        The return type depends on the characteristics of the index: an
+        integer for a unique index, a slice for a monotonic index with
+        duplicate entries, or a boolean mask for a non-monotonic index
+        with duplicates.
+    
+        Parameters
+        ----------
+        key : label
+            The key to check its location if it is present in the index.
+    
+        Returns
+        -------
+        int if unique index, slice if monotonic index, else mask
+            Integer location, slice or boolean mask.
+    
+        See Also
+        --------
+        Index.get_slice_bound : Calculate slice bound that corresponds to
+            given label.
+        Index.get_indexer : Computes indexer and mask for new index given
+            the current index.
+        Index.get_non_unique : Returns indexer and masks for new index given
+            the current index.
+        Index.get_indexer_for : Returns an indexer even when non-unique.
+    
+        Examples
+        --------
+        >>> unique_index = pd.Index(list("abc"))
+        >>> unique_index.get_loc("b")
+        1
+    
+        >>> monotonic_index = pd.Index(list("abbc"))
+        >>> monotonic_index.get_loc("b")
+        slice(1, 3, None)
+    
+        >>> non_monotonic_index = pd.Index(list("abcb"))
+        >>> non_monotonic_index.get_loc("b")
+        array([False,  True, False,  True])
+        """
+        casted_key = self._maybe_cast_indexer(key)
+        try:
+>           return self._engine.get_loc(casted_key)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+C:\Users\Stephen\Desktop\My stuff\statexplore\.venv\Lib\site-packages\pandas\core\indexes\base.py:3816: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+pandas/_libs/index.pyx:172: in pandas._libs.index.IndexEngine.get_loc
+    ???
+pandas/_libs/index.pyx:201: in pandas._libs.index.IndexEngine.get_loc
+    ???
+pandas/_libs/hashtable_class_helper.pxi:7726: in pandas._libs.hashtable.PyObjectHashTable.get_item
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+>   ???
+E   KeyError: 'selected_index'
+
+pandas/_libs/hashtable_class_helper.pxi:7734: KeyError
+
+The above exception was the direct cause of the following exception:
+
+r_session = <statexplore.analysis.session.RSession object at 0x000001D4CD613650>
+tmp_path = WindowsPath('E:/sx_tmp/G0_red_v135_tests_on_v134/test_55l_legacy_procedure_cv_s0')
+
+    @pytest.mark.r
+    @pytest.mark.slow
+    @pytest.mark.timeout(3600)
+    def test_55l_legacy_procedure_cv_selects_by_log_tail(r_session, tmp_path):
+        """Full-procedure CV: every training fold selects x1:x2 (#1) by its log tail; the training log10 p of the selected
+        candidate equals an independent fresh lm fit on the same training rows (fold assignment replayed from the seed)."""
+        from statexplore.analysis import validation
+    
+        d = fx("Test55L_LegacyUnderflow")
+        run = _legacy_run(d)
+        res, _ = validation.procedure_cv(r_session, d, run, validation.ResampleSpec(folds=3, seed=5))
+        t = pd.DataFrame(res.tables[0].rows, columns=res.tables[0].columns)
+>       assert len(t) == 3 and t["selected_index"].eq(1).all()
+                               ^^^^^^^^^^^^^^^^^^^
+
+tests\test_v135.py:161: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+C:\Users\Stephen\Desktop\My stuff\statexplore\.venv\Lib\site-packages\pandas\core\frame.py:4330: in __getitem__
+    indexer = self.columns.get_loc(key)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = Index(['fold', 'selected', 'p_training', 'p_test_fold', 'n_test', 'RMSE',
+       'MAE', 'R2'],
+      dtype='str')
+key = 'selected_index'
+
+    def get_loc(self, key: Hashable) -> int | slice | npt.NDArray[np.bool_]:
+        """
+        Get integer location, slice or boolean mask for requested label.
+    
+        The return type depends on the characteristics of the index: an
+        integer for a unique index, a slice for a monotonic index with
+        duplicate entries, or a boolean mask for a non-monotonic index
+        with duplicates.
+    
+        Parameters
+        ----------
+        key : label
+            The key to check its location if it is present in the index.
+    
+        Returns
+        -------
+        int if unique index, slice if monotonic index, else mask
+            Integer location, slice or boolean mask.
+    
+        See Also
+        --------
+        Index.get_slice_bound : Calculate slice bound that corresponds to
+            given label.
+        Index.get_indexer : Computes indexer and mask for new index given
+            the current index.
+        Index.get_non_unique : Returns indexer and masks for new index given
+            the current index.
+        Index.get_indexer_for : Returns an indexer even when non-unique.
+    
+        Examples
+        --------
+        >>> unique_index = pd.Index(list("abc"))
+        >>> unique_index.get_loc("b")
+        1
+    
+        >>> monotonic_index = pd.Index(list("abbc"))
+        >>> monotonic_index.get_loc("b")
+        slice(1, 3, None)
+    
+        >>> non_monotonic_index = pd.Index(list("abcb"))
+        >>> non_monotonic_index.get_loc("b")
+        array([False,  True, False,  True])
+        """
+        casted_key = self._maybe_cast_indexer(key)
+        try:
+            return self._engine.get_loc(casted_key)
+        except KeyError as err:
+            if isinstance(casted_key, slice) or (
+                isinstance(casted_key, abc.Iterable)
+                and any(isinstance(x, slice) for x in casted_key)
+            ):
+                raise InvalidIndexError(key) from err
+>           raise KeyError(key) from err
+E           KeyError: 'selected_index'
+
+C:\Users\Stephen\Desktop\My stuff\statexplore\.venv\Lib\site-packages\pandas\core\indexes\base.py:3823: KeyError
+_______________ test_adjusted_ranking_uses_log_tails[False-BH] ________________
+
+correction = 'BH', reverse = False
+
+    @pytest.mark.parametrize("correction", ["BH", "holm"])
+    @pytest.mark.parametrize("reverse", [False, True])
+    def test_adjusted_ranking_uses_log_tails(correction, reverse):
+        """Two underflowed candidates (log10 -651 and -434) plus representable, tied and missing ones: raw, adjusted, BH and
+        Holm rankings follow the log tails in any input order; ties by raw log p then index; missing last."""
+        from statexplore.discovery import engine
+    
+        l10 = [-434.0, -651.0, -3.0, -3.0, None, -0.2]
+        rows = _rows(l10)
+        if reverse:
+            rows = rows[::-1]
+        tf = engine.tests_frame(_fake_run(rows, correction), interpret=False)
+        fam = tf[tf["in_family"]].sort_values("idx")
+        for meth, col in (("BH", "log_p_bh"), ("holm", "log_p_holm")):
+            np.testing.assert_allclose(fam[col].to_numpy(), _oracle_log_adjust(fam["log_p"].to_numpy(), meth), rtol=1e-12)
+        assert (fam.loc[fam["idx"].isin([0, 1]), "p_adj"] == 0).all()        # the ordinary adjusted p underflows too
+        for by in ("p", "log10_p", "p_adj", "p_bh", "p_holm", "log_p_adj"):
+            order = list(engine.discovery_ranking(tf, by=by)["idx"])
+>           assert order[:2] == [1, 0], (by, order)
+E           AssertionError: ('p_adj', [0, 1, 2, 3, 5])
+E           assert [0, 1] == [1, 0]
+E             
+E             At index 0 diff: 0 != 1
+E             Use -v to get more diff
+
+tests\test_v135.py:241: AssertionError
+______________ test_adjusted_ranking_uses_log_tails[False-holm] _______________
+
+correction = 'holm', reverse = False
+
+    @pytest.mark.parametrize("correction", ["BH", "holm"])
+    @pytest.mark.parametrize("reverse", [False, True])
+    def test_adjusted_ranking_uses_log_tails(correction, reverse):
+        """Two underflowed candidates (log10 -651 and -434) plus representable, tied and missing ones: raw, adjusted, BH and
+        Holm rankings follow the log tails in any input order; ties by raw log p then index; missing last."""
+        from statexplore.discovery import engine
+    
+        l10 = [-434.0, -651.0, -3.0, -3.0, None, -0.2]
+        rows = _rows(l10)
+        if reverse:
+            rows = rows[::-1]
+        tf = engine.tests_frame(_fake_run(rows, correction), interpret=False)
+        fam = tf[tf["in_family"]].sort_values("idx")
+        for meth, col in (("BH", "log_p_bh"), ("holm", "log_p_holm")):
+            np.testing.assert_allclose(fam[col].to_numpy(), _oracle_log_adjust(fam["log_p"].to_numpy(), meth), rtol=1e-12)
+        assert (fam.loc[fam["idx"].isin([0, 1]), "p_adj"] == 0).all()        # the ordinary adjusted p underflows too
+        for by in ("p", "log10_p", "p_adj", "p_bh", "p_holm", "log_p_adj"):
+            order = list(engine.discovery_ranking(tf, by=by)["idx"])
+>           assert order[:2] == [1, 0], (by, order)
+E           AssertionError: ('p_adj', [0, 1, 2, 3, 5])
+E           assert [0, 1] == [1, 0]
+E             
+E             At index 0 diff: 0 != 1
+E             Use -v to get more diff
+
+tests\test_v135.py:241: AssertionError
+________________ test_adjusted_ranking_uses_log_tails[True-BH] ________________
+
+correction = 'BH', reverse = True
+
+    @pytest.mark.parametrize("correction", ["BH", "holm"])
+    @pytest.mark.parametrize("reverse", [False, True])
+    def test_adjusted_ranking_uses_log_tails(correction, reverse):
+        """Two underflowed candidates (log10 -651 and -434) plus representable, tied and missing ones: raw, adjusted, BH and
+        Holm rankings follow the log tails in any input order; ties by raw log p then index; missing last."""
+        from statexplore.discovery import engine
+    
+        l10 = [-434.0, -651.0, -3.0, -3.0, None, -0.2]
+        rows = _rows(l10)
+        if reverse:
+            rows = rows[::-1]
+        tf = engine.tests_frame(_fake_run(rows, correction), interpret=False)
+        fam = tf[tf["in_family"]].sort_values("idx")
+        for meth, col in (("BH", "log_p_bh"), ("holm", "log_p_holm")):
+            np.testing.assert_allclose(fam[col].to_numpy(), _oracle_log_adjust(fam["log_p"].to_numpy(), meth), rtol=1e-12)
+        assert (fam.loc[fam["idx"].isin([0, 1]), "p_adj"] == 0).all()        # the ordinary adjusted p underflows too
+        for by in ("p", "log10_p", "p_adj", "p_bh", "p_holm", "log_p_adj"):
+            order = list(engine.discovery_ranking(tf, by=by)["idx"])
+>           assert order[:2] == [1, 0], (by, order)
+E           AssertionError: ('p_adj', [0, 1, 2, 3, 5])
+E           assert [0, 1] == [1, 0]
+E             
+E             At index 0 diff: 0 != 1
+E             Use -v to get more diff
+
+tests\test_v135.py:241: AssertionError
+_______________ test_adjusted_ranking_uses_log_tails[True-holm] _______________
+
+correction = 'holm', reverse = True
+
+    @pytest.mark.parametrize("correction", ["BH", "holm"])
+    @pytest.mark.parametrize("reverse", [False, True])
+    def test_adjusted_ranking_uses_log_tails(correction, reverse):
+        """Two underflowed candidates (log10 -651 and -434) plus representable, tied and missing ones: raw, adjusted, BH and
+        Holm rankings follow the log tails in any input order; ties by raw log p then index; missing last."""
+        from statexplore.discovery import engine
+    
+        l10 = [-434.0, -651.0, -3.0, -3.0, None, -0.2]
+        rows = _rows(l10)
+        if reverse:
+            rows = rows[::-1]
+        tf = engine.tests_frame(_fake_run(rows, correction), interpret=False)
+        fam = tf[tf["in_family"]].sort_values("idx")
+        for meth, col in (("BH", "log_p_bh"), ("holm", "log_p_holm")):
+            np.testing.assert_allclose(fam[col].to_numpy(), _oracle_log_adjust(fam["log_p"].to_numpy(), meth), rtol=1e-12)
+        assert (fam.loc[fam["idx"].isin([0, 1]), "p_adj"] == 0).all()        # the ordinary adjusted p underflows too
+        for by in ("p", "log10_p", "p_adj", "p_bh", "p_holm", "log_p_adj"):
+            order = list(engine.discovery_ranking(tf, by=by)["idx"])
+>           assert order[:2] == [1, 0], (by, order)
+E           AssertionError: ('p_adj', [0, 1, 2, 3, 5])
+E           assert [0, 1] == [1, 0]
+E             
+E             At index 0 diff: 0 != 1
+E             Use -v to get more diff
+
+tests\test_v135.py:241: AssertionError
+___________________ test_adjusted_ranking_is_within_family ____________________
+
+    def test_adjusted_ranking_is_within_family():
+        from statexplore.discovery import engine
+    
+        rows = _rows([-500.0, -400.0])
+        rows[0]["tests"][0]["type"] = "overall"
+        tf = engine.tests_frame(_fake_run(rows), interpret=False)
+        rk = engine.discovery_ranking(tf, by="p_adj")
+        # families in their fixed order (focal interaction before whole-model), never one cross-family list
+>       assert list(rk["test_type"]) == ["focal_interaction", "overall"]
+E       AssertionError: assert ['overall', '..._interaction'] == ['focal_inter...n', 'overall']
+E         
+E         At index 0 diff: 'overall' != 'focal_interaction'
+E         Use -v to get more diff
+
+tests\test_v135.py:253: AssertionError
+______________ test_52d_historical_resume_is_refused_with_reason ______________
+
+    def test_52d_historical_resume_is_refused_with_reason():
+        """Saved 52D: grammar 2, fit rules 3, 5 of 15 done. v1.3.4 allowed the resume (mixing fit rules 3 and 4 in one
+        multiplicity family); v1.3.5 refuses with the reason and offers a new linked search. The original stays unchanged."""
+        from statexplore.discovery import engine
+    
+        p, run = _52d()
+        before = _fingerprint(run)
+        assert run.engine.get("fit_rules") == 3 and run.grammar == 2 and run.n_done == 5 and len(p.dataset.raw) == 960
+>       assert not run.resumable
+E       AssertionError: assert not True
+E        +  where True = DiscoveryRun(settings=SearchSettings(outcome='Y', candidates=['X01', 'X02', 'X03', 'X04', 'X05', 'X06'], required=['Ti...ved': [], 'filters': [{'variable': 'Time', 'op': '<=', 'value': 4.0}], 'holdout': None}, validation_runs=[], grammar=2).resumable
+
+tests\test_v135.py:314: AssertionError
+___________________ test_resume_compatibility_matrix[none-] ___________________
+
+mutation = 'none', expect = ''
+
+    @pytest.mark.parametrize("mutation, expect", [
+        ("none", ""),
+        ("old_rules", "fit rules 3"),
+        ("no_rules", "fit rules (not recorded)"),
+        ("no_engine", "no recorded R / package versions"),
+        ("grammar", "grammar"),
+        ("bad_key", "key differs"),
+        ("dup_idx", "duplicate"),
+        ("gap", "have no result"),
+        ("no_key", "no candidate key"),
+        ("no_fit_id", "no recorded fit identity"),
+        ("out_of_range", "outside the search space"),
+    ])
+    def test_resume_compatibility_matrix(mutation, expect):
+        p, _ = _52d()
+        run = _compatible_partial(p.dataset)
+        if mutation == "old_rules":
+            run.engine["fit_rules"] = 3
+        elif mutation == "no_rules":
+            del run.engine["fit_rules"]
+        elif mutation == "no_engine":
+            run.engine = {}
+        elif mutation == "grammar":
+            run.grammar, run.settings.strategy, run.settings.min_predictors = 2, "time", 2
+            run.settings.required = []
+        elif mutation == "bad_key":
+            run.rows[2]["key"] = "focal|something else"
+        elif mutation == "dup_idx":
+            run.rows.append(dict(run.rows[0]))
+        elif mutation == "gap":
+            del run.rows[1]
+        elif mutation == "no_key":
+            run.rows[0]["key"] = ""
+        elif mutation == "no_fit_id":
+            run.fit_id = ""
+        elif mutation == "out_of_range":
+            run.rows[-1]["idx"] = 99
+>       why = run.compatibility(p.dataset, deep=True)
+              ^^^^^^^^^^^^^^^^^
+E       AttributeError: 'DiscoveryRun' object has no attribute 'compatibility'
+
+tests\test_v135.py:381: AttributeError
+___________ test_resume_compatibility_matrix[old_rules-fit rules 3] ___________
+
+mutation = 'old_rules', expect = 'fit rules 3'
+
+    @pytest.mark.parametrize("mutation, expect", [
+        ("none", ""),
+        ("old_rules", "fit rules 3"),
+        ("no_rules", "fit rules (not recorded)"),
+        ("no_engine", "no recorded R / package versions"),
+        ("grammar", "grammar"),
+        ("bad_key", "key differs"),
+        ("dup_idx", "duplicate"),
+        ("gap", "have no result"),
+        ("no_key", "no candidate key"),
+        ("no_fit_id", "no recorded fit identity"),
+        ("out_of_range", "outside the search space"),
+    ])
+    def test_resume_compatibility_matrix(mutation, expect):
+        p, _ = _52d()
+        run = _compatible_partial(p.dataset)
+        if mutation == "old_rules":
+            run.engine["fit_rules"] = 3
+        elif mutation == "no_rules":
+            del run.engine["fit_rules"]
+        elif mutation == "no_engine":
+            run.engine = {}
+        elif mutation == "grammar":
+            run.grammar, run.settings.strategy, run.settings.min_predictors = 2, "time", 2
+            run.settings.required = []
+        elif mutation == "bad_key":
+            run.rows[2]["key"] = "focal|something else"
+        elif mutation == "dup_idx":
+            run.rows.append(dict(run.rows[0]))
+        elif mutation == "gap":
+            del run.rows[1]
+        elif mutation == "no_key":
+            run.rows[0]["key"] = ""
+        elif mutation == "no_fit_id":
+            run.fit_id = ""
+        elif mutation == "out_of_range":
+            run.rows[-1]["idx"] = 99
+>       why = run.compatibility(p.dataset, deep=True)
+              ^^^^^^^^^^^^^^^^^
+E       AttributeError: 'DiscoveryRun' object has no attribute 'compatibility'
+
+tests\test_v135.py:381: AttributeError
+_____ test_resume_compatibility_matrix[no_rules-fit rules (not recorded)] _____
+
+mutation = 'no_rules', expect = 'fit rules (not recorded)'
+
+    @pytest.mark.parametrize("mutation, expect", [
+        ("none", ""),
+        ("old_rules", "fit rules 3"),
+        ("no_rules", "fit rules (not recorded)"),
+        ("no_engine", "no recorded R / package versions"),
+        ("grammar", "grammar"),
+        ("bad_key", "key differs"),
+        ("dup_idx", "duplicate"),
+        ("gap", "have no result"),
+        ("no_key", "no candidate key"),
+        ("no_fit_id", "no recorded fit identity"),
+        ("out_of_range", "outside the search space"),
+    ])
+    def test_resume_compatibility_matrix(mutation, expect):
+        p, _ = _52d()
+        run = _compatible_partial(p.dataset)
+        if mutation == "old_rules":
+            run.engine["fit_rules"] = 3
+        elif mutation == "no_rules":
+            del run.engine["fit_rules"]
+        elif mutation == "no_engine":
+            run.engine = {}
+        elif mutation == "grammar":
+            run.grammar, run.settings.strategy, run.settings.min_predictors = 2, "time", 2
+            run.settings.required = []
+        elif mutation == "bad_key":
+            run.rows[2]["key"] = "focal|something else"
+        elif mutation == "dup_idx":
+            run.rows.append(dict(run.rows[0]))
+        elif mutation == "gap":
+            del run.rows[1]
+        elif mutation == "no_key":
+            run.rows[0]["key"] = ""
+        elif mutation == "no_fit_id":
+            run.fit_id = ""
+        elif mutation == "out_of_range":
+            run.rows[-1]["idx"] = 99
+>       why = run.compatibility(p.dataset, deep=True)
+              ^^^^^^^^^^^^^^^^^
+E       AttributeError: 'DiscoveryRun' object has no attribute 'compatibility'
+
+tests\test_v135.py:381: AttributeError
+_ test_resume_compatibility_matrix[no_engine-no recorded R / package versions] _
+
+mutation = 'no_engine', expect = 'no recorded R / package versions'
+
+    @pytest.mark.parametrize("mutation, expect", [
+        ("none", ""),
+        ("old_rules", "fit rules 3"),
+        ("no_rules", "fit rules (not recorded)"),
+        ("no_engine", "no recorded R / package versions"),
+        ("grammar", "grammar"),
+        ("bad_key", "key differs"),
+        ("dup_idx", "duplicate"),
+        ("gap", "have no result"),
+        ("no_key", "no candidate key"),
+        ("no_fit_id", "no recorded fit identity"),
+        ("out_of_range", "outside the search space"),
+    ])
+    def test_resume_compatibility_matrix(mutation, expect):
+        p, _ = _52d()
+        run = _compatible_partial(p.dataset)
+        if mutation == "old_rules":
+            run.engine["fit_rules"] = 3
+        elif mutation == "no_rules":
+            del run.engine["fit_rules"]
+        elif mutation == "no_engine":
+            run.engine = {}
+        elif mutation == "grammar":
+            run.grammar, run.settings.strategy, run.settings.min_predictors = 2, "time", 2
+            run.settings.required = []
+        elif mutation == "bad_key":
+            run.rows[2]["key"] = "focal|something else"
+        elif mutation == "dup_idx":
+            run.rows.append(dict(run.rows[0]))
+        elif mutation == "gap":
+            del run.rows[1]
+        elif mutation == "no_key":
+            run.rows[0]["key"] = ""
+        elif mutation == "no_fit_id":
+            run.fit_id = ""
+        elif mutation == "out_of_range":
+            run.rows[-1]["idx"] = 99
+>       why = run.compatibility(p.dataset, deep=True)
+              ^^^^^^^^^^^^^^^^^
+E       AttributeError: 'DiscoveryRun' object has no attribute 'compatibility'
+
+tests\test_v135.py:381: AttributeError
+______________ test_resume_compatibility_matrix[grammar-grammar] ______________
+
+mutation = 'grammar', expect = 'grammar'
+
+    @pytest.mark.parametrize("mutation, expect", [
+        ("none", ""),
+        ("old_rules", "fit rules 3"),
+        ("no_rules", "fit rules (not recorded)"),
+        ("no_engine", "no recorded R / package versions"),
+        ("grammar", "grammar"),
+        ("bad_key", "key differs"),
+        ("dup_idx", "duplicate"),
+        ("gap", "have no result"),
+        ("no_key", "no candidate key"),
+        ("no_fit_id", "no recorded fit identity"),
+        ("out_of_range", "outside the search space"),
+    ])
+    def test_resume_compatibility_matrix(mutation, expect):
+        p, _ = _52d()
+        run = _compatible_partial(p.dataset)
+        if mutation == "old_rules":
+            run.engine["fit_rules"] = 3
+        elif mutation == "no_rules":
+            del run.engine["fit_rules"]
+        elif mutation == "no_engine":
+            run.engine = {}
+        elif mutation == "grammar":
+            run.grammar, run.settings.strategy, run.settings.min_predictors = 2, "time", 2
+            run.settings.required = []
+        elif mutation == "bad_key":
+            run.rows[2]["key"] = "focal|something else"
+        elif mutation == "dup_idx":
+            run.rows.append(dict(run.rows[0]))
+        elif mutation == "gap":
+            del run.rows[1]
+        elif mutation == "no_key":
+            run.rows[0]["key"] = ""
+        elif mutation == "no_fit_id":
+            run.fit_id = ""
+        elif mutation == "out_of_range":
+            run.rows[-1]["idx"] = 99
+>       why = run.compatibility(p.dataset, deep=True)
+              ^^^^^^^^^^^^^^^^^
+E       AttributeError: 'DiscoveryRun' object has no attribute 'compatibility'
+
+tests\test_v135.py:381: AttributeError
+____________ test_resume_compatibility_matrix[bad_key-key differs] ____________
+
+mutation = 'bad_key', expect = 'key differs'
+
+    @pytest.mark.parametrize("mutation, expect", [
+        ("none", ""),
+        ("old_rules", "fit rules 3"),
+        ("no_rules", "fit rules (not recorded)"),
+        ("no_engine", "no recorded R / package versions"),
+        ("grammar", "grammar"),
+        ("bad_key", "key differs"),
+        ("dup_idx", "duplicate"),
+        ("gap", "have no result"),
+        ("no_key", "no candidate key"),
+        ("no_fit_id", "no recorded fit identity"),
+        ("out_of_range", "outside the search space"),
+    ])
+    def test_resume_compatibility_matrix(mutation, expect):
+        p, _ = _52d()
+        run = _compatible_partial(p.dataset)
+        if mutation == "old_rules":
+            run.engine["fit_rules"] = 3
+        elif mutation == "no_rules":
+            del run.engine["fit_rules"]
+        elif mutation == "no_engine":
+            run.engine = {}
+        elif mutation == "grammar":
+            run.grammar, run.settings.strategy, run.settings.min_predictors = 2, "time", 2
+            run.settings.required = []
+        elif mutation == "bad_key":
+            run.rows[2]["key"] = "focal|something else"
+        elif mutation == "dup_idx":
+            run.rows.append(dict(run.rows[0]))
+        elif mutation == "gap":
+            del run.rows[1]
+        elif mutation == "no_key":
+            run.rows[0]["key"] = ""
+        elif mutation == "no_fit_id":
+            run.fit_id = ""
+        elif mutation == "out_of_range":
+            run.rows[-1]["idx"] = 99
+>       why = run.compatibility(p.dataset, deep=True)
+              ^^^^^^^^^^^^^^^^^
+E       AttributeError: 'DiscoveryRun' object has no attribute 'compatibility'
+
+tests\test_v135.py:381: AttributeError
+_____________ test_resume_compatibility_matrix[dup_idx-duplicate] _____________
+
+mutation = 'dup_idx', expect = 'duplicate'
+
+    @pytest.mark.parametrize("mutation, expect", [
+        ("none", ""),
+        ("old_rules", "fit rules 3"),
+        ("no_rules", "fit rules (not recorded)"),
+        ("no_engine", "no recorded R / package versions"),
+        ("grammar", "grammar"),
+        ("bad_key", "key differs"),
+        ("dup_idx", "duplicate"),
+        ("gap", "have no result"),
+        ("no_key", "no candidate key"),
+        ("no_fit_id", "no recorded fit identity"),
+        ("out_of_range", "outside the search space"),
+    ])
+    def test_resume_compatibility_matrix(mutation, expect):
+        p, _ = _52d()
+        run = _compatible_partial(p.dataset)
+        if mutation == "old_rules":
+            run.engine["fit_rules"] = 3
+        elif mutation == "no_rules":
+            del run.engine["fit_rules"]
+        elif mutation == "no_engine":
+            run.engine = {}
+        elif mutation == "grammar":
+            run.grammar, run.settings.strategy, run.settings.min_predictors = 2, "time", 2
+            run.settings.required = []
+        elif mutation == "bad_key":
+            run.rows[2]["key"] = "focal|something else"
+        elif mutation == "dup_idx":
+            run.rows.append(dict(run.rows[0]))
+        elif mutation == "gap":
+            del run.rows[1]
+        elif mutation == "no_key":
+            run.rows[0]["key"] = ""
+        elif mutation == "no_fit_id":
+            run.fit_id = ""
+        elif mutation == "out_of_range":
+            run.rows[-1]["idx"] = 99
+>       why = run.compatibility(p.dataset, deep=True)
+              ^^^^^^^^^^^^^^^^^
+E       AttributeError: 'DiscoveryRun' object has no attribute 'compatibility'
+
+tests\test_v135.py:381: AttributeError
+____________ test_resume_compatibility_matrix[gap-have no result] _____________
+
+mutation = 'gap', expect = 'have no result'
+
+    @pytest.mark.parametrize("mutation, expect", [
+        ("none", ""),
+        ("old_rules", "fit rules 3"),
+        ("no_rules", "fit rules (not recorded)"),
+        ("no_engine", "no recorded R / package versions"),
+        ("grammar", "grammar"),
+        ("bad_key", "key differs"),
+        ("dup_idx", "duplicate"),
+        ("gap", "have no result"),
+        ("no_key", "no candidate key"),
+        ("no_fit_id", "no recorded fit identity"),
+        ("out_of_range", "outside the search space"),
+    ])
+    def test_resume_compatibility_matrix(mutation, expect):
+        p, _ = _52d()
+        run = _compatible_partial(p.dataset)
+        if mutation == "old_rules":
+            run.engine["fit_rules"] = 3
+        elif mutation == "no_rules":
+            del run.engine["fit_rules"]
+        elif mutation == "no_engine":
+            run.engine = {}
+        elif mutation == "grammar":
+            run.grammar, run.settings.strategy, run.settings.min_predictors = 2, "time", 2
+            run.settings.required = []
+        elif mutation == "bad_key":
+            run.rows[2]["key"] = "focal|something else"
+        elif mutation == "dup_idx":
+            run.rows.append(dict(run.rows[0]))
+        elif mutation == "gap":
+            del run.rows[1]
+        elif mutation == "no_key":
+            run.rows[0]["key"] = ""
+        elif mutation == "no_fit_id":
+            run.fit_id = ""
+        elif mutation == "out_of_range":
+            run.rows[-1]["idx"] = 99
+>       why = run.compatibility(p.dataset, deep=True)
+              ^^^^^^^^^^^^^^^^^
+E       AttributeError: 'DiscoveryRun' object has no attribute 'compatibility'
+
+tests\test_v135.py:381: AttributeError
+__________ test_resume_compatibility_matrix[no_key-no candidate key] __________
+
+mutation = 'no_key', expect = 'no candidate key'
+
+    @pytest.mark.parametrize("mutation, expect", [
+        ("none", ""),
+        ("old_rules", "fit rules 3"),
+        ("no_rules", "fit rules (not recorded)"),
+        ("no_engine", "no recorded R / package versions"),
+        ("grammar", "grammar"),
+        ("bad_key", "key differs"),
+        ("dup_idx", "duplicate"),
+        ("gap", "have no result"),
+        ("no_key", "no candidate key"),
+        ("no_fit_id", "no recorded fit identity"),
+        ("out_of_range", "outside the search space"),
+    ])
+    def test_resume_compatibility_matrix(mutation, expect):
+        p, _ = _52d()
+        run = _compatible_partial(p.dataset)
+        if mutation == "old_rules":
+            run.engine["fit_rules"] = 3
+        elif mutation == "no_rules":
+            del run.engine["fit_rules"]
+        elif mutation == "no_engine":
+            run.engine = {}
+        elif mutation == "grammar":
+            run.grammar, run.settings.strategy, run.settings.min_predictors = 2, "time", 2
+            run.settings.required = []
+        elif mutation == "bad_key":
+            run.rows[2]["key"] = "focal|something else"
+        elif mutation == "dup_idx":
+            run.rows.append(dict(run.rows[0]))
+        elif mutation == "gap":
+            del run.rows[1]
+        elif mutation == "no_key":
+            run.rows[0]["key"] = ""
+        elif mutation == "no_fit_id":
+            run.fit_id = ""
+        elif mutation == "out_of_range":
+            run.rows[-1]["idx"] = 99
+>       why = run.compatibility(p.dataset, deep=True)
+              ^^^^^^^^^^^^^^^^^
+E       AttributeError: 'DiscoveryRun' object has no attribute 'compatibility'
+
+tests\test_v135.py:381: AttributeError
+____ test_resume_compatibility_matrix[no_fit_id-no recorded fit identity] _____
+
+mutation = 'no_fit_id', expect = 'no recorded fit identity'
+
+    @pytest.mark.parametrize("mutation, expect", [
+        ("none", ""),
+        ("old_rules", "fit rules 3"),
+        ("no_rules", "fit rules (not recorded)"),
+        ("no_engine", "no recorded R / package versions"),
+        ("grammar", "grammar"),
+        ("bad_key", "key differs"),
+        ("dup_idx", "duplicate"),
+        ("gap", "have no result"),
+        ("no_key", "no candidate key"),
+        ("no_fit_id", "no recorded fit identity"),
+        ("out_of_range", "outside the search space"),
+    ])
+    def test_resume_compatibility_matrix(mutation, expect):
+        p, _ = _52d()
+        run = _compatible_partial(p.dataset)
+        if mutation == "old_rules":
+            run.engine["fit_rules"] = 3
+        elif mutation == "no_rules":
+            del run.engine["fit_rules"]
+        elif mutation == "no_engine":
+            run.engine = {}
+        elif mutation == "grammar":
+            run.grammar, run.settings.strategy, run.settings.min_predictors = 2, "time", 2
+            run.settings.required = []
+        elif mutation == "bad_key":
+            run.rows[2]["key"] = "focal|something else"
+        elif mutation == "dup_idx":
+            run.rows.append(dict(run.rows[0]))
+        elif mutation == "gap":
+            del run.rows[1]
+        elif mutation == "no_key":
+            run.rows[0]["key"] = ""
+        elif mutation == "no_fit_id":
+            run.fit_id = ""
+        elif mutation == "out_of_range":
+            run.rows[-1]["idx"] = 99
+>       why = run.compatibility(p.dataset, deep=True)
+              ^^^^^^^^^^^^^^^^^
+E       AttributeError: 'DiscoveryRun' object has no attribute 'compatibility'
+
+tests\test_v135.py:381: AttributeError
+___ test_resume_compatibility_matrix[out_of_range-outside the search space] ___
+
+mutation = 'out_of_range', expect = 'outside the search space'
+
+    @pytest.mark.parametrize("mutation, expect", [
+        ("none", ""),
+        ("old_rules", "fit rules 3"),
+        ("no_rules", "fit rules (not recorded)"),
+        ("no_engine", "no recorded R / package versions"),
+        ("grammar", "grammar"),
+        ("bad_key", "key differs"),
+        ("dup_idx", "duplicate"),
+        ("gap", "have no result"),
+        ("no_key", "no candidate key"),
+        ("no_fit_id", "no recorded fit identity"),
+        ("out_of_range", "outside the search space"),
+    ])
+    def test_resume_compatibility_matrix(mutation, expect):
+        p, _ = _52d()
+        run = _compatible_partial(p.dataset)
+        if mutation == "old_rules":
+            run.engine["fit_rules"] = 3
+        elif mutation == "no_rules":
+            del run.engine["fit_rules"]
+        elif mutation == "no_engine":
+            run.engine = {}
+        elif mutation == "grammar":
+            run.grammar, run.settings.strategy, run.settings.min_predictors = 2, "time", 2
+            run.settings.required = []
+        elif mutation == "bad_key":
+            run.rows[2]["key"] = "focal|something else"
+        elif mutation == "dup_idx":
+            run.rows.append(dict(run.rows[0]))
+        elif mutation == "gap":
+            del run.rows[1]
+        elif mutation == "no_key":
+            run.rows[0]["key"] = ""
+        elif mutation == "no_fit_id":
+            run.fit_id = ""
+        elif mutation == "out_of_range":
+            run.rows[-1]["idx"] = 99
+>       why = run.compatibility(p.dataset, deep=True)
+              ^^^^^^^^^^^^^^^^^
+E       AttributeError: 'DiscoveryRun' object has no attribute 'compatibility'
+
+tests\test_v135.py:381: AttributeError
+__ test_same_version_partial_resumes_to_exact_15_and_engine_mismatch_refused __
+
+tmp_path = WindowsPath('E:/sx_tmp/G0_red_v135_tests_on_v134/test_same_version_partial_resu0')
+
+    @pytest.mark.r
+    @pytest.mark.slow
+    @pytest.mark.timeout(3600)
+    def test_same_version_partial_resumes_to_exact_15_and_engine_mismatch_refused(tmp_path):
+        """A fresh v1.3.5 partial (budget 5), saved and reopened, resumes with budget 10 to exactly 15 rows - no duplicates,
+        identical to a fresh exhaustive search. A different recorded R / package version is refused by the worker check
+        before anything is committed."""
+        from statexplore.core.project import Project
+        from statexplore.discovery import engine
+        from statexplore.discovery.space import SearchSettings
+    
+        p, old = _52d()
+        s = SearchSettings.from_dict(old.settings.to_dict())
+        s.mode, s.max_models, s.workers = "D", 5, 2
+        run = engine.create_run(p.dataset, s)
+        p.searches.append(run)
+        engine.execute(run, p.dataset)
+        assert run.status == "partial" and run.n_done == 5
+        path = tmp_path / "fresh.sxp"
+        p.save(path)
+        p2 = Project.open(path)
+        r2 = next(r for r in p2.searches if r.id == run.id)
+        assert r2.resumable and r2.resume_reason(p2.dataset) == ""
+        # engine mismatch: refused at the worker check, run unchanged
+        saved_engine = dict(r2.engine)
+        r2.engine = {**saved_engine, "r_version": "0.0.0"}
+        before = _fingerprint(r2)
+>       with pytest.raises(engine.ResumeRefused, match="R 0.0.0"):
+                           ^^^^^^^^^^^^^^^^^^^^
+E       AttributeError: module 'statexplore.discovery.engine' has no attribute 'ResumeRefused'
+
+tests\test_v135.py:427: AttributeError
+____________ test_historical_gee_search_with_old_rules_is_refused _____________
+
+    def test_historical_gee_search_with_old_rules_is_refused():
+        """A GEE search fitted under fit rules 3 (one working correlation for every structure, V134-005) is a known
+        affected fit: it must not be continued."""
+        from statexplore.discovery import engine
+        from statexplore.discovery.space import SearchSettings, candidate_key, enumerate_candidates
+    
+        d = import_file(FX4 / "StatExplore_Test48D_GEE.csv")
+        s = SearchSettings(outcome="Y", candidates=["X"], required=["TIME"], participant="ID", time="TIME",
+                           study="longitudinal", workflow="structure", structures=["gee_ind", "gee_exch", "gee_ar1"],
+                           family="gaussian", max_predictors=2)
+        run = engine.create_run(d, s)
+        assert run.family == "gee" and run.total == 3
+        run.status, run.n_done = "partial", 1
+        run.engine = {"r_version": "4.6.2", "packages": {}, "fit_rules": 3}
+        run.rows = [{"idx": 0, "key": candidate_key(next(enumerate_candidates(s))), "status": "ok"}]
+>       assert not run.resumable and "fit rules 3" in run.resume_reason(d)
+E       AssertionError: assert (not True)
+E        +  where True = DiscoveryRun(settings=SearchSettings(outcome='Y', candidates=['X'], required=['TIME'], max_predictors=2, max_order=2, ..._order': None, 'coding_direction': ''}], 'derived': [], 'filters': [], 'holdout': None}, validation_runs=[], grammar=3).resumable
+
+tests\test_v135.py:460: AssertionError
+__________________ test_focal_minimum_example_from_the_audit __________________
+
+    def test_focal_minimum_example_from_the_audit():
+        """3 optional candidates, required Time, minimum 3 candidates, maximum 4 distinct predictors (Time counted once):
+        required-only focal mode cannot form a 3-candidate model (refused); subset mode gives exactly 3 models, each with
+        all 3 candidates (v1.3.4: 3 and 6)."""
+        from statexplore.discovery.space import (
+            SearchSettings, SearchSpaceError, count_candidates, enumerate_candidates, validate_settings,
+        )
+    
+        s = SearchSettings(outcome="Y", candidates=["X01", "X02", "X03"], required=["Time"], strategy="focal",
+                           covariate_mode="focal", min_predictors=3, max_predictors=4, max_order=2)
+>       assert count_candidates(s) == 0 and list(enumerate_candidates(s)) == []
+E       AssertionError: assert (3 == 0)
+E        +  where 3 = <function count_candidates at 0x000001D4CD5931A0>(SearchSettings(outcome='Y', candidates=['X01', 'X02', 'X03'], required=['Time'], max_predictors=4, max_order=2, covari..., structures=[], time_interactions=False, cluster=None, id_policy='global', cluster_compare=False, time_eligible=False))
+
+tests\test_v135.py:530: AssertionError
+___ test_counts_and_enumeration_match_bruteforce_oracle[focal-focal-3-3-2] ____
+
+strategy = 'focal', cov_mode = 'focal', lo = 3, hi = 3, order = 2
+
+    @pytest.mark.parametrize("strategy, cov_mode, lo, hi, order", GRAMMAR_CASES)
+    def test_counts_and_enumeration_match_bruteforce_oracle(strategy, cov_mode, lo, hi, order):
+        from statexplore.discovery.space import SearchSettings, count_candidates, enumerate_candidates
+    
+        req = [] if strategy == "time" else ["R1"]
+        s = SearchSettings(outcome="Y", candidates=["A", "B", "C", "D"], required=req, strategy=strategy,
+                           covariate_mode=cov_mode, min_predictors=lo, max_predictors=hi, max_order=order,
+                           include_main=strategy in ("focal", "combinations"), participant="ID" if strategy == "time" else
+                           None, time="T" if strategy == "time" else None)
+        cs = list(enumerate_candidates(s))
+        assert count_candidates(s) == len(cs) and [c.index for c in cs] == list(range(len(cs)))
+        from statexplore.discovery.space import candidate_key
+    
+        assert len({candidate_key(c) for c in cs}) == len(cs)
+        for c in cs:            # every model honours the minimum and the maximum (required counted once, never minimum)
+            n_cand = len(set(c.focal + c.covariates) - {"T"})
+>           assert lo <= n_cand and n_cand + len(set(c.required)) + (1 if "T" in c.focal else 0) <= hi
+E           assert (3 <= 2)
+
+tests\test_v135.py:562: AssertionError
+___ test_counts_and_enumeration_match_bruteforce_oracle[focal-focal-3-3-3] ____
+
+strategy = 'focal', cov_mode = 'focal', lo = 3, hi = 3, order = 3
+
+    @pytest.mark.parametrize("strategy, cov_mode, lo, hi, order", GRAMMAR_CASES)
+    def test_counts_and_enumeration_match_bruteforce_oracle(strategy, cov_mode, lo, hi, order):
+        from statexplore.discovery.space import SearchSettings, count_candidates, enumerate_candidates
+    
+        req = [] if strategy == "time" else ["R1"]
+        s = SearchSettings(outcome="Y", candidates=["A", "B", "C", "D"], required=req, strategy=strategy,
+                           covariate_mode=cov_mode, min_predictors=lo, max_predictors=hi, max_order=order,
+                           include_main=strategy in ("focal", "combinations"), participant="ID" if strategy == "time" else
+                           None, time="T" if strategy == "time" else None)
+        cs = list(enumerate_candidates(s))
+        assert count_candidates(s) == len(cs) and [c.index for c in cs] == list(range(len(cs)))
+        from statexplore.discovery.space import candidate_key
+    
+        assert len({candidate_key(c) for c in cs}) == len(cs)
+        for c in cs:            # every model honours the minimum and the maximum (required counted once, never minimum)
+            n_cand = len(set(c.focal + c.covariates) - {"T"})
+>           assert lo <= n_cand and n_cand + len(set(c.required)) + (1 if "T" in c.focal else 0) <= hi
+E           assert (3 <= 2)
+
+tests\test_v135.py:562: AssertionError
+___ test_counts_and_enumeration_match_bruteforce_oracle[focal-focal-3-4-2] ____
+
+strategy = 'focal', cov_mode = 'focal', lo = 3, hi = 4, order = 2
+
+    @pytest.mark.parametrize("strategy, cov_mode, lo, hi, order", GRAMMAR_CASES)
+    def test_counts_and_enumeration_match_bruteforce_oracle(strategy, cov_mode, lo, hi, order):
+        from statexplore.discovery.space import SearchSettings, count_candidates, enumerate_candidates
+    
+        req = [] if strategy == "time" else ["R1"]
+        s = SearchSettings(outcome="Y", candidates=["A", "B", "C", "D"], required=req, strategy=strategy,
+                           covariate_mode=cov_mode, min_predictors=lo, max_predictors=hi, max_order=order,
+                           include_main=strategy in ("focal", "combinations"), participant="ID" if strategy == "time" else
+                           None, time="T" if strategy == "time" else None)
+        cs = list(enumerate_candidates(s))
+        assert count_candidates(s) == len(cs) and [c.index for c in cs] == list(range(len(cs)))
+        from statexplore.discovery.space import candidate_key
+    
+        assert len({candidate_key(c) for c in cs}) == len(cs)
+        for c in cs:            # every model honours the minimum and the maximum (required counted once, never minimum)
+            n_cand = len(set(c.focal + c.covariates) - {"T"})
+>           assert lo <= n_cand and n_cand + len(set(c.required)) + (1 if "T" in c.focal else 0) <= hi
+E           assert (3 <= 2)
+
+tests\test_v135.py:562: AssertionError
+___ test_counts_and_enumeration_match_bruteforce_oracle[focal-focal-3-4-3] ____
+
+strategy = 'focal', cov_mode = 'focal', lo = 3, hi = 4, order = 3
+
+    @pytest.mark.parametrize("strategy, cov_mode, lo, hi, order", GRAMMAR_CASES)
+    def test_counts_and_enumeration_match_bruteforce_oracle(strategy, cov_mode, lo, hi, order):
+        from statexplore.discovery.space import SearchSettings, count_candidates, enumerate_candidates
+    
+        req = [] if strategy == "time" else ["R1"]
+        s = SearchSettings(outcome="Y", candidates=["A", "B", "C", "D"], required=req, strategy=strategy,
+                           covariate_mode=cov_mode, min_predictors=lo, max_predictors=hi, max_order=order,
+                           include_main=strategy in ("focal", "combinations"), participant="ID" if strategy == "time" else
+                           None, time="T" if strategy == "time" else None)
+        cs = list(enumerate_candidates(s))
+        assert count_candidates(s) == len(cs) and [c.index for c in cs] == list(range(len(cs)))
+        from statexplore.discovery.space import candidate_key
+    
+        assert len({candidate_key(c) for c in cs}) == len(cs)
+        for c in cs:            # every model honours the minimum and the maximum (required counted once, never minimum)
+            n_cand = len(set(c.focal + c.covariates) - {"T"})
+>           assert lo <= n_cand and n_cand + len(set(c.required)) + (1 if "T" in c.focal else 0) <= hi
+E           assert (3 <= 2)
+
+tests\test_v135.py:562: AssertionError
+___ test_counts_and_enumeration_match_bruteforce_oracle[focal-focal-3-5-2] ____
+
+strategy = 'focal', cov_mode = 'focal', lo = 3, hi = 5, order = 2
+
+    @pytest.mark.parametrize("strategy, cov_mode, lo, hi, order", GRAMMAR_CASES)
+    def test_counts_and_enumeration_match_bruteforce_oracle(strategy, cov_mode, lo, hi, order):
+        from statexplore.discovery.space import SearchSettings, count_candidates, enumerate_candidates
+    
+        req = [] if strategy == "time" else ["R1"]
+        s = SearchSettings(outcome="Y", candidates=["A", "B", "C", "D"], required=req, strategy=strategy,
+                           covariate_mode=cov_mode, min_predictors=lo, max_predictors=hi, max_order=order,
+                           include_main=strategy in ("focal", "combinations"), participant="ID" if strategy == "time" else
+                           None, time="T" if strategy == "time" else None)
+        cs = list(enumerate_candidates(s))
+        assert count_candidates(s) == len(cs) and [c.index for c in cs] == list(range(len(cs)))
+        from statexplore.discovery.space import candidate_key
+    
+        assert len({candidate_key(c) for c in cs}) == len(cs)
+        for c in cs:            # every model honours the minimum and the maximum (required counted once, never minimum)
+            n_cand = len(set(c.focal + c.covariates) - {"T"})
+>           assert lo <= n_cand and n_cand + len(set(c.required)) + (1 if "T" in c.focal else 0) <= hi
+E           assert (3 <= 2)
+
+tests\test_v135.py:562: AssertionError
+___ test_counts_and_enumeration_match_bruteforce_oracle[focal-focal-3-5-3] ____
+
+strategy = 'focal', cov_mode = 'focal', lo = 3, hi = 5, order = 3
+
+    @pytest.mark.parametrize("strategy, cov_mode, lo, hi, order", GRAMMAR_CASES)
+    def test_counts_and_enumeration_match_bruteforce_oracle(strategy, cov_mode, lo, hi, order):
+        from statexplore.discovery.space import SearchSettings, count_candidates, enumerate_candidates
+    
+        req = [] if strategy == "time" else ["R1"]
+        s = SearchSettings(outcome="Y", candidates=["A", "B", "C", "D"], required=req, strategy=strategy,
+                           covariate_mode=cov_mode, min_predictors=lo, max_predictors=hi, max_order=order,
+                           include_main=strategy in ("focal", "combinations"), participant="ID" if strategy == "time" else
+                           None, time="T" if strategy == "time" else None)
+        cs = list(enumerate_candidates(s))
+        assert count_candidates(s) == len(cs) and [c.index for c in cs] == list(range(len(cs)))
+        from statexplore.discovery.space import candidate_key
+    
+        assert len({candidate_key(c) for c in cs}) == len(cs)
+        for c in cs:            # every model honours the minimum and the maximum (required counted once, never minimum)
+            n_cand = len(set(c.focal + c.covariates) - {"T"})
+>           assert lo <= n_cand and n_cand + len(set(c.required)) + (1 if "T" in c.focal else 0) <= hi
+E           assert (3 <= 2)
+
+tests\test_v135.py:562: AssertionError
+___ test_counts_and_enumeration_match_bruteforce_oracle[focal-focal-4-4-2] ____
+
+strategy = 'focal', cov_mode = 'focal', lo = 4, hi = 4, order = 2
+
+    @pytest.mark.parametrize("strategy, cov_mode, lo, hi, order", GRAMMAR_CASES)
+    def test_counts_and_enumeration_match_bruteforce_oracle(strategy, cov_mode, lo, hi, order):
+        from statexplore.discovery.space import SearchSettings, count_candidates, enumerate_candidates
+    
+        req = [] if strategy == "time" else ["R1"]
+        s = SearchSettings(outcome="Y", candidates=["A", "B", "C", "D"], required=req, strategy=strategy,
+                           covariate_mode=cov_mode, min_predictors=lo, max_predictors=hi, max_order=order,
+                           include_main=strategy in ("focal", "combinations"), participant="ID" if strategy == "time" else
+                           None, time="T" if strategy == "time" else None)
+        cs = list(enumerate_candidates(s))
+        assert count_candidates(s) == len(cs) and [c.index for c in cs] == list(range(len(cs)))
+        from statexplore.discovery.space import candidate_key
+    
+        assert len({candidate_key(c) for c in cs}) == len(cs)
+        for c in cs:            # every model honours the minimum and the maximum (required counted once, never minimum)
+            n_cand = len(set(c.focal + c.covariates) - {"T"})
+>           assert lo <= n_cand and n_cand + len(set(c.required)) + (1 if "T" in c.focal else 0) <= hi
+E           assert (4 <= 2)
+
+tests\test_v135.py:562: AssertionError
+___ test_counts_and_enumeration_match_bruteforce_oracle[focal-focal-4-4-3] ____
+
+strategy = 'focal', cov_mode = 'focal', lo = 4, hi = 4, order = 3
+
+    @pytest.mark.parametrize("strategy, cov_mode, lo, hi, order", GRAMMAR_CASES)
+    def test_counts_and_enumeration_match_bruteforce_oracle(strategy, cov_mode, lo, hi, order):
+        from statexplore.discovery.space import SearchSettings, count_candidates, enumerate_candidates
+    
+        req = [] if strategy == "time" else ["R1"]
+        s = SearchSettings(outcome="Y", candidates=["A", "B", "C", "D"], required=req, strategy=strategy,
+                           covariate_mode=cov_mode, min_predictors=lo, max_predictors=hi, max_order=order,
+                           include_main=strategy in ("focal", "combinations"), participant="ID" if strategy == "time" else
+                           None, time="T" if strategy == "time" else None)
+        cs = list(enumerate_candidates(s))
+        assert count_candidates(s) == len(cs) and [c.index for c in cs] == list(range(len(cs)))
+        from statexplore.discovery.space import candidate_key
+    
+        assert len({candidate_key(c) for c in cs}) == len(cs)
+        for c in cs:            # every model honours the minimum and the maximum (required counted once, never minimum)
+            n_cand = len(set(c.focal + c.covariates) - {"T"})
+>           assert lo <= n_cand and n_cand + len(set(c.required)) + (1 if "T" in c.focal else 0) <= hi
+E           assert (4 <= 2)
+
+tests\test_v135.py:562: AssertionError
+___ test_counts_and_enumeration_match_bruteforce_oracle[focal-focal-4-5-2] ____
+
+strategy = 'focal', cov_mode = 'focal', lo = 4, hi = 5, order = 2
+
+    @pytest.mark.parametrize("strategy, cov_mode, lo, hi, order", GRAMMAR_CASES)
+    def test_counts_and_enumeration_match_bruteforce_oracle(strategy, cov_mode, lo, hi, order):
+        from statexplore.discovery.space import SearchSettings, count_candidates, enumerate_candidates
+    
+        req = [] if strategy == "time" else ["R1"]
+        s = SearchSettings(outcome="Y", candidates=["A", "B", "C", "D"], required=req, strategy=strategy,
+                           covariate_mode=cov_mode, min_predictors=lo, max_predictors=hi, max_order=order,
+                           include_main=strategy in ("focal", "combinations"), participant="ID" if strategy == "time" else
+                           None, time="T" if strategy == "time" else None)
+        cs = list(enumerate_candidates(s))
+        assert count_candidates(s) == len(cs) and [c.index for c in cs] == list(range(len(cs)))
+        from statexplore.discovery.space import candidate_key
+    
+        assert len({candidate_key(c) for c in cs}) == len(cs)
+        for c in cs:            # every model honours the minimum and the maximum (required counted once, never minimum)
+            n_cand = len(set(c.focal + c.covariates) - {"T"})
+>           assert lo <= n_cand and n_cand + len(set(c.required)) + (1 if "T" in c.focal else 0) <= hi
+E           assert (4 <= 2)
+
+tests\test_v135.py:562: AssertionError
+___ test_counts_and_enumeration_match_bruteforce_oracle[focal-focal-4-5-3] ____
+
+strategy = 'focal', cov_mode = 'focal', lo = 4, hi = 5, order = 3
+
+    @pytest.mark.parametrize("strategy, cov_mode, lo, hi, order", GRAMMAR_CASES)
+    def test_counts_and_enumeration_match_bruteforce_oracle(strategy, cov_mode, lo, hi, order):
+        from statexplore.discovery.space import SearchSettings, count_candidates, enumerate_candidates
+    
+        req = [] if strategy == "time" else ["R1"]
+        s = SearchSettings(outcome="Y", candidates=["A", "B", "C", "D"], required=req, strategy=strategy,
+                           covariate_mode=cov_mode, min_predictors=lo, max_predictors=hi, max_order=order,
+                           include_main=strategy in ("focal", "combinations"), participant="ID" if strategy == "time" else
+                           None, time="T" if strategy == "time" else None)
+        cs = list(enumerate_candidates(s))
+        assert count_candidates(s) == len(cs) and [c.index for c in cs] == list(range(len(cs)))
+        from statexplore.discovery.space import candidate_key
+    
+        assert len({candidate_key(c) for c in cs}) == len(cs)
+        for c in cs:            # every model honours the minimum and the maximum (required counted once, never minimum)
+            n_cand = len(set(c.focal + c.covariates) - {"T"})
+>           assert lo <= n_cand and n_cand + len(set(c.required)) + (1 if "T" in c.focal else 0) <= hi
+E           assert (4 <= 2)
+
+tests\test_v135.py:562: AssertionError
+__ test_counts_and_enumeration_match_bruteforce_oracle[focal-subsets-3-3-2] ___
+
+strategy = 'focal', cov_mode = 'subsets', lo = 3, hi = 3, order = 2
+
+    @pytest.mark.parametrize("strategy, cov_mode, lo, hi, order", GRAMMAR_CASES)
+    def test_counts_and_enumeration_match_bruteforce_oracle(strategy, cov_mode, lo, hi, order):
+        from statexplore.discovery.space import SearchSettings, count_candidates, enumerate_candidates
+    
+        req = [] if strategy == "time" else ["R1"]
+        s = SearchSettings(outcome="Y", candidates=["A", "B", "C", "D"], required=req, strategy=strategy,
+                           covariate_mode=cov_mode, min_predictors=lo, max_predictors=hi, max_order=order,
+                           include_main=strategy in ("focal", "combinations"), participant="ID" if strategy == "time" else
+                           None, time="T" if strategy == "time" else None)
+        cs = list(enumerate_candidates(s))
+        assert count_candidates(s) == len(cs) and [c.index for c in cs] == list(range(len(cs)))
+        from statexplore.discovery.space import candidate_key
+    
+        assert len({candidate_key(c) for c in cs}) == len(cs)
+        for c in cs:            # every model honours the minimum and the maximum (required counted once, never minimum)
+            n_cand = len(set(c.focal + c.covariates) - {"T"})
+>           assert lo <= n_cand and n_cand + len(set(c.required)) + (1 if "T" in c.focal else 0) <= hi
+E           assert (3 <= 2)
+
+tests\test_v135.py:562: AssertionError
+__ test_counts_and_enumeration_match_bruteforce_oracle[focal-subsets-3-3-3] ___
+
+strategy = 'focal', cov_mode = 'subsets', lo = 3, hi = 3, order = 3
+
+    @pytest.mark.parametrize("strategy, cov_mode, lo, hi, order", GRAMMAR_CASES)
+    def test_counts_and_enumeration_match_bruteforce_oracle(strategy, cov_mode, lo, hi, order):
+        from statexplore.discovery.space import SearchSettings, count_candidates, enumerate_candidates
+    
+        req = [] if strategy == "time" else ["R1"]
+        s = SearchSettings(outcome="Y", candidates=["A", "B", "C", "D"], required=req, strategy=strategy,
+                           covariate_mode=cov_mode, min_predictors=lo, max_predictors=hi, max_order=order,
+                           include_main=strategy in ("focal", "combinations"), participant="ID" if strategy == "time" else
+                           None, time="T" if strategy == "time" else None)
+        cs = list(enumerate_candidates(s))
+        assert count_candidates(s) == len(cs) and [c.index for c in cs] == list(range(len(cs)))
+        from statexplore.discovery.space import candidate_key
+    
+        assert len({candidate_key(c) for c in cs}) == len(cs)
+        for c in cs:            # every model honours the minimum and the maximum (required counted once, never minimum)
+            n_cand = len(set(c.focal + c.covariates) - {"T"})
+>           assert lo <= n_cand and n_cand + len(set(c.required)) + (1 if "T" in c.focal else 0) <= hi
+E           assert (3 <= 2)
+
+tests\test_v135.py:562: AssertionError
+__ test_counts_and_enumeration_match_bruteforce_oracle[focal-subsets-3-4-2] ___
+
+strategy = 'focal', cov_mode = 'subsets', lo = 3, hi = 4, order = 2
+
+    @pytest.mark.parametrize("strategy, cov_mode, lo, hi, order", GRAMMAR_CASES)
+    def test_counts_and_enumeration_match_bruteforce_oracle(strategy, cov_mode, lo, hi, order):
+        from statexplore.discovery.space import SearchSettings, count_candidates, enumerate_candidates
+    
+        req = [] if strategy == "time" else ["R1"]
+        s = SearchSettings(outcome="Y", candidates=["A", "B", "C", "D"], required=req, strategy=strategy,
+                           covariate_mode=cov_mode, min_predictors=lo, max_predictors=hi, max_order=order,
+                           include_main=strategy in ("focal", "combinations"), participant="ID" if strategy == "time" else
+                           None, time="T" if strategy == "time" else None)
+        cs = list(enumerate_candidates(s))
+        assert count_candidates(s) == len(cs) and [c.index for c in cs] == list(range(len(cs)))
+        from statexplore.discovery.space import candidate_key
+    
+        assert len({candidate_key(c) for c in cs}) == len(cs)
+        for c in cs:            # every model honours the minimum and the maximum (required counted once, never minimum)
+            n_cand = len(set(c.focal + c.covariates) - {"T"})
+>           assert lo <= n_cand and n_cand + len(set(c.required)) + (1 if "T" in c.focal else 0) <= hi
+E           assert (3 <= 2)
+
+tests\test_v135.py:562: AssertionError
+__ test_counts_and_enumeration_match_bruteforce_oracle[focal-subsets-3-4-3] ___
+
+strategy = 'focal', cov_mode = 'subsets', lo = 3, hi = 4, order = 3
+
+    @pytest.mark.parametrize("strategy, cov_mode, lo, hi, order", GRAMMAR_CASES)
+    def test_counts_and_enumeration_match_bruteforce_oracle(strategy, cov_mode, lo, hi, order):
+        from statexplore.discovery.space import SearchSettings, count_candidates, enumerate_candidates
+    
+        req = [] if strategy == "time" else ["R1"]
+        s = SearchSettings(outcome="Y", candidates=["A", "B", "C", "D"], required=req, strategy=strategy,
+                           covariate_mode=cov_mode, min_predictors=lo, max_predictors=hi, max_order=order,
+                           include_main=strategy in ("focal", "combinations"), participant="ID" if strategy == "time" else
+                           None, time="T" if strategy == "time" else None)
+        cs = list(enumerate_candidates(s))
+        assert count_candidates(s) == len(cs) and [c.index for c in cs] == list(range(len(cs)))
+        from statexplore.discovery.space import candidate_key
+    
+        assert len({candidate_key(c) for c in cs}) == len(cs)
+        for c in cs:            # every model honours the minimum and the maximum (required counted once, never minimum)
+            n_cand = len(set(c.focal + c.covariates) - {"T"})
+>           assert lo <= n_cand and n_cand + len(set(c.required)) + (1 if "T" in c.focal else 0) <= hi
+E           assert (3 <= 2)
+
+tests\test_v135.py:562: AssertionError
+__ test_counts_and_enumeration_match_bruteforce_oracle[focal-subsets-3-5-2] ___
+
+strategy = 'focal', cov_mode = 'subsets', lo = 3, hi = 5, order = 2
+
+    @pytest.mark.parametrize("strategy, cov_mode, lo, hi, order", GRAMMAR_CASES)
+    def test_counts_and_enumeration_match_bruteforce_oracle(strategy, cov_mode, lo, hi, order):
+        from statexplore.discovery.space import SearchSettings, count_candidates, enumerate_candidates
+    
+        req = [] if strategy == "time" else ["R1"]
+        s = SearchSettings(outcome="Y", candidates=["A", "B", "C", "D"], required=req, strategy=strategy,
+                           covariate_mode=cov_mode, min_predictors=lo, max_predictors=hi, max_order=order,
+                           include_main=strategy in ("focal", "combinations"), participant="ID" if strategy == "time" else
+                           None, time="T" if strategy == "time" else None)
+        cs = list(enumerate_candidates(s))
+        assert count_candidates(s) == len(cs) and [c.index for c in cs] == list(range(len(cs)))
+        from statexplore.discovery.space import candidate_key
+    
+        assert len({candidate_key(c) for c in cs}) == len(cs)
+        for c in cs:            # every model honours the minimum and the maximum (required counted once, never minimum)
+            n_cand = len(set(c.focal + c.covariates) - {"T"})
+>           assert lo <= n_cand and n_cand + len(set(c.required)) + (1 if "T" in c.focal else 0) <= hi
+E           assert (3 <= 2)
+
+tests\test_v135.py:562: AssertionError
+__ test_counts_and_enumeration_match_bruteforce_oracle[focal-subsets-3-5-3] ___
+
+strategy = 'focal', cov_mode = 'subsets', lo = 3, hi = 5, order = 3
+
+    @pytest.mark.parametrize("strategy, cov_mode, lo, hi, order", GRAMMAR_CASES)
+    def test_counts_and_enumeration_match_bruteforce_oracle(strategy, cov_mode, lo, hi, order):
+        from statexplore.discovery.space import SearchSettings, count_candidates, enumerate_candidates
+    
+        req = [] if strategy == "time" else ["R1"]
+        s = SearchSettings(outcome="Y", candidates=["A", "B", "C", "D"], required=req, strategy=strategy,
+                           covariate_mode=cov_mode, min_predictors=lo, max_predictors=hi, max_order=order,
+                           include_main=strategy in ("focal", "combinations"), participant="ID" if strategy == "time" else
+                           None, time="T" if strategy == "time" else None)
+        cs = list(enumerate_candidates(s))
+        assert count_candidates(s) == len(cs) and [c.index for c in cs] == list(range(len(cs)))
+        from statexplore.discovery.space import candidate_key
+    
+        assert len({candidate_key(c) for c in cs}) == len(cs)
+        for c in cs:            # every model honours the minimum and the maximum (required counted once, never minimum)
+            n_cand = len(set(c.focal + c.covariates) - {"T"})
+>           assert lo <= n_cand and n_cand + len(set(c.required)) + (1 if "T" in c.focal else 0) <= hi
+E           assert (3 <= 2)
+
+tests\test_v135.py:562: AssertionError
+__ test_counts_and_enumeration_match_bruteforce_oracle[focal-subsets-4-4-2] ___
+
+strategy = 'focal', cov_mode = 'subsets', lo = 4, hi = 4, order = 2
+
+    @pytest.mark.parametrize("strategy, cov_mode, lo, hi, order", GRAMMAR_CASES)
+    def test_counts_and_enumeration_match_bruteforce_oracle(strategy, cov_mode, lo, hi, order):
+        from statexplore.discovery.space import SearchSettings, count_candidates, enumerate_candidates
+    
+        req = [] if strategy == "time" else ["R1"]
+        s = SearchSettings(outcome="Y", candidates=["A", "B", "C", "D"], required=req, strategy=strategy,
+                           covariate_mode=cov_mode, min_predictors=lo, max_predictors=hi, max_order=order,
+                           include_main=strategy in ("focal", "combinations"), participant="ID" if strategy == "time" else
+                           None, time="T" if strategy == "time" else None)
+        cs = list(enumerate_candidates(s))
+        assert count_candidates(s) == len(cs) and [c.index for c in cs] == list(range(len(cs)))
+        from statexplore.discovery.space import candidate_key
+    
+        assert len({candidate_key(c) for c in cs}) == len(cs)
+        for c in cs:            # every model honours the minimum and the maximum (required counted once, never minimum)
+            n_cand = len(set(c.focal + c.covariates) - {"T"})
+>           assert lo <= n_cand and n_cand + len(set(c.required)) + (1 if "T" in c.focal else 0) <= hi
+E           assert (4 <= 2)
+
+tests\test_v135.py:562: AssertionError
+__ test_counts_and_enumeration_match_bruteforce_oracle[focal-subsets-4-4-3] ___
+
+strategy = 'focal', cov_mode = 'subsets', lo = 4, hi = 4, order = 3
+
+    @pytest.mark.parametrize("strategy, cov_mode, lo, hi, order", GRAMMAR_CASES)
+    def test_counts_and_enumeration_match_bruteforce_oracle(strategy, cov_mode, lo, hi, order):
+        from statexplore.discovery.space import SearchSettings, count_candidates, enumerate_candidates
+    
+        req = [] if strategy == "time" else ["R1"]
+        s = SearchSettings(outcome="Y", candidates=["A", "B", "C", "D"], required=req, strategy=strategy,
+                           covariate_mode=cov_mode, min_predictors=lo, max_predictors=hi, max_order=order,
+                           include_main=strategy in ("focal", "combinations"), participant="ID" if strategy == "time" else
+                           None, time="T" if strategy == "time" else None)
+        cs = list(enumerate_candidates(s))
+        assert count_candidates(s) == len(cs) and [c.index for c in cs] == list(range(len(cs)))
+        from statexplore.discovery.space import candidate_key
+    
+        assert len({candidate_key(c) for c in cs}) == len(cs)
+        for c in cs:            # every model honours the minimum and the maximum (required counted once, never minimum)
+            n_cand = len(set(c.focal + c.covariates) - {"T"})
+>           assert lo <= n_cand and n_cand + len(set(c.required)) + (1 if "T" in c.focal else 0) <= hi
+E           assert (4 <= 2)
+
+tests\test_v135.py:562: AssertionError
+__ test_counts_and_enumeration_match_bruteforce_oracle[focal-subsets-4-5-2] ___
+
+strategy = 'focal', cov_mode = 'subsets', lo = 4, hi = 5, order = 2
+
+    @pytest.mark.parametrize("strategy, cov_mode, lo, hi, order", GRAMMAR_CASES)
+    def test_counts_and_enumeration_match_bruteforce_oracle(strategy, cov_mode, lo, hi, order):
+        from statexplore.discovery.space import SearchSettings, count_candidates, enumerate_candidates
+    
+        req = [] if strategy == "time" else ["R1"]
+        s = SearchSettings(outcome="Y", candidates=["A", "B", "C", "D"], required=req, strategy=strategy,
+                           covariate_mode=cov_mode, min_predictors=lo, max_predictors=hi, max_order=order,
+                           include_main=strategy in ("focal", "combinations"), participant="ID" if strategy == "time" else
+                           None, time="T" if strategy == "time" else None)
+        cs = list(enumerate_candidates(s))
+        assert count_candidates(s) == len(cs) and [c.index for c in cs] == list(range(len(cs)))
+        from statexplore.discovery.space import candidate_key
+    
+        assert len({candidate_key(c) for c in cs}) == len(cs)
+        for c in cs:            # every model honours the minimum and the maximum (required counted once, never minimum)
+            n_cand = len(set(c.focal + c.covariates) - {"T"})
+>           assert lo <= n_cand and n_cand + len(set(c.required)) + (1 if "T" in c.focal else 0) <= hi
+E           assert (4 <= 2)
+
+tests\test_v135.py:562: AssertionError
+__ test_counts_and_enumeration_match_bruteforce_oracle[focal-subsets-4-5-3] ___
+
+strategy = 'focal', cov_mode = 'subsets', lo = 4, hi = 5, order = 3
+
+    @pytest.mark.parametrize("strategy, cov_mode, lo, hi, order", GRAMMAR_CASES)
+    def test_counts_and_enumeration_match_bruteforce_oracle(strategy, cov_mode, lo, hi, order):
+        from statexplore.discovery.space import SearchSettings, count_candidates, enumerate_candidates
+    
+        req = [] if strategy == "time" else ["R1"]
+        s = SearchSettings(outcome="Y", candidates=["A", "B", "C", "D"], required=req, strategy=strategy,
+                           covariate_mode=cov_mode, min_predictors=lo, max_predictors=hi, max_order=order,
+                           include_main=strategy in ("focal", "combinations"), participant="ID" if strategy == "time" else
+                           None, time="T" if strategy == "time" else None)
+        cs = list(enumerate_candidates(s))
+        assert count_candidates(s) == len(cs) and [c.index for c in cs] == list(range(len(cs)))
+        from statexplore.discovery.space import candidate_key
+    
+        assert len({candidate_key(c) for c in cs}) == len(cs)
+        for c in cs:            # every model honours the minimum and the maximum (required counted once, never minimum)
+            n_cand = len(set(c.focal + c.covariates) - {"T"})
+>           assert lo <= n_cand and n_cand + len(set(c.required)) + (1 if "T" in c.focal else 0) <= hi
+E           assert (4 <= 2)
+
+tests\test_v135.py:562: AssertionError
+______ test_grammar4_changes_are_detected_for_historical_focal_searches _______
+
+    def test_grammar4_changes_are_detected_for_historical_focal_searches():
+        from statexplore.discovery.engine import DiscoveryRun
+        from statexplore.discovery.space import GRAMMAR_VERSION, SearchSettings
+    
+>       assert GRAMMAR_VERSION == 4
+E       assert 3 == 4
+
+tests\test_v135.py:586: AssertionError
+__________________ test_min_control_disabled_for_workflow_b ___________________
+
+qtbot = <pytestqt.qtbot.QtBot object at 0x000001D4D00BFAD0>
+
+    def test_min_control_disabled_for_workflow_b(qtbot):
+        from statexplore.gui.main_window import MainWindow
+        from statexplore.gui.state import AppState
+    
+        w = MainWindow(AppState())
+        try:
+            pg = w.pages["Automated Model Discovery"]
+            pg.study.setCurrentIndex(pg.study.findData("longitudinal"))
+            pg.workflow.setCurrentIndex(pg.workflow.findData("structure"))
+            pg._study_changed()
+>           assert not pg.min_pred.isEnabled() and not pg.strategy.isEnabled()
+E           assert (not True)
+E            +  where True = <built-in method isEnabled of PySide6.QtWidgets.QSpinBox object at 0x000001D4CF9E0700>()
+E            +    where <built-in method isEnabled of PySide6.QtWidgets.QSpinBox object at 0x000001D4CF9E0700> = <PySide6.QtWidgets.QSpinBox(0x1d4cbb93d60) at 0x000001D4CF9E0700>.isEnabled
+E            +      where <PySide6.QtWidgets.QSpinBox(0x1d4cbb93d60) at 0x000001D4CF9E0700> = <statexplore.gui.pages.discovery.DiscoveryPage(0x1d4ca152f40) at 0x000001D4CFAB5480>.min_pred
+
+tests\test_v135.py:604: AssertionError
+__ test_historical_fixed_candidate_is_the_saved_model_not_the_current_index ___
+
+    def test_historical_fixed_candidate_is_the_saved_model_not_the_current_index():
+        from statexplore.discovery import validate as V
+        from statexplore.discovery.space import candidate_key
+    
+        d = import_file(FX4 / "StatExplore_Test51F_Null_13.csv")
+        run, old0 = _time_grammar2_run(d)
+>       c = V.fixed_candidate(run, 0)
+            ^^^^^^^^^^^^^^^^^
+E       AttributeError: module 'statexplore.discovery.validate' has no attribute 'fixed_candidate'
+
+tests\test_v135.py:642: AttributeError
+_________________ test_fixed_candidate_refusals[missing_row] __________________
+
+damage = 'missing_row'
+
+    @pytest.mark.parametrize("damage", ["missing_row", "missing_key", "other_spec", "reordered"])
+    def test_fixed_candidate_refusals(damage):
+        from statexplore.discovery import validate as V
+    
+        d = import_file(FX4 / "StatExplore_Test51F_Null_13.csv")
+        run, _ = _time_grammar2_run(d)
+        row = run.rows[0]
+        if damage == "missing_row":
+            run.rows = []
+        elif damage == "missing_key":
+            row["key"] = ""
+        elif damage == "other_spec":
+            row["covariates"] = ["X02"]                 # same label, different key
+        elif damage == "reordered":
+            run.settings.candidates = ["X02", "X01"]    # display order changed: the saved key still decides
+            run.grammar = 4
+            c = V.fixed_candidate(run, 0)
+            assert c.focal == ("Time", "X01")
+            return
+        with pytest.raises(V.ValidationError):
+>           V.fixed_candidate(run, 0)
+            ^^^^^^^^^^^^^^^^^
+E           AttributeError: module 'statexplore.discovery.validate' has no attribute 'fixed_candidate'
+
+tests\test_v135.py:675: AttributeError
+_________________ test_fixed_candidate_refusals[missing_key] __________________
+
+damage = 'missing_key'
+
+    @pytest.mark.parametrize("damage", ["missing_row", "missing_key", "other_spec", "reordered"])
+    def test_fixed_candidate_refusals(damage):
+        from statexplore.discovery import validate as V
+    
+        d = import_file(FX4 / "StatExplore_Test51F_Null_13.csv")
+        run, _ = _time_grammar2_run(d)
+        row = run.rows[0]
+        if damage == "missing_row":
+            run.rows = []
+        elif damage == "missing_key":
+            row["key"] = ""
+        elif damage == "other_spec":
+            row["covariates"] = ["X02"]                 # same label, different key
+        elif damage == "reordered":
+            run.settings.candidates = ["X02", "X01"]    # display order changed: the saved key still decides
+            run.grammar = 4
+            c = V.fixed_candidate(run, 0)
+            assert c.focal == ("Time", "X01")
+            return
+        with pytest.raises(V.ValidationError):
+>           V.fixed_candidate(run, 0)
+            ^^^^^^^^^^^^^^^^^
+E           AttributeError: module 'statexplore.discovery.validate' has no attribute 'fixed_candidate'
+
+tests\test_v135.py:675: AttributeError
+__________________ test_fixed_candidate_refusals[other_spec] __________________
+
+damage = 'other_spec'
+
+    @pytest.mark.parametrize("damage", ["missing_row", "missing_key", "other_spec", "reordered"])
+    def test_fixed_candidate_refusals(damage):
+        from statexplore.discovery import validate as V
+    
+        d = import_file(FX4 / "StatExplore_Test51F_Null_13.csv")
+        run, _ = _time_grammar2_run(d)
+        row = run.rows[0]
+        if damage == "missing_row":
+            run.rows = []
+        elif damage == "missing_key":
+            row["key"] = ""
+        elif damage == "other_spec":
+            row["covariates"] = ["X02"]                 # same label, different key
+        elif damage == "reordered":
+            run.settings.candidates = ["X02", "X01"]    # display order changed: the saved key still decides
+            run.grammar = 4
+            c = V.fixed_candidate(run, 0)
+            assert c.focal == ("Time", "X01")
+            return
+        with pytest.raises(V.ValidationError):
+>           V.fixed_candidate(run, 0)
+            ^^^^^^^^^^^^^^^^^
+E           AttributeError: module 'statexplore.discovery.validate' has no attribute 'fixed_candidate'
+
+tests\test_v135.py:675: AttributeError
+__________________ test_fixed_candidate_refusals[reordered] ___________________
+
+damage = 'reordered'
+
+    @pytest.mark.parametrize("damage", ["missing_row", "missing_key", "other_spec", "reordered"])
+    def test_fixed_candidate_refusals(damage):
+        from statexplore.discovery import validate as V
+    
+        d = import_file(FX4 / "StatExplore_Test51F_Null_13.csv")
+        run, _ = _time_grammar2_run(d)
+        row = run.rows[0]
+        if damage == "missing_row":
+            run.rows = []
+        elif damage == "missing_key":
+            row["key"] = ""
+        elif damage == "other_spec":
+            row["covariates"] = ["X02"]                 # same label, different key
+        elif damage == "reordered":
+            run.settings.candidates = ["X02", "X01"]    # display order changed: the saved key still decides
+            run.grammar = 4
+>           c = V.fixed_candidate(run, 0)
+                ^^^^^^^^^^^^^^^^^
+E           AttributeError: module 'statexplore.discovery.validate' has no attribute 'fixed_candidate'
+
+tests\test_v135.py:671: AttributeError
+__________ test_pipeline_pool_with_mismatching_saved_keys_is_refused __________
+
+    def test_pipeline_pool_with_mismatching_saved_keys_is_refused():
+        from statexplore.discovery import engine
+        from statexplore.discovery import validate as V
+        from statexplore.discovery.space import SearchSettings, candidate_key, enumerate_candidates
+    
+        d = import_file(FX4 / "StatExplore_Test51F_Null_13.csv")
+        s = SearchSettings(outcome="Y", candidates=["X01", "X02", "X03"], participant="StudentID", time="Time",
+                           required=["Time"], strategy="focal", max_predictors=3, study="longitudinal", family="gaussian")
+        run = engine.create_run(d, s)
+        run.rows = [{"idx": c.index, "key": candidate_key(c), "status": "ok"} for c in enumerate_candidates(s)]
+        cfg = V.ValidationConfig(target="participant", modes=["holdout"])
+>       assert V.ValidationRunner(None, d, run, cfg).provenance["verified_saved_keys"] == len(run.rows)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AttributeError: 'ValidationRunner' object has no attribute 'provenance'
+
+tests\test_v135.py:689: AttributeError
+____________ test_fixed_candidate_retrieval_never_scans_the_space _____________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001D4D00ACD90>
+
+    def test_fixed_candidate_retrieval_never_scans_the_space(monkeypatch):
+        """7,300-candidate and 147,713,444-candidate spaces: a fixed candidate (first, middle, late, missing) is resolved
+        with ZERO enumeration calls and in constant time (v1.3.4 visited the whole suffix)."""
+        import time as _t
+    
+        from statexplore.discovery import space
+        from statexplore.discovery import validate as V
+        from statexplore.discovery.engine import DiscoveryRun
+        from statexplore.discovery.space import SearchSettings, candidate_key, count_candidates, enumerate_candidates
+    
+        s = SearchSettings(outcome="Y", candidates=[f"X{i:02d}" for i in range(1, 31)], required=["Time"],
+                           participant="StudentID", time="Time", strategy="combinations", include_main=True,
+                           max_predictors=6)
+        total = count_candidates(s)
+        picks = [0, total // 2, total - 1]
+        rows = []
+        for i in picks:
+            c = next(enumerate_candidates(s, start=i))
+            rows.append({"idx": i, "key": candidate_key(c), "focal": list(c.focal), "covariates": list(c.covariates),
+                         "kind": c.kind, "inter": [list(t) for t in c.inter], "status": "ok"})
+        run = DiscoveryRun(settings=s, family="lmm", total=total, signature="x")
+        run.rows = rows
+        calls = {"n": 0}
+        real = space.enumerate_candidates
+    
+        def counted(*a, **k):
+            calls["n"] += 1
+            return real(*a, **k)
+        monkeypatch.setattr(space, "enumerate_candidates", counted)
+        for i in picks:
+            t0 = _t.perf_counter()
+>           c = V.fixed_candidate(run, i)
+                ^^^^^^^^^^^^^^^^^
+E           AttributeError: module 'statexplore.discovery.validate' has no attribute 'fixed_candidate'
+
+tests\test_v135.py:726: AttributeError
+__________________ test_scope_original_cumulative_and_prefix __________________
+
+    def test_scope_original_cumulative_and_prefix():
+        from statexplore.discovery import validate as V
+    
+        d, run = _null13_run([{"start": 0, "max_models": 5, "max_minutes": 30, "end": 5},
+                              {"start": 5, "max_models": 10, "max_minutes": 30, "end": 15}])
+        cfg = lambda **k: V.ValidationConfig(target="participant", modes=["holdout"], **k)  # noqa: E731
+        assert V.pool_size(run, cfg(pool="original")) == 5
+        assert V.pool_size(run, cfg(pool="declared")) == 5          # the v1.3.4 name keeps its meaning
+>       assert V.pool_size(run, cfg()) == 15 and V.ValidationConfig().pool == "cumulative"
+E       AssertionError: assert (5 == 15)
+E        +  where 5 = <function pool_size at 0x000001D4D2F4AD40>(DiscoveryRun(settings=SearchSettings(outcome='Y', candidates=['X01', 'X02', 'X03', 'X04', 'X05', 'X06'], required=['Ti..._order': None, 'coding_direction': ''}], 'derived': [], 'filters': [], 'holdout': None}, validation_runs=[], grammar=3), ValidationConfig(target='participant', modes=['holdout'], pipeline='pipeline', candidate=None, rule='p', holdout_fraction=0.2, k=5, repeats=1, B=200, seed=133, max_fits=20000, pool='declared', prefix_n=None))
+E        +    where <function pool_size at 0x000001D4D2F4AD40> = <module 'statexplore.discovery.validate' from 'E:\\sx_v134_base\\src\\statexplore\\discovery\\validate.py'>.pool_size
+E        +    and   ValidationConfig(target='participant', modes=['holdout'], pipeline='pipeline', candidate=None, rule='p', holdout_fraction=0.2, k=5, repeats=1, B=200, seed=133, max_fits=20000, pool='declared', prefix_n=None) = <function test_scope_original_cumulative_and_prefix.<locals>.<lambda> at 0x000001D4CFC309A0>()
+
+tests\test_v135.py:761: AssertionError
+____________________________ test_scope_edge_cases ____________________________
+
+    def test_scope_edge_cases():
+        from statexplore.discovery import validate as V
+    
+        cfg = V.ValidationConfig(target="participant", modes=["holdout"])
+        d, run = _null13_run([{"start": 0, "max_models": 5, "end": 5}, {"start": 5, "max_models": 20, "end": 15}])
+>       assert V.pool_size(run, cfg) == 15 and "capped" in V.pool_label(run, cfg)
+E       AssertionError: assert (5 == 15)
+E        +  where 5 = <function pool_size at 0x000001D4D2F4AD40>(DiscoveryRun(settings=SearchSettings(outcome='Y', candidates=['X01', 'X02', 'X03', 'X04', 'X05', 'X06'], required=['Ti..._order': None, 'coding_direction': ''}], 'derived': [], 'filters': [], 'holdout': None}, validation_runs=[], grammar=3), ValidationConfig(target='participant', modes=['holdout'], pipeline='pipeline', candidate=None, rule='p', holdout_fraction=0.2, k=5, repeats=1, B=200, seed=133, max_fits=20000, pool='declared', prefix_n=None))
+E        +    where <function pool_size at 0x000001D4D2F4AD40> = <module 'statexplore.discovery.validate' from 'E:\\sx_v134_base\\src\\statexplore\\discovery\\validate.py'>.pool_size
+
+tests\test_v135.py:780: AssertionError
+__________ test_audit_historical_identity_survives_data_replacement ___________
+
+tmp_path = WindowsPath('E:/sx_tmp/G0_red_v135_tests_on_v134/test_audit_historical_identity0')
+
+    def test_audit_historical_identity_survives_data_replacement(tmp_path):
+        from statexplore.export.audit import SCHEMA_VERSION, read_audit, write_audit
+    
+        p, run = _p50()
+        orig_sha = run.data_snapshot["source_sha256"]
+        a = read_audit(write_audit(run, p.dataset, tmp_path / "a")[0])
+>       assert SCHEMA_VERSION == 2 and a["schema_version"] == 2
+E       assert (1 == 2)
+
+tests\test_v135.py:813: AssertionError
+___ test_audit_missing_historical_metadata_is_unknown_and_tails_round_trip ____
+
+tmp_path = WindowsPath('E:/sx_tmp/G0_red_v135_tests_on_v134/test_audit_missing_historical_0')
+
+    def test_audit_missing_historical_metadata_is_unknown_and_tails_round_trip(tmp_path):
+        from statexplore.export.audit import read_audit, write_audit
+    
+        p, run = _52d()
+        rec = read_audit(write_audit(run, p.dataset, tmp_path)[0])
+>       h = rec["data"]["historical"]
+            ^^^^^^^^^^^^^^^^^^^^^^^^^
+E       KeyError: 'historical'
+
+tests\test_v135.py:832: KeyError
+_______ test_validation_export_refuses_runnable_bundle_over_other_data ________
+
+tmp_path = WindowsPath('E:/sx_tmp/G0_red_v135_tests_on_v134/test_validation_export_refuses0')
+
+    def test_validation_export_refuses_runnable_bundle_over_other_data(tmp_path):
+        from statexplore.discovery import validate as V
+    
+        p, run = _p50()
+        v = _validation_record(run)
+        ok = tmp_path / "ok"
+>       V.export(v, str(ok), ds=p.dataset, include_data=True, run=run)
+E       TypeError: export() got an unexpected keyword argument 'run'
+
+tests\test_v135.py:860: TypeError
+_______ test_validation_export_filter_change_uses_rebuilt_original_view _______
+
+tmp_path = WindowsPath('E:/sx_tmp/G0_red_v135_tests_on_v134/test_validation_export_filter_0')
+
+    def test_validation_export_filter_change_uses_rebuilt_original_view(tmp_path):
+        from statexplore.core.derive import FilterSpec
+        from statexplore.discovery import validate as V
+    
+        p, run = _p50()
+        p.dataset.filters = [FilterSpec(variable="TIME", op="<=", value=1e9)]
+        out = tmp_path / "f"
+>       V.export(_validation_record(run), str(out), ds=p.dataset, include_data=True, run=run)
+E       TypeError: export() got an unexpected keyword argument 'run'
+
+tests\test_v135.py:886: TypeError
+________________ test_precancelled_all_cached_commits_nothing _________________
+
+fake_batches = None
+
+    def test_precancelled_all_cached_commits_nothing(fake_batches):
+        d, run = _dispatch_run()
+        cancel = threading.Event()
+        cancel.set()
+>       _go(run, d, [_FakePooled()], cancel, _cache_for(run))
+
+tests\test_v135.py:964: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+run = DiscoveryRun(settings=SearchSettings(outcome='Y', candidates=['X01', 'X02', 'X03', 'X04', 'X05', 'X06', 'X07', 'X08', ..._order': None, 'coding_direction': ''}], 'derived': [], 'filters': [], 'holdout': None}, validation_runs=[], grammar=3)
+d = <statexplore.core.dataset.Dataset object at 0x000001D4D00E5490>
+pooled = [<test_v135._FakePooled object at 0x000001D4D0089F50>]
+cancel = <threading.Event at 0x1d4d008bd90: set>
+cache = {'main|X01': {'status': 'ok', 'key': 'main|X01', 'p': 0.5, 'log_p': -0.6931471805599453, ...}, 'main|X02': {'status': ...1471805599453, ...}, 'main|X04': {'status': 'ok', 'key': 'main|X04', 'p': 0.5, 'log_p': -0.6931471805599453, ...}, ...}
+clock = <test_v135._Clock object at 0x000001D4D0089FD0>, progress = None
+
+    def _go(run, d, pooled, cancel, cache, clock=None, progress=None):
+        from statexplore.discovery import engine
+    
+        clock = clock or _Clock()
+        with ThreadPoolExecutor(max_workers=2) as ex:
+>           engine._dispatch(run, d, pooled, ex, cancel, progress, clock(), 0.0, cache, clock=clock)
+E           TypeError: _dispatch() got an unexpected keyword argument 'clock'
+
+tests\test_v135.py:956: TypeError
+_________________ test_cancel_mid_cache_stops_at_exact_cursor _________________
+
+fake_batches = None
+
+    def test_cancel_mid_cache_stops_at_exact_cursor(fake_batches):
+        d, run = _dispatch_run()
+        cancel = threading.Event()
+    
+        def prog(r):
+            if len(r.rows) >= 4:
+                cancel.set()
+>       _go(run, d, [_FakePooled()], cancel, _cache_for(run), clock=_Clock(step=1.0), progress=prog)
+
+tests\test_v135.py:975: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+run = DiscoveryRun(settings=SearchSettings(outcome='Y', candidates=['X01', 'X02', 'X03', 'X04', 'X05', 'X06', 'X07', 'X08', ..._order': None, 'coding_direction': ''}], 'derived': [], 'filters': [], 'holdout': None}, validation_runs=[], grammar=3)
+d = <statexplore.core.dataset.Dataset object at 0x000001D4CFAC9A90>
+pooled = [<test_v135._FakePooled object at 0x000001D4CFB45E50>]
+cancel = <threading.Event at 0x1d4cfb45ed0: unset>
+cache = {'main|X01': {'status': 'ok', 'key': 'main|X01', 'p': 0.5, 'log_p': -0.6931471805599453, ...}, 'main|X02': {'status': ...1471805599453, ...}, 'main|X04': {'status': 'ok', 'key': 'main|X04', 'p': 0.5, 'log_p': -0.6931471805599453, ...}, ...}
+clock = <test_v135._Clock object at 0x000001D4CFB44AD0>
+progress = <function test_cancel_mid_cache_stops_at_exact_cursor.<locals>.prog at 0x000001D4CFC74400>
+
+    def _go(run, d, pooled, cancel, cache, clock=None, progress=None):
+        from statexplore.discovery import engine
+    
+        clock = clock or _Clock()
+        with ThreadPoolExecutor(max_workers=2) as ex:
+>           engine._dispatch(run, d, pooled, ex, cancel, progress, clock(), 0.0, cache, clock=clock)
+E           TypeError: _dispatch() got an unexpected keyword argument 'clock'
+
+tests\test_v135.py:956: TypeError
+________________ test_deadline_before_dispatch_with_fake_clock ________________
+
+fake_batches = None
+
+    def test_deadline_before_dispatch_with_fake_clock(fake_batches):
+        d, run = _dispatch_run()
+        run.settings.max_minutes = 1.0
+        clock = _Clock()
+        pooled = _FakePooled()
+    
+        def prog(r):
+            clock.t += 61.0          # one minute passes after the first batch
+>       _go(run, d, [pooled], threading.Event(), {}, clock=clock, progress=prog)
+
+tests\test_v135.py:989: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+run = DiscoveryRun(settings=SearchSettings(outcome='Y', candidates=['X01', 'X02', 'X03', 'X04', 'X05', 'X06', 'X07', 'X08', ..._order': None, 'coding_direction': ''}], 'derived': [], 'filters': [], 'holdout': None}, validation_runs=[], grammar=3)
+d = <statexplore.core.dataset.Dataset object at 0x000001D4D01B5810>
+pooled = [<test_v135._FakePooled object at 0x000001D4D009C150>]
+cancel = <threading.Event at 0x1d4d009d950: unset>, cache = {}
+clock = <test_v135._Clock object at 0x000001D4D009D790>
+progress = <function test_deadline_before_dispatch_with_fake_clock.<locals>.prog at 0x000001D4CFC751C0>
+
+    def _go(run, d, pooled, cancel, cache, clock=None, progress=None):
+        from statexplore.discovery import engine
+    
+        clock = clock or _Clock()
+        with ThreadPoolExecutor(max_workers=2) as ex:
+>           engine._dispatch(run, d, pooled, ex, cancel, progress, clock(), 0.0, cache, clock=clock)
+E           TypeError: _dispatch() got an unexpected keyword argument 'clock'
+
+tests\test_v135.py:956: TypeError
+_____________ test_mixed_cached_and_fresh_budget_counts_attempts ______________
+
+fake_batches = None
+
+    def test_mixed_cached_and_fresh_budget_counts_attempts(fake_batches):
+        d, run = _dispatch_run()
+        run.settings.max_models = 5
+        cache = {k: v for i, (k, v) in enumerate(_cache_for(run).items()) if i % 2 == 0}
+>       _go(run, d, [_FakePooled()], threading.Event(), cache)
+
+tests\test_v135.py:998: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+run = DiscoveryRun(settings=SearchSettings(outcome='Y', candidates=['X01', 'X02', 'X03', 'X04', 'X05', 'X06', 'X07', 'X08', ..._order': None, 'coding_direction': ''}], 'derived': [], 'filters': [], 'holdout': None}, validation_runs=[], grammar=3)
+d = <statexplore.core.dataset.Dataset object at 0x000001D4CDAB7F50>
+pooled = [<test_v135._FakePooled object at 0x000001D4D01B5910>]
+cancel = <threading.Event at 0x1d4cd194390: unset>
+cache = {'main|X01': {'status': 'ok', 'key': 'main|X01', 'p': 0.5, 'log_p': -0.6931471805599453, ...}, 'main|X03': {'status': ...1471805599453, ...}, 'main|X07': {'status': 'ok', 'key': 'main|X07', 'p': 0.5, 'log_p': -0.6931471805599453, ...}, ...}
+clock = <test_v135._Clock object at 0x000001D4D0101C90>, progress = None
+
+    def _go(run, d, pooled, cancel, cache, clock=None, progress=None):
+        from statexplore.discovery import engine
+    
+        clock = clock or _Clock()
+        with ThreadPoolExecutor(max_workers=2) as ex:
+>           engine._dispatch(run, d, pooled, ex, cancel, progress, clock(), 0.0, cache, clock=clock)
+E           TypeError: _dispatch() got an unexpected keyword argument 'clock'
+
+tests\test_v135.py:956: TypeError
+__________ test_cancel_with_inflight_batch_kills_and_records_nothing __________
+
+fake_batches = None
+
+    def test_cancel_with_inflight_batch_kills_and_records_nothing(fake_batches):
+        d, run = _dispatch_run()
+        gate = threading.Event()
+        pooled = _FakePooled(gate=gate)
+        cancel = threading.Event()
+        t = threading.Timer(0.3, cancel.set)
+        t.start()
+        try:
+>           _go(run, d, [pooled], cancel, {})
+
+tests\test_v135.py:1012: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+run = DiscoveryRun(settings=SearchSettings(outcome='Y', candidates=['X01', 'X02', 'X03', 'X04', 'X05', 'X06', 'X07', 'X08', ..._order': None, 'coding_direction': ''}], 'derived': [], 'filters': [], 'holdout': None}, validation_runs=[], grammar=3)
+d = <statexplore.core.dataset.Dataset object at 0x000001D4CD1968D0>
+pooled = [<test_v135._FakePooled object at 0x000001D4CF1E3250>]
+cancel = <threading.Event at 0x1d4cfb85990: unset>, cache = {}
+clock = <test_v135._Clock object at 0x000001D4CF1E14D0>, progress = None
+
+    def _go(run, d, pooled, cancel, cache, clock=None, progress=None):
+        from statexplore.discovery import engine
+    
+        clock = clock or _Clock()
+        with ThreadPoolExecutor(max_workers=2) as ex:
+>           engine._dispatch(run, d, pooled, ex, cancel, progress, clock(), 0.0, cache, clock=clock)
+E           TypeError: _dispatch() got an unexpected keyword argument 'clock'
+
+tests\test_v135.py:956: TypeError
+_________________ test_cancel_after_completion_keeps_complete _________________
+
+fake_batches = None
+
+    def test_cancel_after_completion_keeps_complete(fake_batches):
+        d, run = _dispatch_run()
+        cancel = threading.Event()
+    
+        def prog(r):
+            if len(r.rows) == 10:
+                cancel.set()
+>       _go(run, d, [_FakePooled()], cancel, {}, progress=prog)
+
+tests\test_v135.py:1025: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+run = DiscoveryRun(settings=SearchSettings(outcome='Y', candidates=['X01', 'X02', 'X03', 'X04', 'X05', 'X06', 'X07', 'X08', ..._order': None, 'coding_direction': ''}], 'derived': [], 'filters': [], 'holdout': None}, validation_runs=[], grammar=3)
+d = <statexplore.core.dataset.Dataset object at 0x000001D4CF29AD50>
+pooled = [<test_v135._FakePooled object at 0x000001D4CFA467D0>]
+cancel = <threading.Event at 0x1d4cfa46690: unset>, cache = {}
+clock = <test_v135._Clock object at 0x000001D4CFA45710>
+progress = <function test_cancel_after_completion_keeps_complete.<locals>.prog at 0x000001D4CFC32AC0>
+
+    def _go(run, d, pooled, cancel, cache, clock=None, progress=None):
+        from statexplore.discovery import engine
+    
+        clock = clock or _Clock()
+        with ThreadPoolExecutor(max_workers=2) as ex:
+>           engine._dispatch(run, d, pooled, ex, cancel, progress, clock(), 0.0, cache, clock=clock)
+E           TypeError: _dispatch() got an unexpected keyword argument 'clock'
+
+tests\test_v135.py:956: TypeError
+______________ test_53c_budget_and_cancel_on_huge_declared_space ______________
+
+fake_batches = None
+
+    def test_53c_budget_and_cancel_on_huge_declared_space(fake_batches):
+        """147,713,444 declared candidates: a 100-model budget and a cancel at ~50,000 cached rows (never the whole space)."""
+        from statexplore.discovery import engine
+        from statexplore.discovery.space import SearchSettings, candidate_key, enumerate_candidates
+    
+        d = fx("Test53A_30Predictors")
+        s = SearchSettings(outcome="Y", candidates=[f"X{i:02d}" for i in range(1, 31)], required=["Time"],
+                           participant="StudentID", time="Time", strategy="combinations", include_main=True,
+                           max_predictors=6, batch_size=500, max_models=100, max_minutes=None, family="gaussian",
+                           study="longitudinal")
+        run = engine.DiscoveryRun(settings=s, family="lmm", total=147_713_444, signature="x", fit_id="f")
+>       _go(run, d, [_FakePooled()], threading.Event(), {})
+
+tests\test_v135.py:1040: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+run = DiscoveryRun(settings=SearchSettings(outcome='Y', candidates=['X01', 'X02', 'X03', 'X04', 'X05', 'X06', 'X07', 'X08', ...[], validation={}, coding={}, fit_id='f', n_times=None, executions=[], data_snapshot={}, validation_runs=[], grammar=2)
+d = <statexplore.core.dataset.Dataset object at 0x000001D4CD838790>
+pooled = [<test_v135._FakePooled object at 0x000001D4CD4D3410>]
+cancel = <threading.Event at 0x1d4d00793d0: unset>, cache = {}
+clock = <test_v135._Clock object at 0x000001D4CD4D2190>, progress = None
+
+    def _go(run, d, pooled, cancel, cache, clock=None, progress=None):
+        from statexplore.discovery import engine
+    
+        clock = clock or _Clock()
+        with ThreadPoolExecutor(max_workers=2) as ex:
+>           engine._dispatch(run, d, pooled, ex, cancel, progress, clock(), 0.0, cache, clock=clock)
+E           TypeError: _dispatch() got an unexpected keyword argument 'clock'
+
+tests\test_v135.py:956: TypeError
+__________________ test_workload_bound_covers_uncached_plan ___________________
+
+    def test_workload_bound_covers_uncached_plan():
+        from statexplore.discovery import validate as V
+        from statexplore.discovery.engine import DiscoveryRun
+        from statexplore.discovery.space import candidate_tests, enumerate_candidates
+    
+        s, total = _heterogeneous_7300()
+        assert 5_000 < total < 10_000
+        run = DiscoveryRun(settings=s, family="gaussian", total=total, signature="x")
+        cfg = V.ValidationConfig(target="rows", modes=["holdout", "cv"], k=5, max_fits=10**9)
+        exact = sum(1 + len(candidate_tests(c)) for c in enumerate_candidates(s))     # brute force, written here
+>       wl = V.workload(run, cfg)
+             ^^^^^^^^^^
+E       AttributeError: module 'statexplore.discovery.validate' has no attribute 'workload'
+
+tests\test_v135.py:1082: AttributeError
+____________________ test_retry_factor_for_nlme_structures ____________________
+
+    def test_retry_factor_for_nlme_structures():
+        from statexplore.discovery import validate as V
+        from statexplore.discovery.engine import DiscoveryRun
+        from statexplore.discovery.space import SearchSettings
+    
+        s = SearchSettings(outcome="Y", candidates=["A"], participant="ID", time="T", structure="ar1", strategy="main")
+        run = DiscoveryRun(settings=s, family="lmm", total=1, signature="x")
+>       assert V.workload(run, V.ValidationConfig(modes=["holdout"]))["retry_factor"] == 2
+               ^^^^^^^^^^
+E       AttributeError: module 'statexplore.discovery.validate' has no attribute 'workload'
+
+tests\test_v135.py:1111: AttributeError
+____________________ test_hard_fit_budget_counts_and_stops ____________________
+
+r_session = <statexplore.analysis.session.RSession object at 0x000001D4D58C34D0>
+
+    @pytest.mark.r
+    @pytest.mark.slow
+    @pytest.mark.timeout(3600)
+    def test_hard_fit_budget_counts_and_stops(r_session):
+        """55L (Gaussian, 3 focal candidates, rows target): with an ample budget the counted invocations plus cache hits equal
+        the uncached plan exactly (full + reduced per candidate, + the selected refit) - an independent identity check of
+        the instrumentation; with a cap of 10 the validation stops, never exceeds it and never scores a budget-stopped part."""
+        from statexplore.discovery import validate as V
+    
+        d = fx("Test55L_LegacyUnderflow")
+        run = _legacy_run(d)
+        cfg = V.ValidationConfig(target="rows", modes=["holdout", "cv"], k=2, seed=3, max_fits=10_000)
+        v = V.ValidationRunner(r_session, d, run, cfg).execute()
+>       b = v["fit_budget"]
+            ^^^^^^^^^^^^^^^
+E       KeyError: 'fit_budget'
+
+tests\test_v135.py:1129: KeyError
+_________ test_reproduction_verifies_everything_and_catches_tampering _________
+
+r_session = <statexplore.analysis.session.RSession object at 0x000001D4CF1EAF10>
+tmp_path = WindowsPath('E:/sx_tmp/G0_red_v135_tests_on_v134/test_reproduction_verifies_eve0')
+
+    @pytest.mark.r
+    @pytest.mark.slow
+    @pytest.mark.timeout(3600)
+    def test_reproduction_verifies_everything_and_catches_tampering(r_session, tmp_path):
+>       moved, v = _repro_export(r_session, tmp_path)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\test_v135.py:1168: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+r_session = <statexplore.analysis.session.RSession object at 0x000001D4CF1EAF10>
+tmp_path = WindowsPath('E:/sx_tmp/G0_red_v135_tests_on_v134/test_reproduction_verifies_eve0')
+
+    def _repro_export(r_session, tmp_path: Path) -> tuple[Path, dict]:
+        from statexplore.discovery import validate as V
+    
+        d = fx("Test55L_LegacyUnderflow")
+        run = _legacy_run(d)
+        cfg = V.ValidationConfig(target="rows", modes=["holdout", "cv", "bootstrap"], k=2, B=3, seed=7, max_fits=100_000)
+        v = V.ValidationRunner(r_session, d, run, cfg).execute()
+>       assert v["status"] == "complete" and v["coefs"] and v["trace"]
+                                             ^^^^^^^^^^
+E       KeyError: 'coefs'
+
+tests\test_v135.py:1156: KeyError
+______________ test_reproduction_na_safe_failed_draw_comparison _______________
+
+tmp_path = WindowsPath('E:/sx_tmp/G0_red_v135_tests_on_v134/test_reproduction_na_safe_fail0')
+
+    @pytest.mark.r
+    def test_reproduction_na_safe_failed_draw_comparison(tmp_path):
+        """Matched missing selections of failed draws are equal only when the statuses agree; no NA comparison crash."""
+>       from statexplore.discovery.validate import R_REPRO_CHECKS
+E       ImportError: cannot import name 'R_REPRO_CHECKS' from 'statexplore.discovery.validate' (E:\sx_v134_base\src\statexplore\discovery\validate.py)
+
+tests\test_v135.py:1213: ImportError
+______________ test_51c_pipeline_bootstrap_reproduces_in_fresh_r ______________
+
+r_session = <statexplore.analysis.session.RSession object at 0x000001D4CF299C10>
+tmp_path = WindowsPath('E:/sx_tmp/G0_red_v135_tests_on_v134/test_51c_pipeline_bootstrap_re0')
+
+    @pytest.mark.r
+    @pytest.mark.slow
+    @pytest.mark.timeout(3600)
+    def test_51c_pipeline_bootstrap_reproduces_in_fresh_r(r_session, tmp_path):
+        """51C (18 candidates, three-way grammar, clustered random slopes): pipeline holdout + 2 bootstrap draws exported and
+        reproduced in a fresh Rscript in a relocated folder with spaces and Unicode; the log-tail selection keeps #17."""
+        from statexplore.discovery import engine
+        from statexplore.discovery import validate as V
+        from statexplore.discovery.space import SearchSettings
+    
+        d = import_file(FX4 / "StatExplore_Test51C_ThreeWayInteraction.csv")
+        s = SearchSettings(outcome="TestScore", candidates=["Sleep", "Anxiety", "Attendance"], required=["Time", "Gender"],
+                           participant="StudentID", time="Time", cluster="School", structure="rs", strategy="combinations",
+                           include_main=True, max_order=3, max_predictors=5, family="gaussian", workers=2,
+                           max_models=None, max_minutes=None, study="longitudinal")
+        run = engine.create_run(d, s)
+        engine.execute(run, d)
+        cfg = V.ValidationConfig(target="cluster", modes=["holdout", "bootstrap"], B=2, seed=51, max_fits=10**6)
+        v = V.ValidationRunner(r_session, d, run, cfg).execute()
+        assert v["status"] == "complete"
+        assert all(b["selected_index"] == 17 for b in v["bootstrap"]) and v["folds"][0]["selected_index"] == 17
+        out = tmp_path / "e"
+>       V.export(v, str(out), ds=d, include_data=True, run=run)
+E       TypeError: export() got an unexpected keyword argument 'run'
+
+tests\test_v135.py:1256: TypeError
+71 failed, 139 passed in 40.06s

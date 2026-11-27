@@ -1,0 +1,10 @@
+{"baseline": {"statexplore_file": "E:\\sx_v134_base\\src\\statexplore\\__init__.py", "version": "1.3.4"}}
+{"AUD134-02": {"raw_order": [1, 0], "adjusted_order": [0, 1], "expected": [1, 0]}}
+{"AUD134-03": {"id": "ea77ac2fedc4", "grammar": 2, "fit_rules": 3, "current_fit_rules": 4, "n_done": 5, "total": 15, "resumable": true, "resume_reason": ""}}
+{"AUD134-04": {"focal_required_only": 3, "expected_focal": 0, "subsets": 6, "expected_subsets": 3, "subset_models": [[["X01", "X02"], []], [["X01", "X03"], []], [["X02", "X03"], []], [["X01", "X02"], ["X03"]], [["X01", "X03"], ["X02"]], [["X02", "X03"], ["X01"]]]}}
+{"AUD134-05": {"historical_key": "Time:X01|Time+Time:X01+X01", "validated_key": "Time:X01|Time+Time:X01+X01+X02", "validated_model": [["Time", "X01"], ["X02"]], "same": false, "grammar_problem": "the time strategy now honours the minimum number of candidate predictors (grammar 3), so its candidate order differs from the one this search was started with"}}
+{"AUD134-06": {"mode": "D", "executions": [{"start": 0, "max_models": 5, "end": 5}, {"start": 5, "max_models": 10, "end": 15}], "pool": 5, "label": "declared model budget: the first 5 of 15 candidates in the declared order", "expected_cumulative": 15}}
+{"AUD134-07": {"snapshot_sha": "3586bd714b9918393bfbc23c74820ae7dfae2ab2899df60e2050b0088e180210", "top_level_sha_before": "3586bd714b9918393bfbc23c74820ae7dfae2ab2899df60e2050b0088e180210", "top_level_sha_after": "8b7d2a4fc8075c74791cc2498f9b1965037694366c43c0e55d1a0ee90269478c", "top_level_file_after": "StatExplore_Test50E_ModifiedValues.csv", "top_level_describes_current_data": true, "snapshot_still_historical": true}}
+{"AUD134-08": {"declared": 8478, "requested_index": 0, "candidates_visited": 8478}}
+{"AUD134-09": {"cancel_set_before_dispatch": true, "rows_committed": 10, "status": "complete", "stop_reason": "", "expected": "cancelled, 0 rows"}}
+{"AUD134-10": {"candidates": 8478, "samples": 6, "estimated_fits": 203478, "uncached_planned_fits": 289062, "cap": 250000, "accepted": true}}
