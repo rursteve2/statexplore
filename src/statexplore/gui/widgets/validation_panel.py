@@ -313,5 +313,20 @@ class ValidationPanel(QWidget):
             return
         d = QFileDialog.getExistingDirectory(self, "Export validation to folder")
         if d:
-            files = V.export(self.current, d)
+            ans = QMessageBox.question(
+                self, "Include the data?", "Include the analysis data (only the columns the validation uses) so that "
+                "validation_reproduce.R runs on its own?\n\nNo: the script, manifests and results are written; the "
+                "data file must be placed in the folder later and is checked by its SHA-256.",
+                QMessageBox.Yes | QMessageBox.No | QMessageBox.Cancel)
+            if ans == QMessageBox.Cancel:
+                return
+            from ...discovery.space import view
+
+            run = self.get_run()
+            ds = self.get_dataset()
+            try:
+                vds = view(ds, run.settings) if ds is not None and run is not None else None
+            except Exception:  # noqa: BLE001
+                vds = None
+            files = V.export(self.current, d, ds=vds, include_data=ans == QMessageBox.Yes)
             QMessageBox.information(self, "Validation", f"{len(files)} files written to {d}.")

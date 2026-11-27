@@ -25,13 +25,33 @@ from ..widgets.treatment_panel import TreatmentPanel
 from ..widgets.variable_selector import VariableSelector
 
 
+def educational_from_script(script: str, dataset=None) -> str:
+    """Generic educational view of an exact script (V134-014): the internal column aliases (v001 ...) are written as the
+    original variable names and a header explains what the code does and that it is for reading, not for an exact
+    re-run. Analyses with a dedicated educational generator pass their own text instead."""
+    import re
+
+    if not script:
+        return ""
+    body = script
+    if dataset is not None:
+        amap = {v.alias: v.name for v in dataset.variables.values() if getattr(v, "alias", None)}
+        q = lambda n: n if re.match(r"^[A-Za-z.][A-Za-z0-9._]*$", n) else f"`{n}`"  # noqa: E731
+        body = re.sub(r"\b(v\d{3,})\b", lambda m: q(amap[m.group(1)]) if m.group(1) in amap else m.group(1), body)
+    head = ("# EDUCATIONAL VIEW - the analysis code with original variable names in place of StatExplore's internal\n"
+            "# column aliases, for reading. Lines starting with sx_ are StatExplore helper functions defined at the top\n"
+            "# (data loading, complete cases, identity checks). This view is DIDACTIC and may not run as is; use\n"
+            "# 'Complete reproducible script' (or Save reproducibility bundle) for an exact, self-checking re-run.\n\n")
+    return head + body
+
+
 class CodeDialog(QDialog):
     """Shows the exact script the R worker executed for a result (§18)."""
 
     def __init__(self, result: AnalysisResult | None, parent: QWidget | None = None, *,
                  title: str = "", script: str = "", header: str = "", dataset=None, provenance: dict | None = None,
                  identity: dict | None = None, engine=None, expected: dict | None = None,
-                 packages: list[str] | None = None, extra: dict | None = None):
+                 packages: list[str] | None = None, extra: dict | None = None, educational: str | None = None):
         super().__init__(parent)
         if result is not None:
             title, script = result.title, result.script
@@ -41,6 +61,17 @@ class CodeDialog(QDialog):
         self.resize(900, 650)
         lay = QVBoxLayout(self)
         lay.addWidget(QLabel(header))
+        # V134-014: two modes - the exact, self-checking script, and readable educational code (clearly labelled)
+        from PySide6.QtWidgets import QComboBox
+
+        self.scripts = {"complete": script, "educational": educational or educational_from_script(script, dataset)}
+        self.mode = QComboBox()
+        self.mode.addItem("Complete reproducible script (exact; self-checking)", "complete")
+        self.mode.addItem("Educational R code (short, readable; didactic, not an exact reproduction)", "educational")
+        self.mode.setToolTip("Complete: the code StatExplore actually ran, with checks against the recorded results.\n"
+                             "Educational: the same analysis written for reading and adapting, with original "
+                             "variable names; it states what it simplifies.")
+        lay.addWidget(self.mode)
         text = QPlainTextEdit(script)
         text.setReadOnly(True)
         text.setLineWrapMode(QPlainTextEdit.NoWrap)
@@ -82,6 +113,14 @@ class CodeDialog(QDialog):
             save.clicked.connect(self._save)
         btns.rejected.connect(self.reject)
         lay.addWidget(btns)
+        self._save_btn = save if dataset is not None else None
+        self.mode.currentIndexChanged.connect(self._mode_changed)
+
+    def _mode_changed(self, *_) -> None:
+        key = self.mode.currentData()
+        self.text.setPlainText(self.scripts.get(key) or "")
+        if self._save_btn is not None:     # a bundle always holds the complete script
+            self._save_btn.setEnabled(key == "complete")
 
     def _copy(self) -> None:
         """Copy the whole script and say so (UI-41: reliable copy feedback)."""
@@ -111,7 +150,7 @@ class CodeDialog(QDialog):
         if ans == QMessageBox.Cancel:
             return
         try:
-            written = write_portable(self.text.toPlainText(), Path(folder), self.dataset,
+            written = write_portable(self.scripts["complete"], Path(folder), self.dataset,
                                      include_data=ans == QMessageBox.Yes, **self.bundle)
         except Exception as e:  # file system errors are user-facing
             QMessageBox.warning(self, "Save", f"Could not save: {e}")

@@ -556,7 +556,8 @@ def export(project: Project, result_ids: Iterable[str], folder: Path, formats: s
         if len(tf):   # every tested hypothesis with raw and adjusted p, its family and CI metadata (numeric)
             tcols = [c for c in ("test_id", "idx", "model_type", "formula", "reference", "test_type", "test_label", "label",
                                  "test_method", "statistic", "df1", "df_den", "lrt_df", "p", "p_adj", "p_bh",
-                                 "p_holm", "family_size", "adj_method", "effect", "estimate", "se", "ci_low",
+                                 "p_holm", "log_p", "log10_p", "log_p_adj", "log_p_bh", "log_p_holm", "log_p_source",
+                                 "test_status", "test_reason", "reference_flags", "reference_source", "family_size", "adj_method", "effect", "estimate", "se", "ci_low",
                                  "ci_high", "ci_scale", "ci_null", "ci_level", "ci_method", "ci_applicable",
                                  "odds_ratio", "or_low", "or_high",
                                  "n", "n_groups", "n_predictors", "n_terms", "n_params", "status", "flags",
@@ -571,6 +572,9 @@ def export(project: Project, result_ids: Iterable[str], folder: Path, formats: s
         extra[f"search {run.id} settings"] = pd.DataFrame({"setting": list(settings), "value": [str(v) for v in settings.values()]})
         (folder / f"search_{run.id}_settings.json").write_text(json.dumps(run.meta_dict(), indent=2, default=str))
         written.append(folder / f"search_{run.id}_settings.json")
+        from .audit import write_audit      # V134-015: versioned machine-readable audit + human-readable report
+
+        written += write_audit(run, project.dataset, folder)
     if "xlsx" in formats and (results or extra):
         p = folder / "statexplore_results.xlsx"
         write_xlsx(results, p, extra)

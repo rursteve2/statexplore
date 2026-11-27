@@ -14,12 +14,54 @@ from typing import Any
 NEG_TOL = 1e-6
 
 
+def log_upper_gamma_q(a: float, x: float) -> float:
+    """log Q(a, x) (regularized upper incomplete gamma) without underflow (V134-002): series / continued fraction
+    evaluated in log space (Lentz), as in Numerical Recipes gammq, so tails far below the double range keep their
+    exact magnitude. Used for chi-square upper tails: P(chi2_k > x) = Q(k / 2, x / 2)."""
+    if x <= 0:
+        return 0.0
+    lg = math.lgamma(a)
+    pre = -x + a * math.log(x) - lg
+    if x < a + 1.0:                       # lower series: Q = 1 - P (no underflow problem in this region)
+        s = term = 1.0 / a
+        n = a
+        for _ in range(10000):
+            n += 1.0
+            term *= x / n
+            s += term
+            if abs(term) < abs(s) * 1e-16:
+                break
+        p = math.exp(pre + math.log(s))
+        return math.log1p(-p) if p < 1 else -math.inf
+    tiny = 1e-300                         # continued fraction for Q (modified Lentz)
+    b = x + 1.0 - a
+    c = 1.0 / tiny
+    d = 1.0 / b
+    h = d
+    for i in range(1, 10000):
+        an = -i * (i - a)
+        b += 2.0
+        d = an * d + b
+        d = tiny if abs(d) < tiny else d
+        c = b + an / c
+        c = tiny if abs(c) < tiny else c
+        d = 1.0 / d
+        dl = d * c
+        h *= dl
+        if abs(dl - 1.0) < 1e-16:
+            break
+    return pre + math.log(h)
+
+
 def _log_sf(lr: float, k: int) -> float:
     from scipy.stats import chi2
 
     if k == 0:
         return -math.inf if lr > 0 else 0.0
-    return float(chi2.logsf(lr, k))
+    sf = float(chi2.sf(lr, k))
+    if sf > 1e-280:
+        return math.log(sf)
+    return log_upper_gamma_q(k / 2.0, lr / 2.0)
 
 
 def lr_test(ll0: Any, ll1: Any, df: Any, reference: str = "chisq", tol: float = NEG_TOL) -> dict[str, Any]:

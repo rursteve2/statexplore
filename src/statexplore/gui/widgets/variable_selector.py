@@ -25,6 +25,12 @@ from ...core.dataset import Dataset
 ALL_LEVELS = "All measurement levels"
 PIN = "★ "
 HEADER = Qt.UserRole + 2      # section header rows (selected_first mode)
+BASE_TEXT = Qt.UserRole + 3   # item text without the order position prefix
+ORDER_TIP = ("The order of the selected candidates is the search order: it defines candidate IDs, the enumeration and "
+             "the preview.\nAn exhaustive search evaluates the same set of models in any order (same results); a "
+             "budget-limited, early-stopping or cancelled search evaluates a prefix, so the order can change which "
+             "models are evaluated.\nReordering starts a NEW search identity; earlier results and resumable searches "
+             "are never changed.")
 
 
 def _pinned() -> set[str]:
@@ -46,8 +52,9 @@ class VariableSelector(QWidget):
 
     def __init__(self, parent: QWidget | None = None, *, single: bool = False, max_height: int | None = None,
                  placeholder: str = "Search name, label or original name…", show_level_filter: bool = True,
-                 selected_first: bool = True):
+                 selected_first: bool = True, orderable: bool = False):
         super().__init__(parent)
+        self.orderable = orderable and not single      # V134-013: explicit, visible candidate order
         self.single = single
         self.selected_first = selected_first and not single   # UI-31: every multi-select list groups selections first
         self._regroup_timer = QTimer(self)
@@ -96,6 +103,42 @@ class VariableSelector(QWidget):
             bar.addWidget(b)
         bar.addStretch()
         lay.addLayout(bar)
+        if self.orderable:
+            from PySide6.QtGui import QKeySequence, QShortcut
+            from PySide6.QtWidgets import QAbstractItemView
+
+            from PySide6.QtWidgets import QToolButton
+
+            obar = QHBoxLayout()
+            obar.setSpacing(2)
+            obar.addWidget(QLabel("Order:"))
+            for key, text, tip, fn in (
+                    ("up", "▲", "Move the current selected variable up (Ctrl+Up)", lambda: self.move_current(-1)),
+                    ("down", "▼", "Move the current selected variable down (Ctrl+Down)", lambda: self.move_current(1)),
+                    ("top", "⤒", "Move the current selected variable to the top (Ctrl+Home)", lambda: self.move_current(-10**9)),
+                    ("bottom", "⤓", "Move the current selected variable to the bottom (Ctrl+End)",
+                     lambda: self.move_current(10**9)),
+                    ("sort", "A–Z", "Sort the selected variables alphabetically by display name", self.sort_alpha),
+                    ("restore", "Data order", "Restore the dataset's column order for the selected variables",
+                     self.restore_dataset_order)):
+                b = QToolButton()
+                b.setText(text)
+                b.setToolTip(tip + "\n\n" + ORDER_TIP)
+                b.setAccessibleName(tip)
+                b.clicked.connect(fn)
+                self.buttons[key] = b
+                obar.addWidget(b)
+            obar.addStretch()
+            lay.addLayout(obar)
+            for seq, d in (("Ctrl+Up", -1), ("Ctrl+Down", 1), ("Ctrl+Home", -10**9), ("Ctrl+End", 10**9)):
+                sc = QShortcut(QKeySequence(seq), self.list)
+                sc.setContext(Qt.WidgetShortcut)
+                sc.activated.connect(lambda d=d: self.move_current(d))
+            self.list.setDragDropMode(QAbstractItemView.InternalMove)
+            self.list.setDefaultDropAction(Qt.MoveAction)
+            self.list.model().rowsMoved.connect(lambda *_: self._dropped())
+            self.list.setToolTip(self.list.toolTip() + "\nDrag selected variables (or use the Order buttons) to change "
+                                 "the search order.")
         self.count = QLabel()          # own line (UI-33): beside the buttons it forced a ~390 px minimum width
         self.count.setWordWrap(True)
         lay.addWidget(self.count)
@@ -118,6 +161,7 @@ class VariableSelector(QWidget):
             v = ds.var(n) if ds is not None else None
             text = (PIN if n in pins else "") + (v.display_name if v else n) + (decorate(n) if decorate else "")
             it = QListWidgetItem(text)
+            it.setData(BASE_TEXT, text)
             it.setData(Qt.UserRole, n)
             if v is not None:
                 self._levels[n] = v.measure.value
@@ -129,7 +173,7 @@ class VariableSelector(QWidget):
                 parts.append(f"level: {v.measure.value}" + (f" (source: {v.source_measure})" if v.source_measure else ""))
                 it.setToolTip("\n".join(parts))
                 it.setData(Qt.UserRole + 1, " ".join([v.display_name, v.name, v.label]).lower())
-            it.setFlags(it.flags() | Qt.ItemIsUserCheckable)
+            it.setFlags(it.flags() | Qt.ItemIsUserCheckable | (Qt.ItemIsDragEnabled if self.orderable else Qt.NoItemFlags))
             it.setCheckState(Qt.Checked if (n in previous or (default_checked and not keep)) else Qt.Unchecked)
             self.list.addItem(it)
         self.list.blockSignals(False)
@@ -181,6 +225,44 @@ class VariableSelector(QWidget):
         self._schedule_regroup()
         self._update_count()
         self.changed.emit()
+
+    # ---- explicit order (V134-013) ------------------------------------------------------
+    def set_order(self, names: list[str]) -> None:
+        """Reorder the selected variables (unknown / unchecked names are ignored; none is lost)."""
+        sel = self.selected()
+        new = [n for n in dict.fromkeys(names) if n in sel]
+        self._order = new + [n for n in sel if n not in new]
+        self._regroup() if self.selected_first else None
+        self._update_count()
+        self.changed.emit()
+
+    def move_current(self, delta: int) -> None:
+        it = self.list.currentItem()
+        if it is None or it.data(HEADER) or it.checkState() != Qt.Checked:
+            return
+        name = it.data(Qt.UserRole)
+        order = self.selected()
+        i = order.index(name)
+        j = max(0, min(len(order) - 1, i + delta))
+        if i == j:
+            return
+        order.insert(j, order.pop(i))
+        self.set_order(order)
+        self.list.setCurrentItem(next(x for x in self.items() if x.data(Qt.UserRole) == name))
+
+    def sort_alpha(self) -> None:
+        ds = getattr(self, "_ds", None)
+        key = (lambda n: ds.var(n).display_name.casefold()) if ds is not None else str.casefold
+        self.set_order(sorted(self.selected(), key=key))
+
+    def restore_dataset_order(self) -> None:
+        pos = {n: i for i, n in enumerate(getattr(self, "_names", []))}
+        self.set_order(sorted(self.selected(), key=lambda n: pos.get(n, len(pos))))
+
+    def _dropped(self) -> None:
+        # the visual order of the checked rows after a drag is the new order
+        QTimer.singleShot(0, lambda: self.set_order([it.data(Qt.UserRole) for it in self.items()
+                                                     if it.checkState() == Qt.Checked]))
 
     def _set_items(self, items: list[QListWidgetItem], state: Qt.CheckState) -> None:
         self.list.blockSignals(True)
@@ -260,10 +342,15 @@ class VariableSelector(QWidget):
         checked = [n for n in self.selected_order(rows) if n in rows]
         rest = [n for n in getattr(self, "_base_order", list(rows)) if n in rows and n not in checked]
         rest += [n for n in rows if n not in checked and n not in rest]
+        if self.orderable:          # visible order positions of the selected candidates
+            for k, n in enumerate(checked, start=1):
+                rows[n].setText(f"{k}. " + (rows[n].data(BASE_TEXT) or rows[n].text()))
+            for n in rest:
+                rows[n].setText(rows[n].data(BASE_TEXT) or rows[n].text())
         for title, group in ((f"Selected ({len(checked)})", checked), (f"Not selected ({len(rest)})", rest)):
             h = QListWidgetItem(title)
             h.setData(HEADER, True)
-            h.setFlags(Qt.NoItemFlags)
+            h.setFlags(Qt.ItemIsDropEnabled if self.orderable else Qt.NoItemFlags)
             f = h.font()
             f.setBold(True)
             h.setFont(f)

@@ -649,3 +649,101 @@ def candidate_script(load_script: str, ds: Dataset, s: SearchSettings, family: s
             + f"sx_result <- sx_discover_one({candidate_args(ds, c, s)})\n" + CANDIDATE_SUMMARY
             + (verification_script(expected, adjusted) if expected else VERIFY_HELPERS)
             + comparison_script(ds, s, c, comparisons or []))
+
+
+# ---- Educational R code (V134-014) -----------------------------------------------------------------------------------
+
+EDU_NOTE = ("# EDUCATIONAL R CODE - a short, annotated version of what StatExplore computed, written with the original\n"
+            "# variable names so it can be read and adapted. It is DIDACTIC: it does not reproduce StatExplore's exact\n"
+            "# rows, coding, filters, derived variables, composite participant keys, optimizer fallback, diagnostics or\n"
+            "# multiplicity adjustment. For an exact, self-checking reproduction use 'Complete reproducible script'.\n")
+
+
+def _q(name: str) -> str:
+    import re
+
+    return name if re.match(r"^[A-Za-z.][A-Za-z0-9._]*$", name) and not re.match(r"^\.\d", name) else f"`{name}`"
+
+
+def educational_script(ds: Dataset, s: SearchSettings, family: str, c: Candidate) -> str:
+    """Readable code for one discovery candidate: read the file, declare categorical predictors, fit the full model and
+    each tested reduced model with the engine and structure of the search, and compare them with the search's test."""
+    from ..analysis.covstruct import GAUSSIAN_STRUCTURES
+    from .space import candidate_tests, full_terms, test_label, view
+
+    v = view(ds, s)
+    nm = lambda x: _q(v.var(x).name)  # noqa: E731
+    rhs = lambda ts: " + ".join(":".join(nm(x) for x in t) for t in ts) or "1"  # noqa: E731
+    y = nm(s.outcome)
+    used = list(dict.fromkeys([s.outcome] + [x for t in full_terms(c) for x in t]))
+    cats = [x for x in used if x != s.outcome and v.var(x).is_categorical]
+    L = [EDU_NOTE, f"# Data: {getattr(v.source, 'path', '') and 'the original data file'} (replace the path below)",
+         'd <- read.csv("your_data.csv")        # or haven::read_sav() / readxl::read_excel() for .sav / .xlsx']
+    for x in cats:
+        L.append(f"d${nm(x)} <- factor(d${nm(x)})   # categorical predictor: dummy contrasts vs the first level")
+    st = (c.structure or s.structure or "ri") if s.participant else ""
+    pid = nm(s.participant) if s.participant else ""
+    tm = nm(s.time) if s.time else "Time"
+    cl = nm(s.cluster) if s.participant and getattr(s, "cluster", None) and c.clustered is not False else None
+    reml = bool(s.participant and s.workflow == "structure")
+    fit = None
+    if family == "gaussian":
+        L.append("# Ordinary least squares (lm); nested models compared with an F test")
+        fit = lambda f: f"lm({f}, data = d)"  # noqa: E731
+        cmp = 'anova(reduced, full)                 # F test of the dropped term(s)'
+    elif family == "binomial":
+        L.append("# Binary logistic regression (glm); nested models compared with a likelihood-ratio (deviance) test")
+        fit = lambda f: f"glm({f}, data = d, family = binomial())"  # noqa: E731
+        cmp = 'anova(reduced, full, test = "LRT")'
+    elif family == "ordinal":
+        L += ["library(ordinal)", f"d${y} <- factor(d${y}, ordered = TRUE)   # ordered outcome categories"]
+        fit = lambda f: f"clm({f}, data = d, link = \"logit\")"  # noqa: E731
+        cmp = "anova(reduced, full)                 # likelihood-ratio test"
+    elif family == "multinomial":
+        L += ["library(nnet)", f"d${y} <- factor(d${y})"]
+        fit = lambda f: f"multinom({f}, data = d, trace = FALSE)"  # noqa: E731
+        cmp = "anova(reduced, full)                 # likelihood-ratio test"
+    elif family == "lmm" and st in GAUSSIAN_STRUCTURES:
+        rnd, res, eng = GAUSSIAN_STRUCTURES[st]
+        if eng == "lme4":
+            blk = {"ri": f"(1 | {pid})", "diag": f"(1 + {tm} || {pid})", "rs": f"(1 + {tm} | {pid})"}[rnd]
+            re_ = (f"(1 | {cl}) + " if cl else "") + blk
+            L.append("library(lme4)")
+            L.append("# Linear mixed model (lme4::lmer), " + ("REML" if reml else "ML: needed to compare models with "
+                     "different fixed effects") + ("; participants nested in " + cl if cl else ""))
+            fit = lambda f: f"lmer({f} + {re_}, data = d, REML = {'TRUE' if reml else 'FALSE'})"  # noqa: E731
+        else:
+            L.append("library(nlme)")
+            grp = f"{cl}/{pid}" if cl else pid
+            rr = {"ri": f"~ 1 | {grp}", "diag": f"list({pid} = pdDiag(~ 1 + {tm}))", "rs": f"~ 1 + {tm} | {grp}"}[rnd]
+            if cl and rnd != "ri":
+                rr = f"list({cl} = pdDiag(~ 1), {pid} = " + ("pdDiag" if rnd == "diag" else "pdSymm") + f"(~ 1 + {tm}))"
+            cor = {"independent": "", "ar1": f", correlation = corAR1(form = ~ occasion | {grp})",
+                   "car1": f", correlation = corCAR1(form = ~ {tm} | {grp})"}[res]
+            if res == "ar1":
+                L.append(f"d$occasion <- as.integer(factor(d${tm}))   # AR(1) runs over the observed-occasion index")
+            L.append(f"d <- d[order(d${pid}, d${tm}), ]    # observations in time order within participant")
+            L.append("# Linear mixed model (nlme::lme), " + ("REML" if reml else "ML"))
+            fit = lambda f: (f"lme({f}, random = {rr}{cor}, data = d, method = \"{'REML' if reml else 'ML'}\", "  # noqa: E731
+                             "na.action = na.omit)")
+        cmp = "anova(reduced, full)                 # likelihood-ratio test (both fits by ML)"
+    elif family == "gee" and st.startswith("gee"):
+        cs = {"gee_exch": "exchangeable", "gee_ar1": "ar1", "gee_ind": "independence"}[st]
+        L += ["library(geepack)", f"d <- d[order(d${pid}, d${tm}), ]    # rows grouped by participant, in time order"]
+        fam = "binomial()" if s.family == "binomial" else "gaussian()"
+        fit = lambda f: f"geeglm({f}, id = {pid}, corstr = \"{cs}\", family = {fam}, data = d)"  # noqa: E731
+        cmp = "anova(full, reduced)                 # robust (sandwich) Wald test; GEE has no likelihood"
+    if fit is None:
+        return (EDU_NOTE + f"# No educational version is available for this engine ({family}, {st}); use the complete "
+                "reproducible script.\n")
+    terms = full_terms(c)
+    L += ["", "# The full model of this candidate", f"full <- {fit(f'{y} ~ {rhs(terms)}')}", "summary(full)"]
+    for t in candidate_tests(c):
+        L += ["", f"# Hypothesis: {test_label(v, c, t)}  (reference model: the full model without it)",
+              "reduced <- " + fit(f"{y} ~ {rhs(t['reduced'])}"), cmp]
+    if family in ("gaussian", "lmm", "binomial", "glmm", "ordinal", "multinomial"):
+        L += ["", "AIC(full); BIC(full)                 # information criteria (smaller = better on the same rows)"]
+    L += ["", "# Reading the result: a small p-value is evidence against the reference model GIVEN this model; it is",
+          "# not the probability that the hypothesis is true, and with many candidates tested it must be adjusted",
+          "# (StatExplore reports BH / Holm within each family of tests). Associations are not causal effects."]
+    return "\n".join(L) + "\n"

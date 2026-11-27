@@ -163,8 +163,8 @@ def preflight(ds: Dataset, outcome: str, id_var: str, time: str | None = None,
         lab = lambda c: _label(ds, time, c)  # noqa: E731
         warnings.append(
             f"{dn} is not observed at {len(unobserved)} of {len(times)} time points ({_runs(unobserved, lab)}). "
-            f"These occasions are left out — not treated as zeros and not imputed. Actual analysis range: "
-            f"{lab(rng[0])} to {lab(rng[1])}." if rng else f"{dn} is never observed.")
+            f"These occasions are left out — not treated as zeros and not imputed. Actual analysis range of "
+            f"{ds.var(time).display_name}: {lab(rng[0])} to {lab(rng[1])}." if rng else f"{dn} is never observed.")
     if dups:
         warnings.append(f"{dups} participant-time combinations occur in more than one row (e.g. "
                         + ", ".join(f"{a} at {_label(ds, time, b)}" for a, b in examples[:3])
@@ -217,9 +217,11 @@ def preflight(ds: Dataset, outcome: str, id_var: str, time: str | None = None,
         rep.complete_times, rep.complete_range = ct, (ct[0], ct[-1])
         if rng is not None and rep.complete_range != rng:
             lab = lambda c: _label(ds, time, c)  # noqa: E731
-            warnings.append(f"The outcome is observed from {lab(rng[0])} to {lab(rng[1])}, but rows complete on every "
-                            f"model variable span only {lab(ct[0])} to {lab(ct[-1])} (predictor or cluster values are "
-                            "missing elsewhere). The model's time range is the complete-row range.")
+            tn = ds.var(time).display_name
+            warnings.append(f"The outcome ({dn}) is observed from {tn} = {lab(rng[0])} to {tn} = {lab(rng[1])}, but rows "
+                            f"complete on every model variable span only {tn} = {lab(ct[0])} to {lab(ct[-1])} "
+                            "(predictor or cluster values are missing elsewhere). The model's time range is the "
+                            "complete-row range.")
     if cluster:
         rep.cluster = cluster
         rep.n_cluster_missing = int((f[cluster].isna() & f[[outcome] + predictors].notna().all(axis=1)).sum())

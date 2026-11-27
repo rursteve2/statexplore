@@ -623,6 +623,7 @@ class ValidationRunner:
                 raise ValidationError("Internal split check failed: " + "; ".join(bad))
         self.draws = make_draws(self.units, cfg) if "bootstrap" in cfg.modes else []
         self.scripts: list[str] = []
+        self.chunks: list[str] = []
 
     def _setup(self) -> str:
         from .rcode import candidate_args, setup_script
@@ -648,6 +649,7 @@ class ValidationRunner:
 
         script = self._setup() + "\n" + body
         self.scripts.append(f"# ==== {title} ====\n" + body)
+        self.chunks.append(body)
         res, raw = self.session.run(self.v, kind="amd_validation", title=title, body=script,
                                     packages=ENGINE_PACKAGES, inputs={}, timeout=3600)
         if raw is None:
@@ -681,7 +683,7 @@ class ValidationRunner:
                 folds.append(fr)
                 preds.append(_frame(raw.get("predictions")))
                 trace.append(_frame(raw.get("trace")))
-            chunk = 10
+            chunk = max(1, int(getattr(self, "chunk", 10)))   # draws per R call (results are keyed by draw)
             for i in range(0, len(self.draws), chunk):
                 if status != "complete" or should_stop():
                     status = "cancelled"
@@ -704,6 +706,11 @@ class ValidationRunner:
             problems.append(str(e))
             status = "cancelled" if should_stop() else "failed"
         out = self.assemble(folds, preds, boot, status, problems, coefs)
+        try:      # V134-008: one complete, portable script (data load + setup + every chunk + self-checks)
+            out["reproduce_script"] = reproduce_script(getattr(self.session, "load_script", "") or "", self._setup(),
+                                                       self.chunks)
+        except Exception as e:  # noqa: BLE001 - never lose a finished validation over its export text
+            out["reproduce_script"] = f"# reproduction script unavailable: {e}\n"
         T = [x for x in trace if len(x)]
         out["trace"] = pd.concat(T, ignore_index=True).to_dict("records") if T else []
         return out
@@ -912,6 +919,9 @@ def summary_text(v: dict[str, Any]) -> str:
     parts = [f"Validation status: {v['status'].upper()}" + (f" ({'; '.join(v['problems'])})" if v["problems"] else ""),
              f"Target: {v['target_label']} — {v['target_estimand']}.",
              f"Procedure: {v['pipeline_label']}" + (f"; selection rule: {v['rule_label']}" if v["rule_label"] else "") + ".",
+             *([f"Candidate pool: {v['pool_label']}."] if v.get("pool_label") and c["pipeline"] == "pipeline" else []),
+             *([f"Search: {v.get('search_id')} (fit identity {str(v.get('search_identity'))[:16]}…); validation run "
+                f"{v.get('validation_id')}."] if v.get("validation_id") else []),
              f"Modes: {', '.join(MODES[m] for m in c['modes'])}; holdout {c['holdout_fraction']:.0%}, K = {c['k']}, "
              f"repeats = {c['repeats']}, B = {c['B']}, seed = {c['seed']}.",
              "This is a predictive check of the stated target, separate from the discovery p-values; it is not a "
@@ -940,12 +950,19 @@ def tables(v: dict[str, Any]) -> list[tuple[str, list[str], list[list[Any]], str
         "Selection frequency over all attempted draws and over successful draws; sign stability and percentiles only "
         "among draws that selected the candidate (an unselected coefficient is not replaced by 0). Naive percentile "
         "intervals after selection are not valid confirmatory intervals.")
+    tab("Bootstrap estimands", v.get("estimands") or [],
+        "One row per coefficient of the selected candidate's primary test (a multi-df test has several): sign and "
+        "percentiles among the draws that selected that candidate. Separate from selection frequency; not a "
+        "probability that the effect is real and not a post-selection confidence interval.")
+    tab("Requested vs realized test sizes", v.get("realized") or [],
+        "Units of the prediction target and rows held out per split and fold. The rule is ceil(fraction x units); rows "
+        "follow the units' sizes, so the row share can differ from the unit share.")
     if v["bootstrap"]:
         tab("Bootstrap draws", v["bootstrap"], "One row per draw (failed draws keep their reason).")
     return out
 
 
-def export(v: dict[str, Any], folder: str) -> list[str]:
+def export(v: dict[str, Any], folder: str, ds: Dataset | None = None, include_data: bool = False) -> list[str]:
     """Write the validation evidence: config/summary JSON, fold manifest, bootstrap draw map, predictions, folds,
     performance, stability CSVs, and the exact R code of every chunk."""
     import json
@@ -958,21 +975,78 @@ def export(v: dict[str, Any], folder: str) -> list[str]:
     def w(name: str, text: str) -> None:
         (d / name).write_text(text, encoding="utf-8", newline="\n")
         files.append(str(d / name))
-    meta = {k: v[k] for k in ("grammar", "config", "status", "problems", "search_id", "search_identity",
-                              "target_label", "target_estimand", "pipeline_label", "rule_label", "candidates",
-                              "feasibility", "rng")}
+    meta = {k: v.get(k) for k in ("grammar", "schema", "validation_id", "config", "status", "problems", "search_id",
+                                  "search_identity", "search_grammar", "search_signature", "data_sha256", "pool",
+                                  "pool_label", "stop_rule", "target_label", "target_estimand", "pipeline_label",
+                                  "rule_label", "candidates", "candidate_keys", "feasibility", "rng", "realized")}
     w("validation_manifest.json", json.dumps(meta, indent=1, default=str))
     for key, name in (("manifest", "split_manifest.csv"), ("draws", "bootstrap_draws.csv"),
                       ("predictions", "predictions.csv"), ("folds", "folds.csv"), ("performance", "performance.csv"),
-                      ("stability", "stability.csv"), ("bootstrap", "bootstrap_results.csv")):
+                      ("stability", "stability.csv"), ("bootstrap", "bootstrap_results.csv"),
+                      ("estimands", "bootstrap_estimands.csv"), ("trace", "candidate_trace.csv"),
+                      ("realized", "realized_sizes.csv")):
         if v.get(key):
             w(name, _csv(v[key]))
     w("validation_code.R", "# R code executed for each chunk (after the project's data-load script and the search setup).\n"
-      + "\n\n".join(v.get("scripts") or []))
-    w("README.txt", summary_text(v) + "\n\nFiles: split_manifest.csv (fold of every analysed row per split; fold 0 = "
+      "# For a complete, runnable reproduction use validation_reproduce.R.\n" + "\n\n".join(v.get("scripts") or []))
+    if v.get("reproduce_script"):
+        if ds is not None:        # portable: relative data file (with consent), SHA-256 check, package check
+            from ..export.exporters import write_portable
+
+            files += [str(p) for p in write_portable(v["reproduce_script"], d, ds, name="validation_reproduce",
+                                                     include_data=include_data, packages=None,
+                                                     extra={"validation_id": v.get("validation_id"),
+                                                            "search_id": v.get("search_id"),
+                                                            "search_identity": v.get("search_identity")})]
+        else:
+            w("validation_reproduce.R", v["reproduce_script"])
+    if (d / "README.txt").exists():
+        (d / "README_bundle.txt").write_text((d / "README.txt").read_text(encoding="utf-8"), encoding="utf-8")
+    w("README.txt", summary_text(v) + "\n\nFiles: validation_reproduce.R (complete reproduction with self-checks), "
+      "candidate_trace.csv (every candidate in every training part / draw), bootstrap_estimands.csv, realized_sizes.csv, "
+      "split_manifest.csv (fold of every analysed row per split; fold 0 = "
       "training only), bootstrap_draws.csv (draw IDs and original IDs), predictions.csv (held-out rows), folds.csv, "
       "performance.csv, stability.csv, validation_code.R.\n")
     return files
+
+
+def reproduce_script(load: str, setup: str, chunks: list[str]) -> str:
+    """V134-008: a complete script that repeats the validation outside StatExplore - the data load, the search setup
+    and helpers, the exact split / draw manifests of every chunk - collects the predictions, folds and bootstrap
+    selections, writes them, and stops unless they match the app's exported predictions.csv / bootstrap_results.csv
+    (same folder) within 1e-6."""
+    L = ["# ==== StatExplore AMD validation: complete reproduction ====",
+         "# Run from the exported folder (Rscript validation_reproduce.R). It needs the data file named in the data-load",
+         "# section and compares its results with predictions.csv / bootstrap_results.csv written by StatExplore.",
+         load, setup,
+         "sx_rep_pred <- list(); sx_rep_folds <- list(); sx_rep_boot <- list(); sx_rep_coef <- list()"]
+    for k, body in enumerate(chunks, start=1):
+        L += [f"# ---- chunk {k} ----", body,
+              "if (!is.null(sx_result$predictions)) sx_rep_pred[[length(sx_rep_pred) + 1]] <- sx_result$predictions",
+              "if (!is.null(sx_result$folds)) sx_rep_folds[[length(sx_rep_folds) + 1]] <- sx_result$folds",
+              "if (!is.null(sx_result$boot)) { sx_rep_boot[[length(sx_rep_boot) + 1]] <- sx_result$boot$draws",
+              "  if (!is.null(sx_result$boot$coefs)) sx_rep_coef[[length(sx_rep_coef) + 1]] <- sx_result$boot$coefs }"]
+    L += ["sx_bind <- function(x) if (length(x)) do.call(rbind, x) else NULL",
+          "sx_P <- sx_bind(sx_rep_pred); sx_F <- sx_bind(sx_rep_folds); sx_B <- sx_bind(sx_rep_boot)",
+          'if (!is.null(sx_P)) utils::write.csv(sx_P, "reproduced_predictions.csv", row.names = FALSE)',
+          'if (!is.null(sx_F)) utils::write.csv(sx_F, "reproduced_folds.csv", row.names = FALSE)',
+          'if (!is.null(sx_B)) utils::write.csv(sx_B, "reproduced_bootstrap.csv", row.names = FALSE)',
+          "# ---- self-checks against the app's exported results ----",
+          'if (!is.null(sx_P) && file.exists("predictions.csv")) {',
+          '  app <- utils::read.csv("predictions.csv", stringsAsFactors = FALSE)',
+          '  m <- merge(app, sx_P, by = c("split", "fold", "row_id"), suffixes = c(".app", ".r"))',
+          '  stopifnot("held-out rows differ from the app" = nrow(m) == nrow(app) && nrow(m) == nrow(sx_P),',
+          '            "predictions differ from the app" = max(abs(m$predicted.app - m$predicted.r)) <= 1e-6)',
+          '  cat("Predictions reproduced:", nrow(m), "held-out rows.\\n") }',
+          'if (!is.null(sx_B) && file.exists("bootstrap_results.csv")) {',
+          '  app <- utils::read.csv("bootstrap_results.csv", stringsAsFactors = FALSE)',
+          '  m <- merge(app[, c("b", "selected_index")], sx_B[, c("b", "selected_index")], by = "b",',
+          '             suffixes = c(".app", ".r"))',
+          '  stopifnot("bootstrap draws differ from the app" = nrow(m) == nrow(app),',
+          '            "bootstrap selections differ from the app" = isTRUE(all(as.numeric(m$selected_index.app) == '
+          'as.numeric(m$selected_index.r))))',
+          '  cat("Bootstrap selections reproduced:", nrow(m), "draws.\\n") }']
+    return "\n".join(L) + "\n"
 
 
 def csv_text(recs: list[dict[str, Any]]) -> str:

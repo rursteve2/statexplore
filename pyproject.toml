@@ -34,4 +34,5 @@ statexplore = ["r/*.R"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 timeout = 300
-markers = ["r: requires a working R installation with Phase 1 packages"]
+markers = ["r: requires a working R installation with Phase 1 packages",
+           "slow: long real-R regression (minutes); part of the full suite"]

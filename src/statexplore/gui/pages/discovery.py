@@ -1,6 +1,8 @@
 """Automated Model Discovery workspace (§10, §11, §20.3–20.5)."""
 from __future__ import annotations
 
+from pathlib import Path
+
 import html
 import threading
 from typing import Any
@@ -539,7 +541,7 @@ class DiscoveryPage(QWidget):
         self._build_study_box(cl)
         cand_box = QGroupBox("Candidate predictors (up to 39)")
         cb = QVBoxLayout(cand_box)
-        self.cand_sel = VariableSelector(selected_first=True)
+        self.cand_sel = VariableSelector(selected_first=True, orderable=True)
         self.cand_sel.setMinimumHeight(220)
         self.cands = self.cand_sel.list
         self.cand_sel.changed.connect(self._selection_changed)
@@ -673,6 +675,10 @@ class DiscoveryPage(QWidget):
         for b in (self.estimate_btn, self.start_btn, self.cancel_btn, self.resume_btn):
             btns.addWidget(b)
         cl.addLayout(btns)
+        self.resume_reason = QLabel()          # V134-009: why Resume is unavailable for the selected search
+        self.resume_reason.setWordWrap(True)
+        self.resume_reason.setStyleSheet("color: #666;")
+        cl.addWidget(self.resume_reason)
         cl.addWidget(self.estimate)
         self.progress = QProgressBar()
         self.progress_label = QLabel()
@@ -688,6 +694,7 @@ class DiscoveryPage(QWidget):
         self.history = QComboBox()
         self.history.activated.connect(self._pick_history)
         top.addWidget(self.history, 1)
+        self._top_row = top
         rl.addLayout(top)
         hl = QHBoxLayout()
         hl.addWidget(QLabel("<b>Highlight findings:</b>"))
@@ -814,6 +821,12 @@ class DiscoveryPage(QWidget):
         self.main_btn.setToolTip("Adds this model and the same model without any interaction (same rows, same "
                                  "variables) to the Model Comparison set.")
         self.main_btn.clicked.connect(self._compare_main)
+        self.audit_btn = QPushButton("Export audit trail…")
+        self.audit_btn.setToolTip("Write a versioned JSON audit record of the selected search (identities, versions, "
+                                  "grammar, every candidate fit with diagnostics and cache provenance, every hypothesis "
+                                  "with raw / log / adjusted p, validation runs) and a readable Markdown report. No "
+                                  "row-level data and no personal paths are included.")
+        self.audit_btn.clicked.connect(self._export_audit)
         self.details_btn = QPushButton("Details pane")
         self.details_btn.setCheckable(True)
         self.details_btn.setChecked(True)
@@ -826,6 +839,7 @@ class DiscoveryPage(QWidget):
         act_row = QHBoxLayout()
         for b in (self.open_btn, self.code_btn, self.teach_btn, self.set_btn, self.main_btn):
             act_row.addWidget(b)
+        self._top_row.addWidget(self.audit_btn)     # beside the search picker: it acts on the whole search
         act_row.addStretch()
         rl.addLayout(act_row)
 
@@ -852,6 +866,7 @@ class DiscoveryPage(QWidget):
         self._study_changed()
         state.project_changed.connect(self._reload)
         state.metadata_changed.connect(self._reload_lists)
+        state.metadata_changed.connect(lambda: self._update_resume())
         state.result_added.connect(lambda r: self._show_run() if r.kind == "discovery_stability" and self.run else None)
         self._reload()
 
@@ -903,18 +918,27 @@ class DiscoveryPage(QWidget):
         self.structures_list = QListWidget()
         self.structures_list.setMaximumHeight(140)
         self.time_inter = QCheckBox("Locked fixed part includes time × each candidate")
+        # V134-007: opt-in combined grammar (off = the v1.3.3 grammar, also for reopened searches and saved forms)
+        self.time_elig = QCheckBox("Include time in eligible interactions (workflow A)")
+        self.time_elig.setToolTip("Time stays a required main effect (counted once among the predictors) and also takes "
+                                  "part in every subset's interaction sets: predictor × predictor and time × predictor "
+                                  "terms in one model (and permitted three-way terms with all their parents).\n"
+                                  "Applies to 'All eligible interaction combinations' and 'Full factorial'; needs 'Include "
+                                  "time as a fixed effect'. Required covariates never become eligible.")
         self.role_btn = QPushButton("Mark this column as the participant ID in the project")
         self.role_btn.setAutoDefault(False)
         self.role_btn.clicked.connect(self._mark_id_role)
         self.long_info = QTextBrowser()
         self.long_info.setMaximumHeight(170)
         self._long_widgets = [self.participant, self.time_combo, self.time_type, self.time_fixed, self.workflow,
-                              self.structure, self.structures_list, self.time_inter, self.role_btn, self.long_info,
+                              self.structure, self.structures_list, self.time_inter, self.time_elig, self.role_btn,
+                              self.long_info,
                               self.cluster_combo, self.id_policy, self.cluster_compare]
         for label, w in [("Participant ID", self.participant), ("", self.role_btn),
                          ("Higher-level cluster", self.cluster_combo), ("Participant IDs", self.id_policy),
                          ("", self.cluster_compare), ("Time", self.time_combo),
-                         ("Time enters as", self.time_type), ("", self.time_fixed), ("Workflow", self.workflow),
+                         ("Time enters as", self.time_type), ("", self.time_fixed), ("", self.time_elig),
+                         ("Workflow", self.workflow),
                          ("Structure (workflow A)", self.structure), ("Structures (workflow B)", self.structures_list),
                          ("", self.time_inter), ("Preflight", self.long_info)]:
             if label:
@@ -929,6 +953,7 @@ class DiscoveryPage(QWidget):
         self.cluster_compare.toggled.connect(self._study_changed)
         self.time_fixed.toggled.connect(self._study_changed)
         self.time_inter.toggled.connect(self._invalidate_estimate)
+        self.time_elig.toggled.connect(self._invalidate_estimate)
         self.structures_list.itemChanged.connect(self._invalidate_estimate)
 
     def _fill_structures(self, *_: Any) -> None:
@@ -973,6 +998,7 @@ class DiscoveryPage(QWidget):
             self.structure.setEnabled(wf == "fixed")
             self.structures_list.setEnabled(wf == "structure")
             self.time_inter.setEnabled(wf == "structure")
+            self.time_elig.setEnabled(wf == "fixed" and self.time_fixed.isChecked() and bool(self.time_combo.currentData()))
             has_cluster = bool(self.cluster_combo.currentData())
             self.id_policy.setEnabled(has_cluster)           # hidden choices keep their values (one state)
             self.cluster_compare.setEnabled(has_cluster and wf == "structure")
@@ -1217,7 +1243,8 @@ class DiscoveryPage(QWidget):
                 "time": self.time_combo.currentData(), "time_type": self.time_type.currentData(),
                 "time_fixed": self.time_fixed.isChecked(), "workflow": self.workflow.currentData(),
                 "structure": self.structure.currentData(), "structures": self._checked_structures(),
-                "time_interactions": self.time_inter.isChecked(), "cluster": self.cluster_combo.currentData(),
+                "time_interactions": self.time_inter.isChecked(), "time_eligible": self.time_elig.isChecked(),
+                "cluster": self.cluster_combo.currentData(),
                 "id_policy": self.id_policy.currentData(), "cluster_compare": self.cluster_compare.isChecked(),
                 "strategy": self.strategy.currentData()}
 
@@ -1238,6 +1265,7 @@ class DiscoveryPage(QWidget):
         pick(self.strategy, st.get("strategy"))
         self.time_fixed.setChecked(bool(st.get("time_fixed", True)))
         self.time_inter.setChecked(bool(st.get("time_interactions")))
+        self.time_elig.setChecked(bool(st.get("time_eligible")))
         self.cluster_compare.setChecked(bool(st.get("cluster_compare")))
         self._fill_structures()
         pick(self.structure, st.get("structure"))
@@ -1292,6 +1320,8 @@ class DiscoveryPage(QWidget):
             all_two_way=bool(self.all2.currentData()) and self.cov_mode.currentData() == "subsets"
             and self.strategy.currentData() == "focal",
             strategy=self.strategy.currentData(), include_main=self.include_main.isChecked(),
+            time_eligible=bool(long and time and self.time_elig.isChecked() and self.time_elig.isEnabled()
+                               and self.strategy.currentData() in ("combinations", "factorial")),
             min_predictors=self.min_pred.value(), min_obs=self.min_obs.value(),
         )
 
@@ -1352,8 +1382,21 @@ class DiscoveryPage(QWidget):
         self._refresh_history()
         self._launch(run)
 
+    def _update_resume(self) -> None:
+        run = self.run
+        why = "no search selected" if run is None else run.resume_reason(self.state.dataset)
+        running = self.cancel_btn.isEnabled()
+        self.resume_btn.setEnabled(not why and not running)
+        txt = "" if (run is None or not why or run.status == "complete") else f"Resume unavailable: {why}."
+        if running:
+            txt = ""
+        self.resume_reason.setText(txt)
+        self.resume_btn.setToolTip("Continue the selected partial search (same search ID, same specification) from "
+                                   "where it stopped, with the model / time budget currently set above."
+                                   + (f"\nUnavailable: {why}." if why else ""))
+
     def _resume(self) -> None:
-        if self.run is not None and self.run.resumable:
+        if self.run is not None and self.run.resumable and not self.run.resume_reason(self.state.dataset):
             self.run.settings.max_models = self.max_models.value() or None
             self.run.settings.max_minutes = self.max_minutes.value() or None
             self._launch(self.run)
@@ -1378,9 +1421,10 @@ class DiscoveryPage(QWidget):
             self.progress_label.setText("Cancelling — finishing the batches already running…")
 
     def _set_running(self, on: bool) -> None:
-        for w in (self.start_btn, self.resume_btn, self.estimate_btn):
+        for w in (self.start_btn, self.estimate_btn):
             w.setEnabled(not on)
         self.cancel_btn.setEnabled(on)
+        self._update_resume()        # never re-enabled blindly: only a truly resumable search can resume
 
     def _on_progress(self, run: engine.DiscoveryRun) -> None:
         done = len(run.rows)
@@ -1430,7 +1474,7 @@ class DiscoveryPage(QWidget):
     def _show_run(self) -> None:
         run = self.run
         self.validation_panel.set_run(run)
-        self.resume_btn.setEnabled(bool(run and run.resumable))
+        self._update_resume()
         if run is None:
             self.summary_view.setHtml("<p>Configure a search on the left, calculate the search space, then start.</p>")
             self.frame, self.tests = pd.DataFrame(), pd.DataFrame()
@@ -2015,6 +2059,27 @@ class DiscoveryPage(QWidget):
                                 "Model Comparison set (same rows). The nested F / likelihood-ratio test there asks "
                                 "whether the interaction terms improve the model jointly.")
 
+    def _export_audit(self, folder: str | None = None) -> list | None:
+        """V134-015: audit JSON + report of the selected search."""
+        from PySide6.QtWidgets import QFileDialog
+
+        from ...export.audit import write_audit
+
+        if self.run is None:
+            QMessageBox.information(self, "Audit trail", "Select a search first.")
+            return None
+        folder = folder or QFileDialog.getExistingDirectory(self, "Folder for the audit trail")
+        if not folder:
+            return None
+        try:
+            files = write_audit(self.run, self.state.dataset, Path(folder))
+        except Exception as e:  # noqa: BLE001 - user-facing file error
+            QMessageBox.warning(self, "Audit trail", f"Could not write the audit trail: {e}")
+            return None
+        if not getattr(self, "_quiet", False):
+            QMessageBox.information(self, "Audit trail", "Written:\n" + "\n".join(str(f) for f in files))
+        return files
+
     def _view_code(self) -> None:
         row = self._selected_row()
         if row is None:
@@ -2054,8 +2119,14 @@ class DiscoveryPage(QWidget):
             return candidate_script(session.load_script, v, run.settings, run.family, cand, comparisons,
                                     expected=row, adjusted=adjusted, provenance=prov)
 
+        from ...discovery.rcode import educational_script
+
+        try:
+            edu = educational_script(ds, run.settings, run.family, cand)
+        except Exception as e:  # noqa: BLE001 - the educational view never blocks the exact script
+            edu = f"# Educational code unavailable for this candidate: {e}\n"
         self.state.run_r(build, lambda script: CodeDialog(
-            None, self, title=f"Candidate #{cand.index}", script=script, dataset=ds, provenance=prov,
+            None, self, title=f"Candidate #{cand.index}", script=script, dataset=ds, provenance=prov, educational=edu,
             identity=row.get("identity"), engine=run.engine, packages=FAMILY_PACKAGES.get(run.family),
             extra={"candidate": int(cand.index), "search_id": run.id, "formula": row.get("formula"),
                    "structure": row.get("structure"), "status": row.get("status"), "flags": row.get("flags")},

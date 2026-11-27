@@ -82,6 +82,7 @@ class DiscoveryRun:
     executions: list[dict[str, Any]] = field(default_factory=list)  # v1.3: budget + range of each execution
     data_snapshot: dict[str, Any] = field(default_factory=dict)     # v1.3.2: the data view used (STAT-39)
     validation_runs: list[dict[str, Any]] = field(default_factory=list)  # v1.3.3: immutable AMD validation runs (J7)
+    grammar: int = 2                                           # v1.3.4: candidate grammar version (2 = v1.2-v1.3.3)
 
     @property
     def is_complete(self) -> bool:
@@ -89,7 +90,43 @@ class DiscoveryRun:
 
     @property
     def resumable(self) -> bool:
-        return self.status in ("partial", "cancelled") and self.n_done < self.total
+        return self.status in ("partial", "cancelled") and self.n_done < self.total and not self.grammar_problem()
+
+    def grammar_problem(self) -> str:
+        """Why this search's candidate order cannot be reproduced by the current grammar (V134-009), or ''."""
+        from .space import GRAMMAR_VERSION
+
+        s = self.settings
+        if self.grammar > GRAMMAR_VERSION:
+            return "it was created by a newer StatExplore grammar"
+        if self.grammar < 3 and s.strategy == "time" and s.min_predictors > 1 and not (s.participant and
+                                                                                    s.workflow == "structure"):
+            return ("the time strategy now honours the minimum number of candidate predictors (grammar 3), so its "
+                    "candidate order differs from the one this search was started with")
+        return ""
+
+    def resume_reason(self, ds: Dataset | None = None) -> str:
+        """'' when Resume is available; otherwise the reason it is not (shown next to the disabled button)."""
+        if self.status == "running":
+            return "the search is running"
+        if self.status not in ("partial", "cancelled"):
+            return {"complete": "the search is complete", "stopped_early": "the search reached its stopping target",
+                    "incomplete": "every candidate was attempted (some timed out); start a new search to refit them",
+                    "failed": "the search failed; start a new search", "not_started": "the search has not started"
+                    }.get(self.status, f"the search is {self.status}")
+        if self.n_done >= self.total:
+            return "every candidate has been evaluated"
+        g = self.grammar_problem()
+        if g:
+            return g + "; start a new search"
+        if ds is not None:
+            try:
+                if self.signature != data_signature(view(ds, self.settings)):
+                    return ("the data, filters or variable settings changed since this search (its data signature "
+                            "differs): restore them, or start a new search")
+            except Exception as e:  # noqa: BLE001 - a variable of the search no longer exists
+                return f"the search's variables are not available in the current data ({e})"
+        return ""
 
     def budget_text(self) -> str:
         """Budgets of every execution (each continuation has its own model / time budget)."""
@@ -108,7 +145,7 @@ class DiscoveryRun:
         return {k: getattr(self, k) for k in ("id", "family", "total", "signature", "created_at", "status",
                                                "stop_reason", "n_done", "stop_index", "elapsed_s",
                                                "n_sample", "engine", "warnings", "coding", "fit_id", "n_times",
-                                               "executions", "data_snapshot", "validation_runs")} | {
+                                               "executions", "data_snapshot", "validation_runs", "grammar")} | {
             "settings": self.settings.to_dict(), "validation": {str(k): v for k, v in self.validation.items()}}
 
     @classmethod
@@ -126,6 +163,7 @@ class DiscoveryRun:
         run.executions = list(meta.get("executions") or [])
         run.data_snapshot = dict(meta.get("data_snapshot") or {})
         run.validation_runs = list(meta.get("validation_runs") or [])
+        run.grammar = int(meta.get("grammar") or 2)
         run.validation = {int(k): v for k, v in (meta.get("validation") or {}).items()}
         run.rows = rows
         return run
@@ -166,7 +204,10 @@ def create_run(ds: Dataset, s: SearchSettings) -> DiscoveryRun:
     fit_id = fit_identity(ds, s, family)
     base = ds
     ds = view(ds, s)
-    run = DiscoveryRun(settings=s, family=family, total=count_candidates(s), signature=data_signature(ds))
+    from .space import GRAMMAR_VERSION
+
+    run = DiscoveryRun(settings=s, family=family, total=count_candidates(s), signature=data_signature(ds),
+                       grammar=GRAMMAR_VERSION)
     run.coding = coding(ds, s, family)
     run.fit_id = fit_id
     from .history import snapshot
@@ -262,6 +303,8 @@ def execute(run: DiscoveryRun, ds: Dataset, *, rscript: str | None = None,
                          "start a new search.")
     if run.status not in ("not_started", "partial", "cancelled"):
         raise ValueError(f"A {run.status} search cannot be resumed.")
+    if run.grammar_problem():
+        raise ValueError(f"This search cannot be resumed: {run.grammar_problem()}.")
     cancel = cancel or threading.Event()
     own_workdir = workdir is None
     workdir = Path(workdir or tempfile.mkdtemp(prefix="sx_discovery_"))
@@ -970,7 +1013,7 @@ def tests_frame(run: DiscoveryRun, interpret: bool = True) -> pd.DataFrame:
 
 
 INTERPRET_FIELDS = ("status", "reason", "speculative", "formula", "test_type", "kind", "label", "interaction", "p",
-                    "p_adj", "effect", "family_size", "sig_adj", "sig_raw", "estimate", "ci_applicable", "ci_level",
+                    "p_adj", "log_p", "log_p_adj", "test_reason", "effect", "family_size", "sig_adj", "sig_raw", "estimate", "ci_applicable", "ci_level",
                     "ci_low", "ci_high", "flags", "test_method", "reference")
 
 
@@ -1228,6 +1271,13 @@ def _p(p: float) -> str:
     return "< .001" if p < 0.001 else f"{p:.3f}".lstrip("0")
 
 
+def _p_text(p: float, lp: float | None) -> str:
+    """'p < .001' style, with the exact magnitude when p is below the double range (V134-002)."""
+    if lp is not None and lp == lp and lp / np.log(10) < -300:
+        return f"< 1e-300 (log10 p = {lp / np.log(10):.1f})" if np.isfinite(lp) else "< 1e-300"
+    return _p(p)
+
+
 def interpret_row(r: dict[str, Any], s: SearchSettings, family: str = "gaussian") -> str:
     """Short teaching interpretation of one tested hypothesis (§10.8, M §11): what was tested,
     the result with its test and family, direction when one coefficient is tested, and caveats."""
@@ -1259,20 +1309,31 @@ def interpret_row(r: dict[str, Any], s: SearchSettings, family: str = "gaussian"
     else:
         what = f"{label} improves the model of {outcome}"
     p, pa = r["p"], r.get("p_adj")
+    if p is None or p != p:
+        return ("No p-value: " + (str(r.get("test_reason") or "") or "the test was withheld") + ". "
+                "This hypothesis is not counted in its multiplicity family.")
     if r.get("effect") is None or r.get("effect") != r.get("effect"):
         eff = ""
     elif family == "gaussian":
-        eff = f"; it uniquely explains {100 * r['effect']:.1f}% of the outcome's variation"
+        eff = (f"; it uniquely explains {100 * r['effect']:.1f} percentage points of the outcome's variance (ΔR²)"
+               if r["effect"] >= 0 else f"; ΔR² = {100 * r['effect']:.1f} percentage points")
     elif family == "lmm":
-        eff = f"; marginal R² rises by {100 * r['effect']:.1f} points"
+        # V134-011: a direct variance decomposition need not increase when terms are added; say what happened, in
+        # percentage points (not percent)
+        d = 100 * r["effect"]
+        eff = (f"; marginal R² (fixed effects) increases by {d:.1f} percentage points" if d > 0.05 else
+               f"; marginal R² (fixed effects) decreases by {abs(d):.1f} percentage points (the variance decomposition "
+               "need not increase when terms are added)" if d < -0.05 else
+               "; marginal R² (fixed effects) is essentially unchanged")
     elif family in ("glmm", "clmm", "gee"):
         eff = ""
     else:
-        eff = f"; McFadden pseudo-R² rises by {r['effect']:.3f}"
+        eff = (f"; McFadden pseudo-R² {'increases' if r['effect'] >= 0 else 'decreases'} by {abs(r['effect']):.3f}")
     fam = r.get("family_size")
     within = f" among {int(fam):,} {TEST_TYPES.get(ttype, ttype).lower()} tests" if fam else ""
     if r.get("sig_adj"):
-        text = (f"Evidence that {what} (p {_p(p)}, adjusted p {_p(pa)}{within}{eff}). Still exploratory: "
+        text = (f"Evidence that {what} (p {_p_text(p, r.get('log_p'))}, adjusted p {_p_text(pa, r.get('log_p_adj'))}"
+                f"{within}{eff}). Still exploratory: "
                 "check stability and new data.")
     elif r.get("sig_raw"):
         text = (f"Possible sign that {what} (p {_p(p)}), but not after adjusting for the number of tests "

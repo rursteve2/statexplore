@@ -163,8 +163,10 @@ def test_discovery_page_ordinal_family_and_selectors(hrs_window, qtbot, r_worker
     page._use_suggestion()
     assert page.family.currentData() == "ordinal"
     # standard selector controls on both lists (spec §7.2: below Required Covariates too)
-    for sel in (page.cand_sel, page.req_sel):
-        assert set(sel.buttons) == {"check_visible", "clear_visible", "check_all", "clear_all"}
+    std = {"check_visible", "clear_visible", "check_all", "clear_all"}
+    assert set(page.req_sel.buttons) == std
+    # v1.3.4 (V134-013): the candidate list also carries the explicit search-order controls
+    assert set(page.cand_sel.buttons) == std | {"up", "down", "top", "bottom", "sort", "restore"}
     page.cand_sel.set_filter("Big 5")
     page.cand_sel.check_visible()
     page.cand_sel.set_filter("")
