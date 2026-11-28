@@ -4,7 +4,7 @@ rem StatExplore 1.3.6 consolidated acceptance run (tests 55-61 + owner R diagnos
 rem no upload. It works on copies of the fixtures in a temporary folder and writes one evidence ZIP into .\results.
 rem Usage:  Run_Acceptance.bat                       (installed StatExplore)
 rem         Run_Acceptance.bat "D:\path\StatExplore.exe"   (another installed / portable copy)
-rem         Run_Acceptance.bat "" --quick            (shorter bootstrap, about 15 minutes)
+rem         Run_Acceptance.bat "" --quick            (shorter bootstrap)
 set "EXE=%~1"
 if "%EXE%"=="" set "EXE=%ProgramFiles%\StatExplore\StatExplore.exe"
 if not exist "%EXE%" set "EXE=%LOCALAPPDATA%\Programs\StatExplore\StatExplore.exe"
