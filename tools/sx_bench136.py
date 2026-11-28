@@ -88,7 +88,10 @@ def validation_55l(pkg: Path, repeats: int) -> dict:
             v = V.ValidationRunner(RSession(w, Path(tempfile.mkdtemp())), d, run, cfg).execute()
             fit = time.perf_counter() - t0
             t1 = time.perf_counter()
-            V.export(v, tempfile.mkdtemp(), ds=d, include_data=True, run=run)
+            try:
+                V.export(v, tempfile.mkdtemp(), ds=d, include_data=True, run=run)
+            except TypeError:           # v1.3.4 export() has no run argument
+                V.export(v, tempfile.mkdtemp(), ds=d, include_data=True)
             exp = time.perf_counter() - t1
         out.append({"wall_s": round(fit, 3), "export_s": round(exp, 3), "status": v["status"],
                     "fits_used": v["fit_budget"]["used"], "peak_mb": round(smp.peak / 1024)})
