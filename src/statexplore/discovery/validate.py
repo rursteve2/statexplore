@@ -29,7 +29,8 @@ import pandas as pd
 from ..core.dataset import Dataset
 from ..rbridge.codegen import r_str, r_vec
 
-GRAMMAR = "validation-3"   # v1.3.5: declared pool scopes, saved-specification fixed candidates, hard fit budget
+GRAMMAR = "validation-4"   # v1.3.6: execution ledger (plan / committed), exact-budget status, typed evidence schema 1
+# validation-3 = v1.3.5: declared pool scopes, saved-specification fixed candidates, hard fit budget
 # validation-2 = v1.3.4: a-priori pool, replayed stopping, per-sample caches, identity-keyed stability
 
 TARGETS = {
@@ -575,9 +576,14 @@ sx_val_check_terms <- function(m, a) {
                  paste(sort(a$full), collapse = " + ")))
   invisible(TRUE)
 }
+# AUD135-05: `at_cap` = the cap was consumed (not an error); `denied` = fits the cap REFUSED (work truncated)
 sx_val_budget <- function() list(used = sx_fit_budget$used, retries = sx_fit_budget$retries, aux = sx_fit_budget$aux,
-  cap = if (is.finite(sx_fit_budget$cap)) sx_fit_budget$cap else NA_real_, exhausted = sx_fit_budget$used >= sx_fit_budget$cap,
-  cache_hits = sx_disc_cache_log$hits, cache_misses = sx_disc_cache_log$misses)
+  cap = if (is.finite(sx_fit_budget$cap)) sx_fit_budget$cap else NA_real_, at_cap = sx_fit_budget$used >= sx_fit_budget$cap,
+  denied = sx_fit_budget$denied, cache_hits = sx_disc_cache_log$hits, cache_misses = sx_disc_cache_log$misses)
+# a part during which the cap refused any fit is a budget stop, never a scored / fitted part (even when a wrapper
+# swallowed the refusal as a failed candidate: its selection would not have considered every candidate)
+sx_val_denied_since <- function(d0) sx_fit_budget$denied > d0
+sx_val_budget_reason <- "fit budget: a model fit was refused by the hard cap (part not scored; the selection could not consider every candidate)"
 sx_val_predict <- function(m, newd) {
   if (inherits(m, "merMod")) {
     rf <- switch(sx_val_target, participant_in_cluster = ~ (1 | sx_cluster), NA)
@@ -630,6 +636,12 @@ sx_val_select <- function(train, ctx) {
   j <- sx_select_min(sc)         # exact ties: the lower candidate index (documented secondary key); NA never wins
   list(j = j, score = sc[j], scores = sc, visited = visited, n_sig = n_sig, scored = length(ok))
 }
+sx_val_fold_budget <- function(split_id, f, n_train, reason) list(split = split_id, fold = f, status = "budget",
+  reason = reason, selected = "", selected_index = NA_integer_, selected_key = "", train_score = NA_real_,
+  visited = NA_integer_, scored = NA_integer_, n_sig_train = NA_integer_, n_train = n_train, n_test = 0L,
+  train_mean = NA_real_, train_groups = NA_real_, test_groups = NA_real_, train_clusters = NA_real_,
+  test_clusters = NA_real_, excluded_incomplete = NA_real_, excluded_unseen_levels = NA_real_,
+  excluded_unpredicted = NA_real_, test_events = NA_real_, diagnostics = "")
 sx_val_split <- function(split_id, fold_of) {
   sx_val_trace <<- list()
   folds <- sort(unique(fold_of[!is.na(fold_of) & fold_of > 0]))
@@ -637,7 +649,8 @@ sx_val_split <- function(split_id, fold_of) {
   for (f in folds) {
     tr <- sx_val_full[is.na(fold_of) | fold_of != f, , drop = FALSE]
     te <- sx_val_full[!is.na(fold_of) & fold_of == f, , drop = FALSE]
-    res <- tryCatch({
+    d0 <- sx_fit_budget$denied; pf <- NULL
+    res <- if (d0 > 0) sx_val_fold_budget(split_id, f, nrow(tr), "fit budget used up before this part started (not run)") else tryCatch({
       if (length(intersect(rownames(tr), rownames(te)))) stop("internal: a row is in both parts")
       if (sx_val_target != "rows" && length(intersect(as.character(tr$sx_gid), as.character(te$sx_gid))))
         stop("internal: a participant is in both parts")
@@ -657,7 +670,7 @@ sx_val_split <- function(split_id, fold_of) {
       if (sx_long() && sx_disc_has_time) tec$sx_occ <- as.integer(tec$sx_timef)
       p <- sx_val_predict(m, tec)
       ok <- is.finite(p)
-      preds[[length(preds) + 1]] <- data.frame(split = split_id, fold = f, row_id = as.integer(rownames(tec))[ok],
+      pf <- data.frame(split = split_id, fold = f, row_id = as.integer(rownames(tec))[ok],
         observed = tec$sx_y[ok], predicted = p[ok],
         participant = if (sx_long()) as.character(tec$sx_gid)[ok] else as.character(rownames(tec))[ok],
         cluster = if (sx_long() && sx_disc_has_cluster) as.character(tec$sx_cluster)[ok] else "", stringsAsFactors = FALSE)
@@ -680,6 +693,10 @@ sx_val_split <- function(split_id, fold_of) {
                                  train_clusters = NA_real_, test_clusters = NA_real_, excluded_incomplete = NA_real_,
                                  excluded_unseen_levels = NA_real_, excluded_unpredicted = NA_real_, test_events = NA_real_,
                                  diagnostics = ""))
+    if (d0 == 0 && sx_val_denied_since(d0) && res$status != "budget") {
+      res <- sx_val_fold_budget(split_id, f, nrow(tr), sx_val_budget_reason); pf <- NULL
+    }
+    if (!is.null(pf) && identical(res$status, "scored")) preds[[length(preds) + 1]] <- pf
     info[[length(info) + 1]] <- as.data.frame(res, stringsAsFactors = FALSE)
   }
   sx_dd <<- sx_val_full
@@ -687,11 +704,16 @@ sx_val_split <- function(split_id, fold_of) {
   list(folds = do.call(rbind, info), predictions = if (length(preds)) do.call(rbind, preds) else NULL,
        trace = if (length(sx_val_trace)) do.call(rbind, sx_val_trace) else NULL)
 }
+sx_val_boot_budget <- function(b, reason) list(b = b, status = "budget", reason = reason, selected = "",
+  selected_index = NA_integer_, selected_key = "", train_score = NA_real_, visited = NA_integer_, scored = NA_integer_,
+  n_sig_train = NA_integer_, coefficient = "", estimate = NA_real_, n_coef = 0L, diagnostics = "budget", flags = "",
+  n = NA_real_, groups = NA_real_)
 sx_val_boot <- function(draws) {
   out <- list(); coefs <- list(); sx_val_trace <<- list()
   for (b in sort(unique(draws$b))) {
     dr <- draws[draws$b == b, , drop = FALSE]
-    res <- tryCatch({
+    d0 <- sx_fit_budget$denied; cfb <- NULL
+    res <- if (d0 > 0) sx_val_boot_budget(b, "fit budget used up before this draw started (not run)") else tryCatch({
       d <- sx_val_full[match(as.character(dr$row_id), rownames(sx_val_full)), , drop = FALSE]
       keep <- !is.na(match(as.character(dr$row_id), rownames(sx_val_full)))
       d <- d[keep, , drop = FALSE]; dr <- dr[keep, , drop = FALSE]
@@ -709,8 +731,8 @@ sx_val_boot <- function(draws) {
       sx_val_check_terms(m, a)
       sx_val_lastd <<- sx_complete(d, sx_val_need(a))
       cf <- sx_val_coef(m, a)
-      if (nrow(cf)) coefs[[length(coefs) + 1]] <- data.frame(b = b, selected_index = sx_val_index[sel$j],
-                                                            selected_key = sx_val_keys[sel$j], cf, stringsAsFactors = FALSE)
+      if (nrow(cf)) cfb <- data.frame(b = b, selected_index = sx_val_index[sel$j], selected_key = sx_val_keys[sel$j],
+                                      cf, stringsAsFactors = FALSE)
       dg <- tryCatch(sx_diag(m, sx_last_run), error = function(e) list(status = "unknown", flags = character()))
       list(b = b, status = "fitted", reason = "", selected = sx_val_labels[sel$j], selected_index = sx_val_index[sel$j],
            selected_key = sx_val_keys[sel$j], train_score = sel$score, visited = sel$visited, scored = sel$scored, n_sig_train = sel$n_sig,
@@ -723,6 +745,8 @@ sx_val_boot <- function(draws) {
                                  selected_key = "", train_score = NA_real_, visited = NA_integer_,
                                  scored = NA_integer_, n_sig_train = NA_integer_, coefficient = "", estimate = NA_real_,
                                  n_coef = 0L, diagnostics = "failed", flags = "", n = NA_real_, groups = NA_real_))
+    if (d0 == 0 && sx_val_denied_since(d0) && res$status != "budget") { res <- sx_val_boot_budget(b, sx_val_budget_reason); cfb <- NULL }
+    if (!is.null(cfb) && identical(res$status, "fitted")) coefs[[length(coefs) + 1]] <- cfb
     out[[length(out) + 1]] <- as.data.frame(res, stringsAsFactors = FALSE)
   }
   sx_dd <<- sx_val_full
@@ -817,8 +841,11 @@ class ValidationRunner:
         self.keys = [candidate_key(c) for c in cands]
         self.info = info
         self.workload = workload(run, cfg, cands if cfg.pipeline == "pipeline" else None)
+        # AUD135-05: `at_cap` = every allowed fit was used (not a truncation); `exhausted` = a fit was REFUSED or
+        # planned work remained when no fit was left (the work was truncated); `counters_known` False after a chunk
+        # whose response was lost (its fits are not counted: `used` is then a lower bound)
         self.budget = {"cap": int(cfg.max_fits), "used": 0, "retries": 0, "aux": 0, "cache_hits": 0, "cache_misses": 0,
-                       "exhausted": False}
+                       "denied": 0, "at_cap": False, "exhausted": False, "counters_known": True}
         self.units = unit_frame(ds, run)
         self.splits = make_splits(self.units, cfg)
         for sp in self.splits:
@@ -826,8 +853,11 @@ class ValidationRunner:
             if bad:
                 raise ValidationError("Internal split check failed: " + "; ".join(bad))
         self.draws = make_draws(self.units, cfg) if "bootstrap" in cfg.modes else []
-        self.scripts: list[str] = []
-        self.chunks: list[str] = []
+        self.scripts: list[str] = []      # every DISPATCHED chunk (execution record, with its outcome)
+        self.chunks: list[str] = []       # COMMITTED chunks only (validated responses): the reproduction replays these
+        self.plan = execution_plan(self.splits, self.draws, int(getattr(self, "chunk", 10)))
+        self.attempts: list[dict[str, Any]] = []
+        self.committed: dict[int, dict[str, str]] = {}     # chunk -> {part: returned status}
 
     def _setup(self) -> str:
         from .rcode import candidate_args, setup_script
@@ -849,7 +879,10 @@ class ValidationRunner:
             "sx_val_full <- sx_dd; sx_val_lastd <- sx_dd",
         ])
 
-    def _call(self, body: str, title: str) -> Any:
+    def _call(self, body: str, title: str, chunk: int, parts: list[str]) -> Any:
+        """Dispatch one chunk. AUD135-04: the chunk is COMMITTED (replayable, counted) only after its response was
+        received and validated - every dispatched part returned exactly once, counters well-formed; a lost or invalid
+        response leaves the chunk uncommitted and the fit counters unknown (`used` becomes a lower bound)."""
         from ..discovery.engine import ENGINE_PACKAGES
 
         # AUD134-10: the remaining hard fit budget travels with every chunk; R stops fitting when it is used up
@@ -858,80 +891,136 @@ class ValidationRunner:
                  "sx_disc_cache_log$hits <- 0L; sx_disc_cache_log$misses <- 0L\n")
         tail = "\nsx_result$budget <- sx_val_budget()"
         script = self._setup() + "\n" + guard + body + tail
-        self.scripts.append(f"# ==== {title} ====\n" + guard + body)
-        self.chunks.append(guard + body)
-        res, raw = self.session.run(self.v, kind="amd_validation", title=title, body=script,
-                                    packages=ENGINE_PACKAGES, inputs={}, timeout=3600)
+        att = {"chunk": chunk, "title": title, "parts": list(parts), "remaining_before": remaining,
+               "outcome": "dispatched", "error": ""}
+        self.attempts.append(att)
+        self.scripts.append(f"# ==== {title} (chunk {chunk}) ====\n" + guard + body)
+        try:
+            res, raw = self.session.run(self.v, kind="amd_validation", title=title, body=script,
+                                        packages=ENGINE_PACKAGES, inputs={}, timeout=3600)
+        except BaseException as e:
+            att.update(outcome="uncertain", error=str(e))
+            self.budget["counters_known"] = False
+            raise
         if raw is None:
+            att.update(outcome="uncertain", error="; ".join(res.messages) or "R failed")
+            self.budget["counters_known"] = False
             raise ValidationError("; ".join(res.messages) or "R failed")
         b = raw.get("budget") or {}
-        g = lambda k: float((b.get(k)[0] if isinstance(b.get(k), list) else b.get(k)) or 0)  # noqa: E731
-        for k in ("used", "retries", "aux", "cache_hits", "cache_misses"):
-            self.budget[k] += int(g(k))
-        if self.budget["used"] >= self.budget["cap"] or g("exhausted"):
+
+        def g(k: str) -> float:
+            x = b.get(k)
+            x = x[0] if isinstance(x, list) and x else x
+            if isinstance(x, bool):
+                return float(x)
+            if not isinstance(x, (int, float)) or x != x or x < 0:
+                raise ValidationError(f"invalid fit counter {k!r} in the R response")
+            return float(x)
+        try:
+            counts = {k: g(k) for k in ("used", "retries", "aux", "cache_hits", "cache_misses", "denied")}
+            got = returned_parts(raw)
+            if sorted(got) != sorted(parts):
+                raise ValidationError(f"the R response returned parts {sorted(got)[:5]} for dispatched "
+                                      f"{sorted(parts)[:5]}")
+            if counts["used"] > remaining or any(c != int(c) for c in counts.values()):
+                raise ValidationError("the R response reports more fits than the chunk was allowed")
+        except ValidationError as e:
+            att.update(outcome="uncertain", error=str(e))
+            self.budget["counters_known"] = False
+            raise
+        for k in ("used", "retries", "aux", "cache_hits", "cache_misses", "denied"):
+            self.budget[k] += int(counts[k])
+        self.budget["at_cap"] = self.budget["used"] >= self.budget["cap"]
+        if counts["denied"]:
             self.budget["exhausted"] = True
+        att["outcome"] = "committed"
+        att["used"] = int(counts["used"])
+        self.committed[chunk] = got
+        self.chunks.append(guard + body)
         return raw
 
     def execute(self, should_stop: Callable[[], bool] = lambda: False,
                 progress: Callable[[str], None] = lambda m: None) -> dict[str, Any]:
+        """Run the planned chunks in order. Stop causes (precedence: cancel > failure > budget): a cancel request
+        before a chunk; a lost / failed chunk; no fit left while planned work remains, or a fit refused inside a
+        chunk. AUD135-05: the final status follows the evidence - COMPLETE when every planned part was committed with
+        a successful status and no fit was refused, even if the last allowed fit was used (used == cap)."""
         cfg = self.cfg
+        if not self.attempts:      # the chunk size may be set after construction (draws per R call)
+            self.plan = execution_plan(self.splits, self.draws, int(getattr(self, "chunk", 10)))
         folds, preds, boot, problems = [], [], [], []
         coefs: list[pd.DataFrame] = []
         trace: list[pd.DataFrame] = []
-        status = "complete"
-        try:
-            for sp in self.splits:
-                if should_stop():
-                    status = "cancelled"
-                    break
-                if self.budget["exhausted"]:
-                    status = "budget"
-                    break
-                progress(f"{MODES[sp['mode']]} {sp['id']}")
-                rows = sorted(sp["folds"].items())
-                body = "\n".join([
-                    f"sx_vfold <- c({', '.join(str(f) for _, f in rows)})",
-                    f"names(sx_vfold) <- c({', '.join(str(r) for r, _ in rows)})",
-                    "sx_vf <- unname(sx_vfold[rownames(sx_val_full)])",
-                    f"sx_vr <- sx_val_split({r_str(sp['id'])}, sx_vf)",
-                    "sx_result <- list(folds = sx_vr$folds, predictions = sx_vr$predictions, trace = sx_vr$trace)",
-                ])
-                raw = self._call(body, f"AMD validation: {sp['id']}")
-                fr = _frame(raw.get("folds"))
-                fr["mode"], fr["repeat"] = sp["mode"], sp["repeat"]
-                folds.append(fr)
-                preds.append(_frame(raw.get("predictions")))
-                trace.append(_frame(raw.get("trace")))
-            chunk = max(1, int(getattr(self, "chunk", 10)))   # draws per R call (results are keyed by draw)
-            for i in range(0, len(self.draws), chunk):
-                if status == "budget" or self.budget["exhausted"]:
-                    status = "budget"
-                    break
-                if status != "complete" or should_stop():
-                    status = "cancelled"
-                    break
-                part = self.draws[i:i + chunk]
-                progress(f"bootstrap draws {part[0]['b']}–{part[-1]['b']} of {cfg.B}")
-                recs = [{"b": d["b"], "row_id": r[0], "draw_gid": r[1], "draw_cluster": r[2]} for d in part for r in d["rows"]]
-                df = pd.DataFrame(recs)
-                body = "\n".join([
-                    f"sx_vdraws <- data.frame(b = c({', '.join(map(str, df['b']))}), row_id = c({', '.join(map(str, df['row_id']))}),",
-                    f"  draw_gid = {r_vec(list(df['draw_gid']))}, draw_cluster = {r_vec(list(df['draw_cluster']))}, stringsAsFactors = FALSE)",
-                    "sx_result <- list(boot = sx_val_boot(sx_vdraws))",
-                ])
-                raw = self._call(body, f"AMD validation: bootstrap {part[0]['b']}-{part[-1]['b']}")
-                bt = raw.get("boot") or {}
-                boot.append(_frame(bt.get("draws") if isinstance(bt, dict) and "draws" in bt else bt))
-                coefs.append(_frame(bt.get("coefs") if isinstance(bt, dict) else None))
-                trace.append(_frame(bt.get("trace") if isinstance(bt, dict) else None))
-        except Exception as e:  # cancellation kills the worker: completed chunks stay, the run is partial
-            problems.append(str(e))
-            status = "cancelled" if should_stop() else "failed"
-        if status == "budget" or self.budget["exhausted"]:
+        stop = ""
+        for ch in self.plan["chunks"]:
+            if should_stop():
+                stop = "cancelled"
+                break
+            if self.budget["exhausted"] or self.budget["used"] >= self.budget["cap"]:
+                stop = "budget"            # planned work remains and no fit may run (or one was already refused)
+                self.budget["exhausted"] = True
+                break
+            try:
+                if ch["kind"] == "split":
+                    sp = self.splits[ch["index"]]
+                    progress(f"{MODES[sp['mode']]} {sp['id']}")
+                    rows = sorted(sp["folds"].items())
+                    body = "\n".join([
+                        f"sx_vfold <- c({', '.join(str(f) for _, f in rows)})",
+                        f"names(sx_vfold) <- c({', '.join(str(r) for r, _ in rows)})",
+                        "sx_vf <- unname(sx_vfold[rownames(sx_val_full)])",
+                        f"sx_vr <- sx_val_split({r_str(sp['id'])}, sx_vf)",
+                        "sx_result <- list(folds = sx_vr$folds, predictions = sx_vr$predictions, trace = sx_vr$trace)",
+                    ])
+                    raw = self._call(body, f"AMD validation: {sp['id']}", ch["chunk"], ch["parts"])
+                    fr = _frame(raw.get("folds"))
+                    fr["mode"], fr["repeat"] = sp["mode"], sp["repeat"]
+                    folds.append(fr)
+                    preds.append(_frame(raw.get("predictions")))
+                    trace.append(_frame(raw.get("trace")))
+                else:
+                    part = self.draws[ch["index"]:ch["index"] + ch["size"]]
+                    progress(f"bootstrap draws {part[0]['b']}–{part[-1]['b']} of {cfg.B}")
+                    recs = [{"b": d["b"], "row_id": r[0], "draw_gid": r[1], "draw_cluster": r[2]} for d in part
+                            for r in d["rows"]]
+                    df = pd.DataFrame(recs)
+                    body = "\n".join([
+                        f"sx_vdraws <- data.frame(b = c({', '.join(map(str, df['b']))}), row_id = c({', '.join(map(str, df['row_id']))}),",
+                        f"  draw_gid = {r_vec(list(df['draw_gid']))}, draw_cluster = {r_vec(list(df['draw_cluster']))}, stringsAsFactors = FALSE)",
+                        "sx_result <- list(boot = sx_val_boot(sx_vdraws))",
+                    ])
+                    raw = self._call(body, f"AMD validation: bootstrap {part[0]['b']}-{part[-1]['b']}", ch["chunk"],
+                                     ch["parts"])
+                    bt = raw.get("boot") or {}
+                    boot.append(_frame(bt.get("draws") if isinstance(bt, dict) and "draws" in bt else bt))
+                    coefs.append(_frame(bt.get("coefs") if isinstance(bt, dict) else None))
+                    trace.append(_frame(bt.get("trace") if isinstance(bt, dict) else None))
+            except Exception as e:  # cancellation kills the worker: committed chunks stay, the run is not complete
+                problems.append(str(e))
+                stop = "cancelled" if should_stop() else "failed"
+                break
+        late_cancel = not stop and should_stop()
+        if self.budget["denied"]:
+            self.budget["exhausted"] = True
+            stop = stop or "budget"
+        status = {"": "complete", "cancelled": "cancelled", "failed": "failed", "budget": "partial"}[stop]
+        ledger = self.ledger()
+        not_run = sum(1 for p in ledger if p["status"] == "not_run")
+        uncertain = sum(1 for p in ledger if p["status"] == "uncommitted")
+        if stop == "budget":
+            denied = sum(1 for p in ledger if p["status"] == "budget")
             problems.append(f"fit budget reached: {self.budget['used']:,} of {self.budget['cap']:,} model-fitting "
-                            "invocations used; the remaining training parts / draws were not run (finished ones are "
-                            "kept; a part stopped by the budget is never scored)")
-            status = "partial"
+                            f"invocations used; {denied:,} part(s) stopped by the budget and {not_run:,} planned "
+                            "part(s) not run (finished parts are kept; a part stopped by the budget is never scored)")
+        elif stop and (not_run or uncertain):
+            problems.append(f"{not_run:,} planned part(s) not run" + (f"; {uncertain:,} part(s) dispatched without a "
+                            "validated response (uncommitted: not counted, not reproducible)" if uncertain else ""))
+        if late_cancel:
+            problems.append("a cancel request arrived after the last planned part had finished: the validation is "
+                            "complete")
+        if not self.budget["counters_known"]:
+            problems.append(f"fit counters are a lower bound: a chunk's response was lost ({self.budget['used']:,} "
+                            "counted)")
         out = self.assemble(folds, preds, boot, status, problems, coefs)
         T = [x for x in trace if len(x)]
         out["trace"] = pd.concat(T, ignore_index=True).to_dict("records") if T else []
@@ -940,10 +1029,40 @@ class ValidationRunner:
                                                        self.chunks, expected_files(out),
                                                        {"status": out["status"], "target": cfg.target,
                                                         "binary": self.run.family == "binomial"
-                                                        or getattr(self.run.settings, "family", "") == "binomial"})
+                                                        or getattr(self.run.settings, "family", "") == "binomial"},
+                                                       replay=self.replay_spec(out))
         except Exception as e:  # noqa: BLE001 - never lose a finished validation over its export text
             out["reproduce_script"] = f"# reproduction script unavailable: {e}\n"
         return out
+
+    def ledger(self) -> list[dict[str, Any]]:
+        """AUD135-04: every PLANNED part with its execution state: the returned status of a committed part, 'uncommitted'
+        (dispatched, no validated response), or 'not_run'."""
+        dispatched = {p for a in self.attempts for p in a["parts"]}
+        done = {p: st for got in self.committed.values() for p, st in got.items()}
+        out = []
+        for ch in self.plan["chunks"]:
+            for p in ch["parts"]:
+                meta = self.plan["parts"][p]
+                st = done.get(p) or ("uncommitted" if p in dispatched else "not_run")
+                out.append({"part": p, "mode": meta["mode"], "split": meta.get("split", ""), "fold": meta.get("fold"),
+                            "b": meta.get("b"), "chunk": ch["chunk"], "status": st, "committed": p in done})
+        return out
+
+    def replay_spec(self, out: dict[str, Any]) -> dict[str, Any]:
+        """What the reproduction replays (committed chunks, in commit order) and the planned scope it verifies against
+        the embedded plan instead (splits / draws whose chunks were not committed)."""
+        committed_splits = {self.plan["parts"][p]["split"] for got in self.committed.values() for p in got
+                            if self.plan["parts"][p]["mode"] != "bootstrap"}
+        committed_b = {self.plan["parts"][p]["b"] for got in self.committed.values() for p in got
+                       if self.plan["parts"][p]["mode"] == "bootstrap"}
+        pend_m = [r for r in out["manifest"] if r["split"] not in committed_splits]
+        pend_d = [r for r in out["draws"] if r["b"] not in committed_b]
+        return {"ledger": out["execution"]["parts"], "pending_manifest": pend_m, "pending_draws": pend_d,
+                "splits": [{"split": sp["id"], "mode": sp["mode"], "repeat": sp["repeat"]} for sp in self.splits],
+                "config": {"holdout_fraction": self.cfg.holdout_fraction, "k": self.cfg.k, "target": self.cfg.target},
+                "alias_map": {v.alias: v.display_name for v in self.v.variables.values() if getattr(v, "alias", None)},
+                "rules": {sp["id"]: _size_rule(sp["mode"], self.cfg) for sp in self.splits}}
 
     # ---- aggregation ----
     def assemble(self, folds: list[pd.DataFrame], preds: list[pd.DataFrame], boot: list[pd.DataFrame], status: str,
@@ -976,18 +1095,35 @@ class ValidationRunner:
                      "participant": pk, "cluster": ck, "fold": int(sp["folds"][int(r)])}
                     for sp in self.splits for r, pk, ck in zip(self.units["row_id"], self.units["participant"],
                                                                  self.units["cluster"])]
-        draws = [{"b": d["b"], "row_id": r[0], "draw_participant": r[1], "draw_cluster": r[2],
-                  "original_participant": r[3], "original_cluster": r[4]} for d in self.draws for r in d["rows"]]
+        # AUD135-02: an explicit draw-position key (a source row drawn twice appears twice in a draw)
+        draws = [{"b": d["b"], "position": k, "row_id": r[0], "draw_participant": r[1], "draw_cluster": r[2],
+                  "original_participant": r[3], "original_cluster": r[4]} for d in self.draws
+                 for k, r in enumerate(d["rows"], start=1)]
         import uuid
 
         from .space import GRAMMAR_VERSION
         realized = realized_sizes(self.units, self.splits, cfg) if self.splits else []
+        from ..core.identity import IDENTITY_SCHEMA
+
+        parts = self.ledger()
+        execution = {"schema": 1, "planned_parts": len(parts),
+                     "committed_parts": sum(1 for p in parts if p["committed"]),
+                     "not_run_parts": sum(1 for p in parts if p["status"] == "not_run"),
+                     "uncommitted_parts": sum(1 for p in parts if p["status"] == "uncommitted"),
+                     "budget_parts": sum(1 for p in parts if p["status"] == "budget"),
+                     "chunks_planned": len(self.plan["chunks"]), "chunks_committed": len(self.committed),
+                     "parts": parts, "attempts": [dict(a) for a in self.attempts],
+                     "scope": "COMPLETE: every planned part committed" if all(p["committed"] for p in parts) else
+                              "PARTIAL: only committed parts are results; planned manifests describe the whole plan"}
         return {
-            "grammar": GRAMMAR, "config": cfg.to_dict(), "status": status, "problems": problems,
+            "grammar": GRAMMAR, "config": cfg.to_dict(), "status": status, "problems": problems, "binary": bool(binary),
             "validation_id": uuid.uuid4().hex[:12], "schema": 2,
             # V134-008: the real identities of the search this validation repeats (never blank / arbitrary)
             "search_id": self.run.id, "search_identity": self.run.fit_id or "",
             "search_grammar": GRAMMAR_VERSION, "search_signature": self.run.signature,
+            "search_identity_schema": int(getattr(self.run, "identity_schema", 2) or 2),
+            "search_content_id": (getattr(self.run, "data_snapshot", None) or {}).get("content_id", ""),
+            "execution": execution, "identity_schema": IDENTITY_SCHEMA,
             "data_sha256": getattr(getattr(self.ds, "source", None), "sha256", "") or "",
             "pool": self.info.get("pool"), "pool_label": self.info.get("pool_label", ""),
             "stop_rule": stop_target(self.run) if cfg.pipeline == "pipeline" else None,
@@ -1142,10 +1278,58 @@ def realized_sizes(u: pd.DataFrame, splits: list[dict[str, Any]], cfg: Validatio
                         "realized_unit_fraction": n_units / units_all if units_all else float("nan"),
                         "test_rows": int(len(te)), "rows": int(len(f)),
                         "realized_row_fraction": len(te) / len(f) if len(f) else float("nan"),
-                        "rule": ("ceil(fraction x units) test units" + (" per cluster (at least one training "
-                                 "participant kept)" if cfg.target == "participant_in_cluster" else "")
-                                 if sp["mode"] == "holdout" else "units dealt round-robin over K folds in random order; "
-                                 "rows per fold follow the units' sizes (no row balancing is promised)")})
+                        "rule": _size_rule(sp["mode"], cfg)})
+    return out
+
+
+def _size_rule(mode: str, cfg: ValidationConfig) -> str:
+    return (("ceil(fraction x units) test units" + (" per cluster (at least one training participant kept)"
+                                                     if cfg.target == "participant_in_cluster" else ""))
+            if mode == "holdout" else "units dealt round-robin over K folds in random order; rows per fold follow the "
+                                      "units' sizes (no row balancing is promised)")
+
+
+def execution_plan(splits: list[dict[str, Any]], draws: list[dict[str, Any]], chunk: int) -> dict[str, Any]:
+    """AUD135-04: the immutable plan - every part (a fold of a split, or one bootstrap draw) with its chunk. One chunk
+    per split (all its folds), and `chunk` draws per bootstrap chunk."""
+    parts: dict[str, dict[str, Any]] = {}
+    chunks: list[dict[str, Any]] = []
+    k = 0
+    for i, sp in enumerate(splits):
+        k += 1
+        ids = []
+        for f in sorted(set(sp["folds"].values()) - {0}):
+            pid = f"{sp['id']}:fold{int(f)}"
+            parts[pid] = {"mode": sp["mode"], "split": sp["id"], "fold": int(f), "b": None}
+            ids.append(pid)
+        chunks.append({"chunk": k, "kind": "split", "index": i, "size": 1, "parts": ids})
+    step = max(1, int(chunk))
+    for i in range(0, len(draws), step):
+        k += 1
+        ids = []
+        for d in draws[i:i + step]:
+            pid = f"boot{int(d['b'])}"
+            parts[pid] = {"mode": "bootstrap", "split": "", "fold": None, "b": int(d["b"])}
+            ids.append(pid)
+        chunks.append({"chunk": k, "kind": "boot", "index": i, "size": len(ids), "parts": ids})
+    return {"parts": parts, "chunks": chunks}
+
+
+def returned_parts(raw: dict[str, Any]) -> dict[str, str]:
+    """{part id: status} of a chunk response (folds of a split, or bootstrap draws); duplicates are an error."""
+    out: dict[str, str] = {}
+    recs: list[dict[str, Any]] = []
+    if raw.get("folds") is not None:
+        recs = _frame(raw.get("folds")).to_dict("records")
+        keys = [(f"{r['split']}:fold{int(r['fold'])}", str(r.get("status"))) for r in recs]
+    else:
+        bt = raw.get("boot") or {}
+        recs = _frame(bt.get("draws") if isinstance(bt, dict) and "draws" in bt else bt).to_dict("records")
+        keys = [(f"boot{int(r['b'])}", str(r.get("status"))) for r in recs]
+    for pid, st in keys:
+        if pid in out:
+            raise ValidationError(f"the R response returned part {pid} twice")
+        out[pid] = st
     return out
 
 
@@ -1161,12 +1345,24 @@ def summary_text(v: dict[str, Any]) -> str:
                 f"{v.get('validation_id')}."] if v.get("validation_id") else []),
              f"Modes: {', '.join(MODES[m] for m in c['modes'])}; holdout {c['holdout_fraction']:.0%}, K = {c['k']}, "
              f"repeats = {c['repeats']}, B = {c['B']}, seed = {c['seed']}.",
+             *([_coverage_text(v["execution"])] if v.get("execution") else []),
              "This is a predictive check of the stated target, separate from the discovery p-values; it is not a "
              "confirmatory test, and bootstrap selection frequencies are not probabilities that a hypothesis is true."]
     if c["pipeline"] == "fixed":
         parts.append("Fixed candidate: the model was chosen on ALL the data, so these scores are a conditional "
                      "(post-selection) assessment, not an independent validation of the search.")
     return "\n".join(parts)
+
+
+def _coverage_text(e: dict[str, Any]) -> str:
+    """AUD135-04: planned vs committed scope, in words."""
+    t = (f"Execution: {e.get('committed_parts', 0):,} of {e.get('planned_parts', 0):,} planned parts committed "
+         f"({e.get('chunks_committed', 0):,} of {e.get('chunks_planned', 0):,} chunks)")
+    extra = [f"{e[k]:,} {lab}" for k, lab in (("budget_parts", "stopped by the fit budget"),
+                                             ("not_run_parts", "not run"),
+                                             ("uncommitted_parts", "dispatched without a validated response"))
+             if e.get(k)]
+    return t + ("; " + "; ".join(extra) if extra else "") + "."
 
 
 def tables(v: dict[str, Any]) -> list[tuple[str, list[str], list[list[Any]], str]]:
@@ -1243,11 +1439,14 @@ def expected_files(v: dict[str, Any]) -> list[dict[str, Any]]:
     out = []
     for key, name in EVIDENCE_FILES:
         n = len(v.get(key) or [])
+        # AUD135-01: applicability follows the declared modes only (never the exported rows): an applicable file is
+        # always written (header-only when it has no rows) and always required
         applicable = (key in ("manifest", "folds", "predictions", "performance", "realized") and bool(modes & {"holdout", "cv"})
-                      or key in ("draws", "bootstrap", "stability") and "bootstrap" in modes
-                      or key in ("coefs", "estimands") and "bootstrap" in modes and n > 0
-                      or key == "trace" and n > 0)
-        out.append({"file": name, "required": bool(applicable and n > 0), "rows": n, "applicable": bool(applicable)})
+                      or key in ("draws", "bootstrap", "stability", "coefs", "estimands") and "bootstrap" in modes
+                      or key == "trace")
+        out.append({"file": name, "required": bool(applicable), "rows": n, "applicable": bool(applicable)})
+    out.append({"file": "execution_ledger.csv", "required": True,
+                "rows": len((v.get("execution") or {}).get("parts") or []), "applicable": True})
     return out
 
 
@@ -1257,93 +1456,337 @@ EVIDENCE_FILES = (("manifest", "split_manifest.csv"), ("draws", "bootstrap_draws
                   ("estimands", "bootstrap_estimands.csv"), ("coefs", "bootstrap_coefficients.csv"),
                   ("trace", "candidate_trace.csv"), ("realized", "realized_sizes.csv"))
 
+# ---- typed evidence (AUD135-01) ----------------------------------------------------------------------------------------
+# Every evidence CSV is written from this declared schema (fixed columns, header even when empty) and the generated R
+# verifier embeds the same schema: it never infers types or applicability from the file under test.
+# Types: int (exact integer), num (finite double; round-trip text), text (exact UTF-8; missing = ""), bool (TRUE/FALSE).
+# Flags: na = may be missing ("" in the file); inf = signed infinity allowed (Inf / -Inf, the sign must match);
+#        need=<status> = must be present when the REPRODUCED row has that status; tol=<class> numeric tolerance class
+#        (tol: abs 1e-6 + rel 1e-6; fit: same, rel 1e-5 for optimizer-sensitive mixed models; tight: abs 1e-12 + rel
+#        1e-12 for exactly computed fractions / percentiles of exported values).
+EVIDENCE_SCHEMA_VERSION = 1
+_I, _N, _T, _B = "int", "num", "text", "bool"
+_PERF_G = [("RMSE", _N, "na"), ("MAE", _N, "na"), ("R2_out_of_sample", _N, "na")]
+_PERF_B = [("log_loss", _N, "na"), ("Brier", _N, "na"), ("AUC", _N, "na")]
+EVIDENCE: dict[str, dict[str, Any]] = {
+    "manifest": {"keys": ["split", "row_id"], "cols": [
+        ("split", _T, ""), ("mode", _T, ""), ("repeat", _I, ""), ("row_id", _I, ""), ("participant", _T, ""),
+        ("cluster", _T, ""), ("fold", _I, "")]},
+    "draws": {"keys": ["b", "position"], "cols": [
+        ("b", _I, ""), ("position", _I, ""), ("row_id", _I, ""), ("draw_participant", _T, ""), ("draw_cluster", _T, ""),
+        ("original_participant", _T, ""), ("original_cluster", _T, "")]},
+    "predictions": {"keys": ["split", "fold", "row_id"], "cols": [
+        ("split", _T, ""), ("fold", _I, ""), ("row_id", _I, ""), ("observed", _N, "tol=tol"),
+        ("predicted", _N, "tol=tol"), ("participant", _T, ""), ("cluster", _T, "")]},
+    "folds": {"keys": ["split", "fold"], "status_ok": "scored", "cols": [
+        ("split", _T, ""), ("fold", _I, ""), ("status", _T, ""), ("reason", _T, ""), ("selected", _T, ""),
+        ("selected_index", _I, "na need=scored"), ("selected_key", _T, ""),
+        ("train_score", _N, "na inf tol=fit"), ("visited", _I, "na"), ("scored", _I, "na"),
+        ("n_sig_train", _I, "na"), ("n_train", _I, ""), ("n_test", _I, ""), ("train_mean", _N, "na need=scored tol=tol"),
+        ("train_groups", _I, "na"), ("test_groups", _I, "na"), ("train_clusters", _I, "na"),
+        ("test_clusters", _I, "na"), ("excluded_incomplete", _I, "na"), ("excluded_unseen_levels", _I, "na"),
+        ("excluded_unpredicted", _I, "na"), ("test_events", _I, "na"), ("diagnostics", _T, ""), ("mode", _T, ""),
+        ("repeat", _I, "")]},
+    "performance": {"keys": ["split", "fold", "weighting"], "cols": [
+        ("split", _T, ""), ("fold", _I, ""), ("weighting", _T, ""), ("n", _I, "")]},     # + metric columns by family
+    "bootstrap": {"keys": ["b"], "status_ok": "fitted", "cols": [
+        ("b", _I, ""), ("status", _T, ""), ("reason", _T, ""), ("selected", _T, ""),
+        ("selected_index", _I, "na need=fitted"), ("selected_key", _T, ""),
+        ("train_score", _N, "na inf tol=fit"), ("visited", _I, "na"), ("scored", _I, "na"),
+        ("n_sig_train", _I, "na"), ("coefficient", _T, ""), ("estimate", _N, "na tol=fit"), ("n_coef", _I, ""),
+        ("diagnostics", _T, ""), ("flags", _T, ""), ("n", _I, "na need=fitted"), ("groups", _I, "na need=fitted"),
+        ("coefficient_label", _T, "")]},
+    "coefs": {"keys": ["b", "selected_index", "coefficient"], "cols": [
+        ("b", _I, ""), ("selected_index", _I, ""), ("selected_key", _T, ""), ("term", _T, ""), ("coefficient", _T, ""),
+        ("estimate", _N, "tol=fit")]},
+    "stability": {"keys": ["candidate_index"], "cols": [
+        ("candidate_index", _I, ""), ("candidate_key", _T, ""), ("candidate", _T, ""), ("selected", _I, ""),
+        ("attempted", _I, ""), ("successful", _I, ""), ("freq_of_attempted", _N, "na tol=tight"),
+        ("freq_of_successful", _N, "na tol=tight"), ("flagged_fits", _I, ""), ("coefficient", _T, ""),
+        ("positive_sign", _N, "na tol=tight"), ("estimate_p2.5", _N, "na tol=fit"), ("estimate_median", _N, "na tol=fit"),
+        ("estimate_p97.5", _N, "na tol=fit")]},
+    "estimands": {"keys": ["candidate_index", "coefficient"], "cols": [
+        ("candidate_index", _I, ""), ("candidate", _T, ""), ("term", _T, ""), ("coefficient", _T, ""),
+        ("coefficient_label", _T, ""), ("draws_selected", _I, ""), ("draws_with_estimate", _I, ""),
+        ("positive_sign", _N, "na tol=tight"), ("estimate_p2.5", _N, "na tol=fit"), ("estimate_median", _N, "na tol=fit"),
+        ("estimate_p97.5", _N, "na tol=fit")]},
+    "trace": {"keys": ["part", "candidate_index"], "cols": [
+        ("part", _T, ""), ("candidate_index", _I, ""), ("status", _T, ""), ("reason", _T, ""),
+        ("loglik", _N, "na tol=fit"), ("statistic", _N, "na inf tol=fit"), ("df", _N, "na tol=fit"),
+        ("log_p", _N, "na inf tol=fit"), ("reference_loglik", _N, "na tol=fit"), ("aic", _N, "na tol=fit"),
+        ("score", _N, "na inf tol=fit"), ("flags", _T, ""), ("reference_flags", _T, ""), ("rows_sig", _T, "")]},
+    "realized": {"keys": ["split", "fold"], "cols": [
+        ("split", _T, ""), ("mode", _T, ""), ("fold", _I, ""), ("requested_fraction", _N, "tol=tight"),
+        ("test_units", _I, ""), ("units", _I, ""), ("realized_unit_fraction", _N, "na tol=tight"), ("test_rows", _I, ""),
+        ("rows", _I, ""), ("realized_row_fraction", _N, "na tol=tight"), ("rule", _T, "")]},
+    "ledger": {"keys": ["part"], "cols": [
+        ("part", _T, ""), ("mode", _T, ""), ("split", _T, ""), ("fold", _I, "na"), ("b", _I, "na"), ("chunk", _I, ""),
+        ("status", _T, ""), ("committed", _B, "")]},
+}
+
+
+def evidence_columns(key: str, recs: list[dict[str, Any]] | None = None, binary: bool | None = None) -> list[tuple]:
+    cols = list(EVIDENCE[key]["cols"])
+    if key == "performance":
+        if binary is None:
+            binary = any("log_loss" in r for r in (recs or []))
+        cols += _PERF_B if binary else _PERF_G
+    return cols
+
+
+class EvidenceError(ValidationError):
+    pass
+
+
+def _cell(v: Any, typ: str, flags: str, where: str) -> str:
+    missing = v is None or v is pd.NA or (isinstance(v, float) and math.isnan(v)) or \
+        (isinstance(v, (np.floating,)) and np.isnan(v))
+    if typ == _T:
+        if missing:
+            return ""
+        if isinstance(v, str):
+            return v
+        raise EvidenceError(f"{where}: text expected, got {type(v).__name__}")
+    if missing:
+        if "na" in flags.split():
+            return ""
+        raise EvidenceError(f"{where}: a value is required")
+    if typ == _B:
+        if isinstance(v, (bool, np.bool_)):
+            return "TRUE" if v else "FALSE"
+        raise EvidenceError(f"{where}: TRUE / FALSE expected")
+    if isinstance(v, (bool, np.bool_)) or not isinstance(v, (int, float, np.integer, np.floating)):
+        raise EvidenceError(f"{where}: a number expected, got {type(v).__name__}")
+    if typ == _I:
+        f = float(v)
+        if not math.isfinite(f) or f != int(f) or abs(f) > 2 ** 53:
+            raise EvidenceError(f"{where}: an exact integer expected, got {v!r}")
+        return str(int(f))
+    f = float(v)
+    if math.isinf(f):
+        if "inf" in flags.split():
+            return "Inf" if f > 0 else "-Inf"
+        raise EvidenceError(f"{where}: infinite value not allowed")
+    return repr(f)
+
+
+def evidence_csv(key: str, recs: list[dict[str, Any]], binary: bool | None = None) -> str:
+    """Typed, canonical CSV of an evidence table (header even when empty; unknown columns are refused)."""
+    cols = evidence_columns(key, recs, binary)
+    names = [c[0] for c in cols]
+    extra = sorted({k for r in recs for k in r} - set(names))
+    if extra:
+        raise EvidenceError(f"{key}: undeclared evidence column(s) {extra}")
+    buf = io.StringIO()
+    wr = csv.writer(buf, lineterminator="\n")
+    wr.writerow(names)
+    for i, r in enumerate(recs):
+        wr.writerow([_cell(r.get(n), t, f, f"{key} row {i + 1} column {n}") for n, t, f in cols])
+    return buf.getvalue()
+
+
+def _evidence_applicable(v: dict[str, Any], key: str) -> bool:
+    return next((e["applicable"] for e in expected_files(v) if e["file"] == dict(EVIDENCE_FILES)[key]), False)
+
 
 def export(v: dict[str, Any], folder: str, ds: Dataset | None = None, include_data: bool = False,
            run: Any = None) -> list[str]:
-    """Write the validation evidence: config/summary JSON, fold manifest, bootstrap draw map, predictions, folds,
-    performance, stability, coefficient and trace CSVs, the exact R code of every chunk, and - only when the analysed
-    data can be verified (`bundle_data`) - the runnable portable reproduction. Otherwise the export is metadata and
-    results only, labelled so (AUD134-07)."""
+    """Write the validation evidence into a NEW folder inside `folder` (AUD135-03: never into a reused folder; the
+    returned paths name the actual location): config/summary JSON, fold manifest, bootstrap draw map, execution ledger,
+    predictions, folds, performance, stability, coefficient and trace CSVs (typed, header-only when empty), the exact
+    R code of every committed chunk, and - only when the analysed data can be verified (`bundle_data`) - the runnable
+    portable reproduction (the data file only with `include_data` consent; otherwise code-only). Without verified
+    data the export is results and metadata only, labelled so (AUD134-07), and carries no reproduction script."""
     import json
-    from pathlib import Path
 
-    d = Path(folder)
-    d.mkdir(parents=True, exist_ok=True)
-    files = []
-    data_view, why_not = bundle_data(v, ds, run) if ds is not None else (None, "")
+    from ..export.bundle import export_transaction
 
-    def w(name: str, text: str) -> None:
-        (d / name).write_text(text, encoding="utf-8", newline="\n")
-        files.append(str(d / name))
-    meta = {k: v.get(k) for k in ("grammar", "schema", "validation_id", "config", "status", "problems", "search_id",
-                                  "search_identity", "search_grammar", "search_signature", "data_sha256", "pool",
-                                  "pool_label", "pool_scope", "adaptive", "stop_rule", "target_label", "target_estimand",
-                                  "pipeline_label", "rule_label", "candidates", "candidate_keys", "feasibility", "rng",
-                                  "realized", "provenance", "fit_budget")}
-    meta["evidence_files"] = expected_files(v)
-    meta["reproduction"] = ({"runnable": True, "data": "verified against the search's data signature"} if data_view is
-                            not None else {"runnable": False, "reason": why_not or "no data view was given to the export"})
-    w("validation_manifest.json", json.dumps(meta, indent=1, default=str))
-    for key, name in EVIDENCE_FILES:
-        if v.get(key):
-            w(name, _csv(v[key]))
-    w("validation_expected.csv", _csv(meta["evidence_files"]))
-    w("validation_code.R", "# R code executed for each chunk (after the project's data-load script and the search setup).\n"
-      "# For a complete, runnable reproduction use validation_reproduce.R.\n" + "\n\n".join(v.get("scripts") or []))
-    if v.get("reproduce_script"):
-        if data_view is not None:   # portable: verified data view (with consent), SHA-256 check, package check
-            from ..export.exporters import write_portable
+    data_view, why_not = bundle_data(v, ds, run) if ds is not None else (None, "no data view was given to the export")
+    if not v.get("execution") and v.get("reproduce_script"):      # a v1.3.5-or-earlier record: results only
+        data_view, why_not = None, ("this validation was recorded by StatExplore 1.3.5 or earlier: its reproduction "
+                                    "script lacks the typed, complete verification of v1.3.6 (AUD135-01/02), so it is "
+                                    "not exported as a runnable reproduction") + (f"; also: {why_not}" if why_not else "")
+    with export_transaction(folder, f"validation_{v.get('validation_id') or 'export'}", include_data) as tx:
+        files: list[str] = []
 
-            files += [str(p) for p in write_portable(v["reproduce_script"], d, data_view, name="validation_reproduce",
-                                                     include_data=include_data, packages=None,
-                                                     extra={"validation_id": v.get("validation_id"),
-                                                            "search_id": v.get("search_id"),
-                                                            "search_identity": v.get("search_identity"),
-                                                            "search_signature": v.get("search_signature")})]
-        elif ds is not None:      # AUD134-07: never a runnable bundle over data that are not the analysed data
-            w("REPRODUCTION_UNAVAILABLE.txt", "No runnable reproduction bundle was written: " + why_not + ".\n"
-              "The results, manifests and the exact R code (validation_code.R) are historical records of the analysed "
-              "data; reopen the project with the original data (same source file, filters and coding) to export a "
-              "runnable reproduction.\n")
+        def w(name: str, text: str, kind: str = "results") -> None:
+            tx.write_text(name, text, kind)
+            files.append(name)
+        meta = {k: v.get(k) for k in ("grammar", "schema", "validation_id", "config", "status", "problems", "search_id",
+                                      "search_identity", "search_grammar", "search_signature", "search_identity_schema",
+                                      "search_content_id", "data_sha256", "pool",
+                                      "pool_label", "pool_scope", "adaptive", "stop_rule", "target_label",
+                                      "target_estimand", "pipeline_label", "rule_label", "candidates", "candidate_keys",
+                                      "feasibility", "rng", "realized", "provenance", "fit_budget", "execution")}
+        meta["evidence_files"] = expected_files(v)
+        meta["evidence_schema"] = EVIDENCE_SCHEMA_VERSION
+        meta["reproduction"] = ({"runnable": True, "data": "verified against the search's data signature (identity "
+                                 "schema 3)", "data_included": bool(include_data),
+                                 "bundle_kind": "runnable" if include_data else "code-only"}
+                                if data_view is not None and v.get("reproduce_script") else
+                                {"runnable": False, "reason": why_not or "no reproduction script was recorded",
+                                 "bundle_kind": "results-only"})
+        w("validation_manifest.json", json.dumps(meta, indent=1, default=str), "manifest")
+        typed = bool(v.get("execution"))      # v1.3.6 records; older records are exported as recorded (results only)
+        for key, name in EVIDENCE_FILES:
+            if typed and _evidence_applicable(v, key):
+                w(name, evidence_csv(key, v.get(key) or [], binary=bool(v.get("binary"))))
+            elif not typed and v.get(key):
+                w(name, _csv(v[key]))
+        if typed:
+            w("execution_ledger.csv", evidence_csv("ledger", (v.get("execution") or {}).get("parts") or []))
+        w("validation_expected.csv", _csv(meta["evidence_files"]), "metadata")
+        w("validation_code.R", "# R code executed for each committed chunk (after the project's data-load script and "
+          "the search setup).\n# Historical record; for a complete, runnable reproduction use validation_reproduce.R "
+          "(written only when the analysed data are verified).\n" + "\n\n".join(v.get("scripts") or []), "metadata")
+        if v.get("reproduce_script") and data_view is not None:
+            # portable: verified data view (with consent), SHA-256 check, package check
+            from ..export.exporters import portable_into
+
+            files += portable_into(tx, "", v["reproduce_script"], data_view, name="validation_reproduce",
+                                   packages=None, readme="README_bundle.txt",
+                                   extra={"validation_id": v.get("validation_id"), "search_id": v.get("search_id"),
+                                          "search_identity": v.get("search_identity"),
+                                          "search_signature": v.get("search_signature")})
         else:
-            w("validation_reproduce.R", v["reproduce_script"])
-    if (d / "README.txt").exists():
-        (d / "README_bundle.txt").write_text((d / "README.txt").read_text(encoding="utf-8"), encoding="utf-8")
-    w("README.txt", summary_text(v) + "\n\nFiles: validation_reproduce.R (complete reproduction with self-checks), "
-      "candidate_trace.csv (every candidate in every training part / draw), bootstrap_estimands.csv, realized_sizes.csv, "
-      "split_manifest.csv (fold of every analysed row per split; fold 0 = "
-      "training only), bootstrap_draws.csv (draw IDs and original IDs), predictions.csv (held-out rows), folds.csv, "
-      "performance.csv, stability.csv, validation_code.R.\n")
-    return files
+            # AUD134-07 / AUD135-03: never a runnable bundle over data that are not the analysed data
+            w("REPRODUCTION_UNAVAILABLE.txt", "No runnable reproduction bundle was written: " + (
+                why_not or "no reproduction script was recorded") + ".\nThe results, manifests and the exact R code "
+              "(validation_code.R) are historical records of the analysed data; reopen the project with the original "
+              "data (same imported content, filters and coding) to export a runnable reproduction.\n", "metadata")
+            tx.bundle_kind = "results-only"
+        w("README.txt", summary_text(v) + "\n\nFiles: validation_reproduce.R (complete reproduction with self-checks, "
+          "only with verified data), execution_ledger.csv (planned / committed / not run parts), candidate_trace.csv "
+          "(every candidate in every training part / draw), bootstrap_estimands.csv, realized_sizes.csv, "
+          "split_manifest.csv (the PLANNED fold of every analysed row per split; fold 0 = training only), "
+          "bootstrap_draws.csv (planned draws: draw IDs and original IDs), predictions.csv (held-out rows), folds.csv, "
+          "performance.csv, stability.csv, validation_code.R, bundle_inventory.json.\n", "readme")
+    return [str(p) for p in tx.published(files)]
 
 
 R_REPRO_CHECKS = r"""
-# ---- verification against the app's exported evidence (AUD134-11) ----
+# ---- verification against the app's exported evidence (AUD134-11; typed and complete since v1.3.6, AUD135-01/02/04) ----
 # Every check is listed in validation_check_results.csv (PASS / FAIL / NOT APPLICABLE); the script exits with status 1
-# when a mandatory check fails or a required reference file is missing. Keys must be unique on BOTH sides (no
-# duplicate-merge masking); missing selections of failed parts compare equal only when the statuses agree.
+# when any check fails. A check is NOT APPLICABLE only when the embedded declaration says so - an indeterminate or
+# malformed comparison is a FAIL. Every evidence file is read as TEXT (no type guessing: "001" stays "001", the literal
+# "NA" is text, "" is the declared missing value) and parsed by the declared field type embedded below (never inferred
+# from the file under test). Numbers: finite / +Inf / -Inf / missing / malformed are distinct; signed infinities match
+# only the same sign; malformed text never matches anything. Keys are length-prefixed UTF-8 (no delimiter collisions)
+# and must be unique on both sides; missing / extra / duplicate rows fail.
+# Values are recomputed from the reproduced fits - predictions, folds, draws, coefficients and trace by replaying the
+# committed chunks; performance, stability (selection frequencies over the DECLARED candidate pool, sign stability,
+# type-7 percentiles), estimands and realized sizes by independent R code from those reproduced values. The planned
+# split / draw manifests and the execution ledger are metadata: verified against the plan embedded in this script.
 # Tolerances: predictions / observed / metrics abs 1e-6 + rel 1e-6; log p, statistics, log-likelihoods, AIC and
-# coefficient estimates abs 1e-6 + rel 1e-6 (optimizer-sensitive mixed-model fits: rel 1e-5); counts, statuses,
-# indices and keys exact.
+# coefficient estimates abs 1e-6 + rel 1e-6 (optimizer-sensitive mixed-model fits: rel 1e-5); fractions abs 1e-12 +
+# rel 1e-12; counts, statuses, indices, keys and text exact.
 sx_chk <- data.frame(check = character(), status = character(), detail = character(), stringsAsFactors = FALSE)
-sx_add_chk <- function(check, ok, detail = "") {
-  st <- if (is.na(ok)) "NOT APPLICABLE" else if (isTRUE(ok)) "PASS" else "FAIL"
-  sx_chk[nrow(sx_chk) + 1, ] <<- list(check, st, as.character(detail)); invisible(ok)
+sx_add_chk <- function(check, ok, detail = "", applicable = TRUE) {
+  st <- if (identical(applicable, FALSE)) "NOT APPLICABLE" else if (length(ok) == 1L && isTRUE(ok)) "PASS" else "FAIL"
+  sx_chk[nrow(sx_chk) + 1L, ] <<- list(check, st, as.character(detail)[1])
+  invisible(st == "PASS")
 }
-sx_read <- function(f) if (file.exists(f)) utils::read.csv(f, stringsAsFactors = FALSE, na.strings = c("", "NA"),
-                                                           check.names = FALSE, encoding = "UTF-8") else NULL
-sx_key <- function(d, cols) do.call(paste, c(lapply(cols, function(k) { x <- as.character(d[[k]]); x[is.na(x)] <- "<NA>"; x }), sep = "|"))
-sx_num_ok <- function(a, b, abs_tol, rel_tol) {
-  a <- suppressWarnings(as.numeric(a)); b <- suppressWarnings(as.numeric(b))
-  (is.na(a) & is.na(b)) | (!is.na(a) & !is.na(b) & abs(a - b) <= abs_tol + rel_tol * pmax(abs(a), abs(b)))
+sx_read <- function(f) if (file.exists(f)) utils::read.csv(f, colClasses = "character", na.strings = character(0),
+  check.names = FALSE, encoding = "UTF-8", strip.white = FALSE, stringsAsFactors = FALSE) else NULL
+sx_num_re <- "^[+-]?([0-9]+([.][0-9]*)?|[.][0-9]+)([eE][+-]?[0-9]+)?$"
+# state of each value: "num" (finite), "inf", "-inf", "na" (declared missing) or "bad" (malformed / NaN)
+sx_parse_num <- function(x) {
+  n <- length(x)
+  if (is.numeric(x) || is.logical(x)) {
+    x <- as.numeric(x)
+    st <- ifelse(is.nan(x), "bad", ifelse(is.na(x), "na", ifelse(is.infinite(x), ifelse(x > 0, "inf", "-inf"), "num")))
+    return(list(value = x, state = st))
+  }
+  x <- as.character(x); st <- rep("bad", n); val <- rep(NA_real_, n)
+  st[is.na(x) | x == ""] <- "na"
+  pinf <- !is.na(x) & x %in% c("Inf", "+Inf"); ninf <- !is.na(x) & x == "-Inf"
+  st[pinf] <- "inf"; val[pinf] <- Inf; st[ninf] <- "-inf"; val[ninf] <- -Inf
+  fin <- which(!is.na(x) & grepl(sx_num_re, x))
+  if (length(fin)) {
+    v <- suppressWarnings(as.numeric(x[fin])); nz <- grepl("[1-9]", sub("[eE].*$", "", x[fin]))
+    good <- is.finite(v) & !(v == 0 & nz)            # decimal overflow / silent underflow to 0 are malformed
+    st[fin[good]] <- "num"; val[fin[good]] <- v[good]
+  }
+  list(value = val, state = st)
 }
-sx_match <- function(name, app, rep, keys, exact = character(), num = list()) {
-  if (is.null(app)) return(invisible(sx_add_chk(paste0(name, ": reference file"), FALSE, "required reference file missing")))
-  if (is.null(rep) || !nrow(rep)) return(invisible(sx_add_chk(paste0(name, ": reproduced"), nrow(app) == 0,
-                                                             "the reproduction produced no rows")))
-  miss <- setdiff(keys, intersect(names(app), names(rep)))
-  if (length(miss)) return(invisible(sx_add_chk(paste0(name, ": key columns"), FALSE, paste(miss, collapse = ", "))))
-  ka <- sx_key(app, keys); kr <- sx_key(rep, keys)
+# typed numeric equality: total (never NA); missing equals missing only if `missing`, infinities only same-sign if `inf`
+sx_num_ok <- function(a, b, abs_tol, rel_tol, missing = TRUE, inf = TRUE) {
+  p <- sx_parse_num(a); q <- sx_parse_num(b)
+  if (length(p$state) != length(q$state)) return(FALSE)
+  ok <- rep(FALSE, length(p$state))
+  ok[p$state == "na" & q$state == "na"] <- isTRUE(missing)
+  i <- p$state %in% c("inf", "-inf") & q$state %in% c("inf", "-inf")
+  ok[i] <- isTRUE(inf) & p$state[i] == q$state[i]
+  f <- p$state == "num" & q$state == "num"
+  x <- p$value[f]; y <- q$value[f]; sc <- pmax(abs(x), abs(y), 1)
+  ok[f] <- abs(x / sc - y / sc) <= abs_tol / sc + rel_tol * pmax(abs(x), abs(y)) / sc
+  ok
+}
+sx_parse_int <- function(x) {
+  if (is.numeric(x) || is.logical(x)) {
+    x <- as.numeric(x)
+    st <- ifelse(is.na(x) & !is.nan(x), "na", ifelse(!is.na(x) & is.finite(x) & x == round(x) & abs(x) <= 2^53, "int", "bad"))
+    v <- rep(NA_character_, length(x)); v[st == "int"] <- sprintf("%.0f", x[st == "int"] + 0)
+    return(list(value = v, state = st))
+  }
+  x <- as.character(x)
+  st <- ifelse(is.na(x) | x == "", "na", ifelse(grepl("^-?(0|[1-9][0-9]{0,15})$", x), "int", "bad"))
+  v <- rep(NA_character_, length(x)); v[st == "int"] <- x[st == "int"]
+  list(value = v, state = st)
+}
+sx_int_ok <- function(a, b, missing = FALSE) {
+  p <- sx_parse_int(a); q <- sx_parse_int(b)
+  if (length(p$state) != length(q$state)) return(FALSE)
+  ok <- p$state == "int" & q$state == "int" & p$value == q$value
+  ok[is.na(ok)] <- FALSE
+  ok | (p$state == "na" & q$state == "na" & isTRUE(missing))
+}
+sx_text_ok <- function(a, b) {     # exact UTF-8 text; a missing text value is "" (declared convention)
+  a <- as.character(a); b <- as.character(b); if (length(a) != length(b)) return(FALSE)
+  a[is.na(a)] <- ""; b[is.na(b)] <- ""
+  enc2utf8(a) == enc2utf8(b)
+}
+sx_bool_ok <- function(a, b) {
+  tx <- function(x) if (is.logical(x)) ifelse(is.na(x), "bad", ifelse(x, "TRUE", "FALSE")) else
+    ifelse(as.character(x) %in% c("TRUE", "FALSE"), as.character(x), "bad")
+  x <- tx(a); y <- tx(b); if (length(x) != length(y)) return(FALSE)
+  x != "bad" & x == y
+}
+# length-prefixed composite key (no delimiter collision); integer keys canonical; missing / malformed keys stop
+sx_key <- function(d, cols, types) {
+  if (!nrow(d)) return(character())
+  parts <- lapply(seq_along(cols), function(i) {
+    x <- d[[cols[i]]]
+    if (is.null(x)) stop("key column ", cols[i], " missing")
+    if (types[i] == "int") { p <- sx_parse_int(x); if (any(p$state != "int")) stop("invalid integer key ", cols[i]); x <- p$value }
+    else { x <- as.character(x); if (anyNA(x)) stop("missing key ", cols[i]); x <- enc2utf8(x) }
+    paste0(nchar(x, type = "bytes"), ":", x, ";")
+  })
+  do.call(paste0, parts)
+}
+sx_empty <- function(cols) as.data.frame(stats::setNames(lapply(cols, function(i) character()), cols),
+                                         stringsAsFactors = FALSE, check.names = FALSE)
+sx_tol <- c(1e-6, 1e-6)
+sx_tol_fit <- c(1e-6, if (sx_long()) 1e-5 else 1e-6)
+sx_tol_tight <- c(1e-12, 1e-12)
+# compare one exported evidence file with its reproduced / recomputed table, field by declared field
+sx_compare <- function(name, file, rep, spec, skip = character()) {
+  app <- sx_read(file)
+  if (is.null(app)) return(invisible(sx_add_chk(paste0(name, ": file"), FALSE, paste("required file missing:", file))))
+  cols <- spec$cols$name; types <- spec$cols$type; flags <- spec$cols$flags
+  okc <- identical(names(app), cols)
+  sx_add_chk(paste0(name, ": columns"), okc, if (okc) "the declared columns, in order" else
+             paste("expected", paste(cols, collapse = ","), "got", paste(names(app), collapse = ",")))
+  if (!okc) return(invisible(FALSE))
+  if (is.null(rep)) rep <- sx_empty(cols)
+  lack <- setdiff(setdiff(cols, skip), names(rep))
+  if (length(lack)) return(invisible(sx_add_chk(paste0(name, ": reproduced columns"), FALSE,
+                                                paste("not reproduced:", paste(lack, collapse = ", ")))))
+  kt <- types[match(spec$keys, cols)]
+  ka <- tryCatch(sx_key(app, spec$keys, kt), error = function(e) e)
+  kr <- tryCatch(sx_key(rep, spec$keys, kt), error = function(e) e)
+  if (inherits(ka, "error") || inherits(kr, "error"))
+    return(invisible(sx_add_chk(paste0(name, ": keys"), FALSE, conditionMessage(if (inherits(ka, "error")) ka else kr))))
   sx_add_chk(paste0(name, ": unique keys (app)"), !anyDuplicated(ka), paste(sum(duplicated(ka)), "duplicate key(s)"))
   sx_add_chk(paste0(name, ": unique keys (reproduced)"), !anyDuplicated(kr), paste(sum(duplicated(kr)), "duplicate key(s)"))
   sx_add_chk(paste0(name, ": same rows"), length(ka) == length(kr) && setequal(ka, kr),
@@ -1351,21 +1794,51 @@ sx_match <- function(name, app, rep, keys, exact = character(), num = list()) {
                      length(setdiff(ka, kr)), length(setdiff(kr, ka))))
   i <- match(kr, ka); k <- !is.na(i)
   A <- app[i[k], , drop = FALSE]; R <- rep[k, , drop = FALSE]
-  for (col in exact) {
-    if (!(col %in% names(A)) || !(col %in% names(R))) { sx_add_chk(paste0(name, ": ", col), FALSE, "column missing"); next }
-    a <- as.character(A[[col]]); r <- as.character(R[[col]]); a[is.na(a)] <- ""; r[is.na(r)] <- ""
-    num_a <- suppressWarnings(as.numeric(a)); num_r <- suppressWarnings(as.numeric(r))
-    same <- a == r | (!is.na(num_a) & !is.na(num_r) & num_a == num_r)
-    sx_add_chk(paste0(name, ": ", col), all(same), paste(sum(!same), "mismatch(es)"))
+  st <- if (!is.null(spec$status_ok) && "status" %in% names(R)) as.character(R$status) else NULL
+  for (j in seq_along(cols)) {
+    col <- cols[j]
+    if (col %in% c(spec$keys, skip)) next
+    fl <- strsplit(flags[j], " ", fixed = TRUE)[[1]]
+    na_ok <- "na" %in% fl; inf_ok <- "inf" %in% fl
+    need <- sub("^need=", "", fl[startsWith(fl, "need=")]); tc <- sub("^tol=", "", fl[startsWith(fl, "tol=")])
+    a <- A[[col]]; r <- R[[col]]
+    res <- tryCatch(switch(types[j],
+      text = sx_text_ok(a, r), int = sx_int_ok(a, r, na_ok), bool = sx_bool_ok(a, r),
+      num = { tl <- if (identical(tc, "tight")) sx_tol_tight else if (identical(tc, "fit")) sx_tol_fit else sx_tol
+              sx_num_ok(a, r, tl[1], tl[2], na_ok, inf_ok) },
+      stop("unknown declared type ", types[j])), error = function(e) FALSE)
+    if (length(need) && !is.null(st) && length(res) == length(st)) {
+      present <- !(sx_parse_num(a)$state %in% c("na", "bad")) & !(sx_parse_num(r)$state %in% c("na", "bad"))
+      res[st %in% need & !present] <- FALSE
+    }
+    d <- if (types[j] == "num") { x <- sx_parse_num(a)$value; y <- sx_parse_num(r)$value; dd <- abs(x - y)
+           if (any(is.finite(dd))) sprintf("; max |difference| %.3g", max(dd[is.finite(dd)])) else "" } else ""
+    sx_add_chk(paste0(name, ": ", col), length(res) == nrow(A) && all(res),
+               paste0(sum(!res), " of ", length(res), " row(s) differ or are invalid", d))
   }
-  for (col in names(num)) {
-    if (!(col %in% names(A)) || !(col %in% names(R))) { sx_add_chk(paste0(name, ": ", col), FALSE, "column missing"); next }
-    ok <- sx_num_ok(A[[col]], R[[col]], num[[col]][1], num[[col]][2])
-    d <- suppressWarnings(abs(as.numeric(A[[col]]) - as.numeric(R[[col]])))
-    sx_add_chk(paste0(name, ": ", col), all(ok), sprintf("%d mismatch(es); max |difference| %.3g", sum(!ok),
-                                                         if (any(is.finite(d))) max(d[is.finite(d)]) else 0))
-  }
+  invisible(TRUE)
 }
+# same label <=> same R group (identity mapping of the app's unit keys onto the analysed data's grouping)
+sx_partition_ok <- function(labels, groups) {
+  a <- as.character(labels); g <- as.character(groups)
+  if (anyNA(a) || anyNA(g)) return(FALSE)
+  pa <- paste0(nchar(a, type = "bytes"), ":", a, ";", g)
+  length(unique(pa)) == length(unique(a)) && length(unique(a)) == length(unique(g))
+}
+sx_pos <- function(row_id) match(as.character(row_id), rownames(sx_val_full))
+sx_unit_part <- function(row_id) { p <- sx_pos(row_id)
+  if (sx_long()) as.character(sx_val_full$sx_gid)[p] else ifelse(is.na(p), NA_character_, as.character(row_id)) }
+sx_unit_clus <- function(row_id) { p <- sx_pos(row_id)
+  if (sx_long() && sx_disc_has_cluster) as.character(sx_val_full$sx_cluster)[p] else ifelse(is.na(p), NA_character_, "") }
+sx_coef_display <- function(x) vapply(as.character(x), function(nm) {
+  if (is.na(nm) || !nzchar(nm)) return("")
+  out <- vapply(strsplit(nm, ":", fixed = TRUE)[[1]], function(p) {
+    if (p %in% c("sx_time", "sx_timef")) return("Time")
+    m <- regmatches(p, regexec("^(v[0-9]{3,})(.*)$", p))[[1]]
+    if (length(m) == 3 && m[2] %in% names(sx_alias)) return(paste0(sx_alias[[m[2]]], if (nzchar(m[3])) paste0(" [", m[3], "]") else ""))
+    p }, "", USE.NAMES = FALSE)
+  paste(out, collapse = " × ")
+}, "", USE.NAMES = FALSE)
 sx_auc2 <- function(y, p) { n1 <- sum(y == 1); n0 <- sum(y == 0); if (n1 == 0 || n0 == 0) return(NA_real_)
   r <- rank(p); (sum(r[y == 1]) - n1 * (n1 + 1) / 2) / (n1 * n0) }
 sx_met <- function(y, p, b, binary) {
@@ -1376,6 +1849,7 @@ sx_met <- function(y, p, b, binary) {
 }
 # an independent R implementation of the app's aggregation (per fold; pooled observation-weighted; group-weighted)
 sx_perf <- function(P, F, binary, target) {
+  if (is.null(P) || !nrow(P)) return(NULL)
   F <- F[F$status == "scored", , drop = FALSE]
   P$base <- F$train_mean[match(paste(P$split, P$fold), paste(F$split, F$fold))]
   out <- list()
@@ -1399,62 +1873,170 @@ sx_perf <- function(P, F, binary, target) {
   }
   do.call(rbind, out)
 }
-sx_tol <- c(1e-6, 1e-6)
-sx_tol_fit <- c(1e-6, if (sx_long()) 1e-5 else 1e-6)
+# AUD135-02: selection frequencies over the DECLARED pool (index / key / label from the search setup, never from
+# stability.csv), denominators = committed draws / successful draws, sign stability and type-7 percentiles of the
+# estimates of the draws that selected the candidate; failed draws are never zeros
+sx_pool <- data.frame(index = as.numeric(sx_val_index), key = as.character(sx_val_keys),
+                      label = as.character(sx_val_labels), stringsAsFactors = FALSE)
+sx_q <- function(e, p) if (length(e)) stats::quantile(e, p, type = 7, names = FALSE) else NA_real_
+sx_stability <- function(B) {
+  if (is.null(B) || !nrow(B)) return(NULL)
+  ok <- B[B$status == "fitted", , drop = FALSE]; att <- nrow(B); nok <- nrow(ok)
+  do.call(rbind, lapply(seq_len(nrow(sx_pool)), function(j) {
+    sel <- ok[!is.na(ok$selected_index) & as.numeric(ok$selected_index) == sx_pool$index[j], , drop = FALSE]
+    est <- suppressWarnings(as.numeric(sel$estimate)); est <- est[!is.na(est)]
+    data.frame(candidate_index = sx_pool$index[j], candidate_key = sx_pool$key[j], candidate = sx_pool$label[j],
+               selected = nrow(sel), attempted = att, successful = nok,
+               freq_of_attempted = if (att) nrow(sel) / att else NA_real_,
+               freq_of_successful = if (nok) nrow(sel) / nok else NA_real_,
+               flagged_fits = sum(as.character(sel$diagnostics) != "clean"),
+               coefficient = if (nrow(sel)) sx_coef_display(sel$coefficient[1]) else "",
+               positive_sign = if (length(est)) mean(est > 0) else NA_real_, `estimate_p2.5` = sx_q(est, 0.025),
+               estimate_median = if (length(est)) stats::median(est) else NA_real_, `estimate_p97.5` = sx_q(est, 0.975),
+               check.names = FALSE, stringsAsFactors = FALSE)
+  }))
+}
+sx_estimands <- function(B, C) {
+  if (is.null(C) || !nrow(C)) return(NULL)
+  ok <- B[B$status == "fitted", , drop = FALSE]
+  g <- unique(C[, c("selected_index", "coefficient")])
+  do.call(rbind, lapply(seq_len(nrow(g)), function(j) {
+    ix <- as.numeric(g$selected_index[j]); cf <- g$coefficient[j]
+    r <- C[as.numeric(C$selected_index) == ix & C$coefficient == cf, , drop = FALSE]
+    est <- suppressWarnings(as.numeric(r$estimate)); est <- est[!is.na(est)]
+    data.frame(candidate_index = ix, candidate = sx_pool$label[match(ix, sx_pool$index)], term = r$term[1],
+               coefficient = cf, coefficient_label = sx_coef_display(cf),
+               draws_selected = sum(!is.na(ok$selected_index) & as.numeric(ok$selected_index) == ix),
+               draws_with_estimate = length(est), positive_sign = if (length(est)) mean(est > 0) else NA_real_,
+               `estimate_p2.5` = sx_q(est, 0.025), estimate_median = if (length(est)) stats::median(est) else NA_real_,
+               `estimate_p97.5` = sx_q(est, 0.975), check.names = FALSE, stringsAsFactors = FALSE)
+  }))
+}
+# coefficient identity: every coefficient row belongs to a fitted draw of the same selected candidate, with the
+# declared key, one term per (candidate, coefficient), and n_coef rows per draw
+sx_coef_identity <- function(B, C) {
+  if (is.null(C) || !nrow(C)) return(is.null(B) || !nrow(B) || all(as.numeric(B$n_coef[B$status == "fitted"]) == 0))
+  ok <- B[B$status == "fitted", , drop = FALSE]; i <- match(C$b, ok$b)
+  if (anyNA(i) || any(as.numeric(C$selected_index) != as.numeric(ok$selected_index[i]))) return(FALSE)
+  if (any(C$selected_key != sx_pool$key[match(as.numeric(C$selected_index), sx_pool$index)])) return(FALSE)
+  terms <- tapply(C$term, paste(C$selected_index, C$coefficient), function(t) length(unique(t)))
+  n <- table(factor(C$b, levels = ok$b))
+  all(terms == 1) && all(as.numeric(n) == as.numeric(ok$n_coef))
+}
+sx_realized <- function(M) {
+  if (is.null(M) || !nrow(M)) return(NULL)
+  unit <- if (sx_target == "rows") as.character(M$row_id) else if (sx_target == "cluster") sx_unit_clus(M$row_id) else
+    sx_unit_part(M$row_id)
+  out <- list()
+  for (s in sx_plan_splits$split) {
+    w <- M$split == s; f <- as.numeric(M$fold[w]); u <- unit[w]; md <- sx_plan_splits$mode[sx_plan_splits$split == s]
+    n_all <- if (sx_target == "rows") length(u) else length(unique(u))
+    for (k in sort(unique(f[f > 0]))) {
+      te <- f == k; nu <- if (sx_target == "rows") sum(te) else length(unique(u[te]))
+      out[[length(out) + 1]] <- data.frame(split = s, mode = md, fold = k,
+        requested_fraction = if (md == "holdout") sx_val_cfg$holdout_fraction else 1 / sx_val_cfg$k,
+        test_units = nu, units = n_all, realized_unit_fraction = if (n_all) nu / n_all else NA_real_,
+        test_rows = sum(te), rows = length(f), realized_row_fraction = if (length(f)) sum(te) / length(f) else NA_real_,
+        rule = sx_plan_splits$rule[sx_plan_splits$split == s], stringsAsFactors = FALSE)
+    }
+  }
+  do.call(rbind, out)
+}
+# ---- required files (declared by the app from the validation's modes, embedded above) ----
 for (i in seq_len(nrow(sx_expect))) {
   f <- sx_expect$file[i]
-  if (!sx_expect$required[i]) {
-    sx_add_chk(paste0("file ", f), if (file.exists(f)) TRUE else NA, if (file.exists(f)) "present (optional)" else
-               "not applicable to this validation")
-    next
-  }
+  if (!sx_expect$required[i]) { sx_add_chk(paste0("file ", f), TRUE, "not applicable to this validation", applicable = FALSE); next }
   ok <- file.exists(f)
   sx_add_chk(paste0("file ", f), ok, if (ok) "present" else "REQUIRED reference file missing")
   if (ok) { n <- nrow(sx_read(f)); sx_add_chk(paste0("file ", f, ": rows"), n == sx_expect$rows[i],
                                                sprintf("%d rows, expected %d", n, sx_expect$rows[i])) }
 }
-if (!is.null(sx_M) && file.exists("split_manifest.csv"))
-  sx_match("split manifest", sx_read("split_manifest.csv"), sx_M, c("split", "row_id"), exact = "fold")
-if (!is.null(sx_D) && file.exists("bootstrap_draws.csv")) {
+sx_has <- function(f) any(sx_expect$file == f & sx_expect$required)
+# ---- execution scope (AUD135-04): the ledger, and replayed = committed ----
+sx_compare("execution ledger", "execution_ledger.csv", sx_ledger, sx_schema$ledger)
+sx_rep_parts <- c(if (!is.null(sx_F)) paste0(sx_F$split, ":fold", sx_F$fold), if (!is.null(sx_B)) paste0("boot", sx_B$b))
+sx_rep_status <- c(if (!is.null(sx_F)) as.character(sx_F$status), if (!is.null(sx_B)) as.character(sx_B$status))
+sx_com <- sx_ledger[sx_ledger$committed, , drop = FALSE]
+sx_add_chk("replay scope: the replayed parts are exactly the committed parts", setequal(sx_rep_parts, sx_com$part) &&
+           length(sx_rep_parts) == nrow(sx_com), sprintf("replayed %d, committed %d", length(sx_rep_parts), nrow(sx_com)))
+sx_add_chk("replay scope: replayed statuses equal the committed statuses",
+           identical(unname(sx_rep_status[match(sx_com$part, sx_rep_parts)]), as.character(sx_com$status)),
+           "status of every committed part")
+# ---- planned manifests: committed parts from the replayed chunk code, pending parts from the embedded plan ----
+if (sx_has("split_manifest.csv")) {
+  M <- rbind(if (!is.null(sx_M)) sx_M[, c("split", "row_id", "fold")], sx_pend_M)
+  if (!is.null(M) && nrow(M)) {
+    M$mode <- sx_plan_splits$mode[match(M$split, sx_plan_splits$split)]
+    M$`repeat` <- sx_plan_splits$`repeat`[match(M$split, sx_plan_splits$split)]
+  }
+  sx_compare("split manifest", "split_manifest.csv", M, sx_schema$manifest, skip = c("participant", "cluster"))
+  app <- sx_read("split_manifest.csv")
+  if (!is.null(app) && nrow(app)) {
+    sx_add_chk("split manifest: every row is an analysed row", !anyNA(sx_pos(app$row_id)), "row_id in the analysed data")
+    sx_add_chk("split manifest: participant keys identify the analysed participants",
+               sx_partition_ok(app$participant, sx_unit_part(app$row_id)), "same key <=> same participant in R")
+    sx_add_chk("split manifest: cluster keys identify the analysed clusters",
+               sx_partition_ok(app$cluster, sx_unit_clus(app$row_id)), "same key <=> same cluster in R")
+    sx_M_all <- M
+  } else sx_M_all <- NULL
+} else sx_M_all <- NULL
+if (sx_has("bootstrap_draws.csv")) {
+  D <- rbind(if (!is.null(sx_D)) sx_D, sx_pend_D)
+  sx_compare("bootstrap draw manifest", "bootstrap_draws.csv", D, sx_schema$draws,
+             skip = c("original_participant", "original_cluster"))
   app <- sx_read("bootstrap_draws.csv")
-  sx_match("bootstrap draw manifest", app, sx_D, c("b", "draw_participant", "row_id"), exact = "draw_cluster")
-}
-if (any(sx_expect$file == "predictions.csv" & sx_expect$applicable))
-  sx_match("predictions", sx_read("predictions.csv"), sx_P, c("split", "fold", "row_id"),
-           exact = c("participant", "cluster"), num = list(observed = sx_tol, predicted = sx_tol))
-if (any(sx_expect$file == "folds.csv" & sx_expect$applicable))
-  sx_match("folds", sx_read("folds.csv"), sx_F, c("split", "fold"),
-           exact = c("status", "selected_index", "selected_key", "n_train", "n_test", "train_groups", "test_groups",
-                     "train_clusters", "test_clusters", "excluded_incomplete", "excluded_unseen_levels",
-                     "excluded_unpredicted", "visited", "scored", "n_sig_train"),
-           num = list(train_score = sx_tol_fit, train_mean = sx_tol))
-if (!is.null(sx_P) && !is.null(sx_F) && file.exists("performance.csv"))
-  sx_match("performance (recomputed in R from the reproduced predictions)", sx_read("performance.csv"),
-           sx_perf(sx_P, sx_F, sx_binary, sx_target), c("split", "fold", "weighting"), exact = "n",
-           num = if (sx_binary) list(log_loss = sx_tol, Brier = sx_tol, AUC = sx_tol) else
-             list(RMSE = sx_tol, MAE = sx_tol, R2_out_of_sample = sx_tol))
-if (any(sx_expect$file == "bootstrap_results.csv" & sx_expect$applicable)) {
-  sx_match("bootstrap draws", sx_read("bootstrap_results.csv"), sx_B, "b",
-           exact = c("status", "selected_index", "selected_key", "n_coef", "diagnostics", "n", "groups", "visited",
-                     "scored", "n_sig_train"), num = list(train_score = sx_tol_fit, estimate = sx_tol_fit))
-  st <- sx_read("stability.csv")
-  if (!is.null(st) && !is.null(sx_B)) {
-    okb <- sx_B[sx_B$status == "fitted", , drop = FALSE]
-    rec <- data.frame(candidate_index = st$candidate_index, attempted = nrow(sx_B), successful = nrow(okb),
-                      selected = vapply(st$candidate_index, function(j) sum(okb$selected_index == j, na.rm = TRUE), 0))
-    sx_match("selection frequencies (recomputed)", st, rec, "candidate_index", exact = c("attempted", "successful", "selected"))
+  if (!is.null(app) && nrow(app)) {
+    sx_add_chk("bootstrap draw manifest: every row is an analysed row", !anyNA(sx_pos(app$row_id)), "row_id")
+    sx_add_chk("bootstrap draw manifest: original participant keys identify the analysed participants",
+               sx_partition_ok(app$original_participant, sx_unit_part(app$row_id)), "same key <=> same participant")
+    sx_add_chk("bootstrap draw manifest: original cluster keys identify the analysed clusters",
+               sx_partition_ok(app$original_cluster, sx_unit_clus(app$row_id)), "same key <=> same cluster")
+    man <- sx_read("split_manifest.csv")
+    if (!is.null(man) && nrow(man)) {
+      j <- match(app$row_id, man$row_id)
+      sx_add_chk("bootstrap draw manifest: original keys equal the split manifest's keys of the same rows",
+                 !anyNA(j) && identical(app$original_participant, man$participant[j]) &&
+                   identical(app$original_cluster, man$cluster[j]), "cross-file identity")
+    }
   }
 }
-if (any(sx_expect$file == "bootstrap_coefficients.csv" & sx_expect$applicable) || !is.null(sx_C))
-  sx_match("bootstrap coefficients", sx_read("bootstrap_coefficients.csv"), sx_C, c("b", "selected_index", "coefficient"),
-           exact = c("selected_key", "term"), num = list(estimate = sx_tol_fit))
-if (any(sx_expect$file == "candidate_trace.csv" & sx_expect$applicable) || !is.null(sx_T))
-  sx_match("candidate trace", sx_read("candidate_trace.csv"), sx_T, c("part", "candidate_index"),
-           exact = c("status", "rows_sig"), num = list(log_p = sx_tol_fit, statistic = sx_tol_fit, loglik = sx_tol_fit,
-                                                       aic = sx_tol_fit, score = sx_tol_fit))
+# ---- reproduced results ----
+if (sx_has("predictions.csv")) sx_compare("predictions", "predictions.csv", sx_P, sx_schema$predictions)
+if (sx_has("folds.csv")) {
+  Fr <- sx_F
+  if (!is.null(Fr) && nrow(Fr)) { Fr$mode <- sx_plan_splits$mode[match(Fr$split, sx_plan_splits$split)]
+    Fr$`repeat` <- sx_plan_splits$`repeat`[match(Fr$split, sx_plan_splits$split)] }
+  sx_compare("folds", "folds.csv", Fr, sx_schema$folds)
+}
+if (sx_has("performance.csv"))
+  sx_compare("performance (recomputed in R from the reproduced predictions)", "performance.csv",
+             sx_perf(sx_P, sx_F, sx_binary, sx_target), sx_schema$performance)
+if (sx_has("realized_sizes.csv"))
+  sx_compare("realized sizes (recomputed from the verified plan and the analysed units)", "realized_sizes.csv",
+             sx_realized(sx_M_all), sx_schema$realized)
+if (sx_has("bootstrap_results.csv")) {
+  Br <- sx_B
+  if (!is.null(Br) && nrow(Br)) Br$coefficient_label <- sx_coef_display(Br$coefficient)
+  sx_compare("bootstrap draws", "bootstrap_results.csv", Br, sx_schema$bootstrap)
+}
+if (sx_has("bootstrap_coefficients.csv")) {
+  sx_compare("bootstrap coefficients", "bootstrap_coefficients.csv", sx_C, sx_schema$coefs)
+  sx_add_chk("bootstrap coefficients: identity (draw, selected candidate, declared key, term, n_coef)",
+             isTRUE(tryCatch(sx_coef_identity(sx_B, sx_C), error = function(e) FALSE)), "reproduced coefficients")
+}
+if (sx_has("stability.csv"))
+  sx_compare("stability (recomputed from the reproduced draws and the declared pool)", "stability.csv",
+             sx_stability(sx_B), sx_schema$stability)
+if (sx_has("bootstrap_estimands.csv"))
+  sx_compare("bootstrap estimands (recomputed from the reproduced coefficients)", "bootstrap_estimands.csv",
+             sx_estimands(sx_B, sx_C), sx_schema$estimands)
+if (sx_has("candidate_trace.csv")) sx_compare("candidate trace", "candidate_trace.csv", sx_T, sx_schema$trace)
 utils::write.csv(sx_chk, "validation_check_results.csv", row.names = FALSE)
 sx_fail <- sx_chk$status == "FAIL"
 print(sx_chk[sx_chk$status != "PASS", , drop = FALSE], row.names = FALSE)
+sx_n_plan <- nrow(sx_ledger); sx_n_com <- sum(sx_ledger$committed)
+cat(sprintf("Execution coverage: %d of %d planned parts committed and replayed; %d not run; %d dispatched without a validated response (not reproducible).\n",
+            sx_n_com, sx_n_plan, sum(sx_ledger$status == "not_run"), sum(sx_ledger$status == "uncommitted")))
 if (any(sx_fail)) {
   msg <- paste0("VERIFICATION FAILED: ", sum(sx_fail), " of ", nrow(sx_chk), " checks (see validation_check_results.csv): ",
                 paste(utils::head(sx_chk$check[sx_fail], 5), collapse = "; "))
@@ -1463,21 +2045,52 @@ if (any(sx_fail)) {
 if (!is.null(sx_P)) cat("Predictions reproduced:", nrow(sx_P), "held-out rows.\n")
 if (!is.null(sx_B)) cat("Bootstrap selections reproduced:", nrow(sx_B), "draws.\n")
 cat(sprintf("All %d checks passed (%d not applicable).\n", sum(sx_chk$status == "PASS"), sum(sx_chk$status == "NOT APPLICABLE")))
-cat(if (identical(sx_app_status, "complete")) "The complete validation was reproduced.\n" else
-    paste0("The export is ", toupper(sx_app_status), ": only its completed parts were reproduced; this is not a ",
-           "reproduction of a complete validation.\n"))
+cat(if (identical(sx_app_status, "complete") && sx_n_com == sx_n_plan) "The complete validation was reproduced.\n" else
+    paste0("The export is ", toupper(sx_app_status), ": only its ", sx_n_com, " committed part(s) of ", sx_n_plan,
+           " planned were reproduced; this is not a reproduction of a complete validation.\n"))
 """
 
 
+def _r_frame(cols: list[tuple[str, str]], recs: list[dict[str, Any]]) -> str:
+    """An R data.frame literal of `recs` (typed columns; character for text, numeric otherwise; NA for missing)."""
+    if not recs:
+        return "NULL"
+    parts = []
+    for name, typ in cols:
+        vals = [r.get(name) for r in recs]
+        if typ == "text":
+            parts.append(f"`{name}` = {r_vec(['' if v is None else str(v) for v in vals])}")
+        elif typ == "bool":
+            parts.append(f"`{name}` = c({', '.join('TRUE' if v else 'FALSE' for v in vals)})")
+        else:
+            parts.append(f"`{name}` = c({', '.join('NA' if v is None or (isinstance(v, float) and v != v) else repr(float(v)) if typ == 'num' else str(int(v)) for v in vals)})")
+    return "data.frame(" + ", ".join(parts) + ", stringsAsFactors = FALSE, check.names = FALSE)"
+
+
+def _r_schema() -> str:
+    out = []
+    for key, spec in EVIDENCE.items():
+        cols = spec["cols"]
+        out.append(f"  {key} = list(keys = {r_vec(spec['keys'])}, status_ok = "
+                   + (r_str(spec["status_ok"]) if spec.get("status_ok") else "NULL")
+                   + f", cols = data.frame(name = {r_vec([c[0] for c in cols])}, type = {r_vec([c[1] for c in cols])}, "
+                     f"flags = {r_vec([c[2] for c in cols])}, stringsAsFactors = FALSE))")
+    return "sx_schema <- list(\n" + ",\n".join(out) + ")"
+
+
 def reproduce_script(load: str, setup: str, chunks: list[str], expected: list[dict[str, Any]] | None = None,
-                     meta: dict[str, Any] | None = None) -> str:
-    """V134-008 / AUD134-11: a complete script that repeats the validation outside StatExplore - the data load, the
-    search setup and helpers, the exact split / draw manifests and fit budget of every chunk - collects the predictions,
-    folds, bootstrap draws and coefficients, candidate trace and the executed manifests, writes them, and verifies them
-    against the app's exported evidence (see R_REPRO_CHECKS). `expected` (evidence files and row counts) is embedded so
-    a removed or truncated file fails a check."""
+                     meta: dict[str, Any] | None = None, replay: dict[str, Any] | None = None) -> str:
+    """V134-008 / AUD134-11 / AUD135-01/02/04: a complete script that repeats the validation outside StatExplore - the
+    data load, the search setup and helpers, the exact split / draw manifests and fit budget of every COMMITTED chunk -
+    collects the predictions, folds, bootstrap draws and coefficients, candidate trace and the executed manifests,
+    writes them, and verifies every exported evidence file field by declared field (see R_REPRO_CHECKS). The planned
+    scope that was not committed (pending splits / draws), the execution ledger, the declared evidence schema and the
+    expected files are embedded, so a removed, truncated or altered file - or a partial run presented as complete -
+    fails a named check."""
     meta = meta or {}
     exp = expected or []
+    rp = replay or {"ledger": [], "pending_manifest": [], "pending_draws": [], "splits": [],
+                    "config": {"holdout_fraction": 0.2, "k": 5}, "alias_map": {}, "rules": {}}
     L = ["# ==== StatExplore AMD validation: complete reproduction ====",
          "# Run from the exported folder (Rscript validation_reproduce.R). It needs the data file named in the data-load",
          "# section and verifies its results against the CSV files StatExplore exported (same folder).",
@@ -1485,17 +2098,19 @@ def reproduce_script(load: str, setup: str, chunks: list[str], expected: list[di
          "sx_rep_pred <- list(); sx_rep_folds <- list(); sx_rep_boot <- list(); sx_rep_coef <- list()",
          "sx_rep_trace <- list(); sx_rep_man <- list(); sx_rep_draws <- list()"]
     for k, body in enumerate(chunks, start=1):
-        L += [f"# ---- chunk {k} ----", "sx_vfold <- NULL; sx_vdraws <- NULL; sx_vr <- NULL", body,
+        L += [f"# ---- committed chunk {k} ----", "sx_vfold <- NULL; sx_vdraws <- NULL; sx_vr <- NULL", body,
               "if (!is.null(sx_vfold)) sx_rep_man[[length(sx_rep_man) + 1]] <- data.frame(split = sx_vr$folds$split[1],",
               "  row_id = as.integer(names(sx_vfold)), fold = unname(sx_vfold), stringsAsFactors = FALSE)",
               "if (!is.null(sx_vdraws)) sx_rep_draws[[length(sx_rep_draws) + 1]] <- data.frame(b = sx_vdraws$b,",
-              "  row_id = sx_vdraws$row_id, draw_participant = sx_vdraws$draw_gid, draw_cluster = sx_vdraws$draw_cluster)",
+              "  position = stats::ave(seq_along(sx_vdraws$b), sx_vdraws$b, FUN = seq_along), row_id = sx_vdraws$row_id,",
+              "  draw_participant = sx_vdraws$draw_gid, draw_cluster = sx_vdraws$draw_cluster, stringsAsFactors = FALSE)",
               "if (!is.null(sx_result$predictions)) sx_rep_pred[[length(sx_rep_pred) + 1]] <- sx_result$predictions",
               "if (!is.null(sx_result$folds)) sx_rep_folds[[length(sx_rep_folds) + 1]] <- sx_result$folds",
               "if (!is.null(sx_result$trace)) sx_rep_trace[[length(sx_rep_trace) + 1]] <- sx_result$trace",
               "if (!is.null(sx_result$boot)) { sx_rep_boot[[length(sx_rep_boot) + 1]] <- sx_result$boot$draws",
               "  if (!is.null(sx_result$boot$trace)) sx_rep_trace[[length(sx_rep_trace) + 1]] <- sx_result$boot$trace",
               "  if (!is.null(sx_result$boot$coefs)) sx_rep_coef[[length(sx_rep_coef) + 1]] <- sx_result$boot$coefs }"]
+    sp = rp.get("splits") or []
     L += ["sx_bind <- function(x) if (length(x)) do.call(rbind, x) else NULL",
           "sx_P <- sx_bind(sx_rep_pred); sx_F <- sx_bind(sx_rep_folds); sx_B <- sx_bind(sx_rep_boot)",
           "sx_C <- sx_bind(sx_rep_coef); sx_T <- sx_bind(sx_rep_trace); sx_M <- sx_bind(sx_rep_man); sx_D <- sx_bind(sx_rep_draws)",
@@ -1504,15 +2119,39 @@ def reproduce_script(load: str, setup: str, chunks: list[str], expected: list[di
           'if (!is.null(sx_B)) utils::write.csv(sx_B, "reproduced_bootstrap.csv", row.names = FALSE)',
           'if (!is.null(sx_C)) utils::write.csv(sx_C, "reproduced_coefficients.csv", row.names = FALSE)',
           'if (!is.null(sx_T)) utils::write.csv(sx_T, "reproduced_trace.csv", row.names = FALSE)',
+          "# ---- declarations embedded by StatExplore (independent of the exported files under test) ----",
+          _r_schema(),
           "sx_expect <- data.frame(file = " + r_vec([e["file"] for e in exp]) + ", required = c("
           + ", ".join("TRUE" if e["required"] else "FALSE" for e in exp) + "), rows = c("
           + ", ".join(str(int(e["rows"])) for e in exp) + "), applicable = c("
           + ", ".join("TRUE" if e["applicable"] else "FALSE" for e in exp) + "), stringsAsFactors = FALSE)"
           if exp else "sx_expect <- data.frame(file = character(), required = logical(), rows = integer(), "
                       "applicable = logical())",
+          "sx_ledger <- " + (_r_frame([("part", "text"), ("mode", "text"), ("split", "text"), ("fold", "int"),
+                                        ("b", "int"), ("chunk", "int"), ("status", "text"), ("committed", "bool")],
+                                       rp.get("ledger") or []) if rp.get("ledger") else
+                             "data.frame(part = character(), mode = character(), split = character(), fold = numeric(), "
+                             "b = numeric(), chunk = numeric(), status = character(), committed = logical())"),
+          "sx_pend_M <- " + _r_frame([("split", "text"), ("row_id", "int"), ("fold", "int")],
+                                     rp.get("pending_manifest") or []) + "   # planned, not committed (not replayed)",
+          "sx_pend_D <- " + _r_frame([("b", "int"), ("position", "int"), ("row_id", "int"), ("draw_participant", "text"),
+                                      ("draw_cluster", "text")], rp.get("pending_draws") or [])
+          + "   # planned, not committed",
+          "sx_plan_splits <- " + (_r_frame([("split", "text"), ("mode", "text"), ("repeat", "int"), ("rule", "text")],
+                                           [dict(x, rule=(rp.get("rules") or {}).get(x["split"], "")) for x in sp])
+                                  if sp else "data.frame(split = character(), mode = character(), `repeat` = numeric(), "
+                                             "rule = character(), check.names = FALSE)"),
+          f"sx_val_cfg <- list(holdout_fraction = {float((rp.get('config') or {}).get('holdout_fraction', 0.2))!r}, "
+          f"k = {int((rp.get('config') or {}).get('k', 5))})",
+          "sx_alias <- " + ("c(" + ", ".join(f"{a} = {r_str(n)}" for a, n in sorted((rp.get("alias_map") or {}).items()))
+                            + ")" if rp.get("alias_map") else "character()"),
           f"sx_app_status <- {r_str(str(meta.get('status', 'complete')))}",
           f"sx_binary <- {'TRUE' if meta.get('binary') else 'FALSE'}",
           f"sx_target <- {r_str(str(meta.get('target', 'participant')))}",
+          "if (sx_binary) sx_schema$performance$cols <- rbind(sx_schema$performance$cols, data.frame(name = c(\"log_loss\", "
+          "\"Brier\", \"AUC\"), type = \"num\", flags = \"na tol=tol\", stringsAsFactors = FALSE)) else "
+          "sx_schema$performance$cols <- rbind(sx_schema$performance$cols, data.frame(name = c(\"RMSE\", \"MAE\", "
+          "\"R2_out_of_sample\"), type = \"num\", flags = \"na tol=tol\", stringsAsFactors = FALSE))",
           R_REPRO_CHECKS]
     return "\n".join(L) + "\n"
 

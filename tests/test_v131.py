@@ -424,9 +424,7 @@ def _export(tmp_path, ds, run, row, r_session, comparisons=None, name="analysis"
     r_session.ensure_data(v)
     script = candidate_script(r_session.load_script, v, run.settings, run.family, candidate_from_row(run, row),
                               comparisons, expected=row)
-    folder = tmp_path / f"export_{name}"
-    write_portable(script, folder, ds)
-    return folder
+    return write_portable(script, tmp_path / f"export_{name}", ds, include_data=True)[0].parent  # v1.3.6: explicit consent; a NEW folder per export
 
 
 def _source(folder: Path, cwd: Path, pre: str = "") -> subprocess.CompletedProcess:

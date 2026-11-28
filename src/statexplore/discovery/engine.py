@@ -22,6 +22,7 @@ import pandas as pd
 
 from ..analysis.session import RSession
 from ..core.dataset import Dataset
+from ..core.identity import IDENTITY_SCHEMA
 from ..rbridge.worker import REngineError, RScriptError, RTimeoutError, RWorker
 from .rcode import batch_script, setup_script
 from .space import (
@@ -51,11 +52,28 @@ TIERS = {
 
 
 def data_signature(ds: Dataset) -> str:
+    """AUD135-06: the identity of the analysed data VIEW (identity schema 3, `core.identity.view_id`): imported values,
+    parse context (sheet, delimiter, ...), metadata, derived / filter / holdout specifications and their realized
+    masks. The source file hash alone is never treated as proof of the analysed content."""
+    from ..core.identity import view_id
+
+    return view_id(ds)
+
+
+def legacy_data_signature(ds: Dataset) -> str:
+    """The v1.3.2-v1.3.5 signature (source file SHA-256 + metadata; identity schema 2). Descriptive only: it cannot
+    tell two worksheets of one workbook apart, so a match is never treated as proof (AUD135-06)."""
     meta = [v.to_dict() for v in ds.variables.values()]
     extra = [[d.to_dict() for d in ds.derived.values()], [f.to_dict() for f in ds.filters],
              {k: v for k, v in (ds.holdout.to_dict() if ds.holdout else {}).items() if k != "evaluations"}]
     payload = json.dumps([ds.source.sha256, meta, extra], sort_keys=True, default=str)
     return hashlib.sha256(payload.encode()).hexdigest()
+
+
+LEGACY_IDENTITY = ("this search was recorded with data identity schema {schema} (StatExplore 1.3.5 or earlier: source "
+                   "file hash + metadata), which cannot prove which imported values it analysed (for example which "
+                   "worksheet of a workbook); its results stay viewable as history, but they are not reused, resumed or "
+                   "reproduced as verified")
 
 
 @dataclass
@@ -85,6 +103,7 @@ class DiscoveryRun:
     grammar: int = 2                                           # v1.3.4: candidate grammar version (2 = v1.2-v1.3.3)
     parent_id: str = ""                                        # v1.3.5: search this one was restarted from (AUD134-03)
     lineage: dict[str, Any] = field(default_factory=dict)      # v1.3.5: why / how it was restarted
+    identity_schema: int = 2                                   # v1.3.6: data identity schema of signature / fit_id (AUD135-06)
 
     @property
     def is_complete(self) -> bool:
@@ -104,19 +123,21 @@ class DiscoveryRun:
         g = self.grammar_problem()
         if g:
             return g
-        if not self.rows:
-            return ""
         eng = self.engine or {}
         n = len(self.rows)
-        if not eng:
+        if self.rows and not eng:
             return (f"the {n:,} retained results have no recorded R / package versions, so their compatibility with "
                     "this version is not established")
         fr = eng.get("fit_rules")
-        if fr != FIT_RULES:
+        if self.rows and fr != FIT_RULES:
             return (f"the {n:,} retained results were fitted under fit rules {fr if fr is not None else '(not recorded)'}; "
                     f"this version uses fit rules {FIT_RULES} (statistics changed definition: v1.3.4 cache, log tails, "
                     "GEE working correlation, diagnostics), so old and new rows cannot share one search or one "
                     "multiplicity family")
+        if self.identity_schema < IDENTITY_SCHEMA:          # AUD135-06 (checked after the older, more specific reasons)
+            return LEGACY_IDENTITY.format(schema=self.identity_schema)
+        if not self.rows:
+            return ""
         if not self.fit_id:
             return "the search has no recorded fit identity, so its retained results cannot be verified"
         idx = [r.get("idx") for r in self.rows]
@@ -211,7 +232,7 @@ class DiscoveryRun:
                                                "stop_reason", "n_done", "stop_index", "elapsed_s",
                                                "n_sample", "engine", "warnings", "coding", "fit_id", "n_times",
                                                "executions", "data_snapshot", "validation_runs", "grammar",
-                                               "parent_id", "lineage")} | {
+                                               "parent_id", "lineage", "identity_schema")} | {
             "settings": self.settings.to_dict(), "validation": {str(k): v for k, v in self.validation.items()}}
 
     @classmethod
@@ -232,6 +253,7 @@ class DiscoveryRun:
         run.grammar = int(meta.get("grammar") or 2)
         run.parent_id = str(meta.get("parent_id") or "")
         run.lineage = dict(meta.get("lineage") or {})
+        run.identity_schema = int(meta.get("identity_schema") or 2)   # absent = v1.3.5 or earlier (unverified)
         run.validation = {int(k): v for k, v in (meta.get("validation") or {}).items()}
         run.rows = rows
         return run
@@ -275,7 +297,7 @@ def create_run(ds: Dataset, s: SearchSettings) -> DiscoveryRun:
     from .space import GRAMMAR_VERSION
 
     run = DiscoveryRun(settings=s, family=family, total=count_candidates(s), signature=data_signature(ds),
-                       grammar=GRAMMAR_VERSION)
+                       grammar=GRAMMAR_VERSION, identity_schema=IDENTITY_SCHEMA)
     run.coding = coding(ds, s, family)
     run.fit_id = fit_id
     from .history import snapshot
@@ -338,7 +360,8 @@ def fit_identity(ds: Dataset, s: SearchSettings, family: str) -> str:
         "structure": getattr(s, "structure", None), "gee_corstr": getattr(s, "gee_corstr", None),
         # v1.3.2: nesting changes the model (composite participants, cluster variance); identity schema 2
         "cluster": getattr(s, "cluster", None), "id_policy": getattr(s, "id_policy", "global") if getattr(s, "cluster", None) else None,
-        "identity_schema": 2, "optimizer": "lme4 default; nlme nlminb then optim on optimizer errors, msMaxIter 200",
+        # v1.3.6 (AUD135-06): identity schema 3 = the analysed data enter through their CONTENT identity
+        "identity_schema": IDENTITY_SCHEMA, "optimizer": "lme4 default; nlme nlminb then optim on optimizer errors, msMaxIter 200",
         "sample": s.sample, "pool": sorted(s.candidates + s.required) if s.sample == "shared" else None,
         "required": sorted(s.required), "max_params": s.max_params, "conf": s.conf,
         "min_obs": getattr(s, "min_obs", 0),
@@ -375,6 +398,8 @@ def cache_from(run: DiscoveryRun, previous: list[DiscoveryRun], ds: Dataset | No
     for prev in previous:
         if prev is run or prev.signature != run.signature or prev.family != run.family:
             continue
+        if getattr(prev, "identity_schema", 2) < IDENTITY_SCHEMA:     # AUD135-06: unverified legacy content identity
+            continue
         if not prev.fit_id or prev.fit_id != ident:
             continue
         if (prev.engine or {}).get("fit_rules") != FIT_RULES:
@@ -402,7 +427,7 @@ def execute(run: DiscoveryRun, ds: Dataset, *, rscript: str | None = None,
     tests); cancellation is checked before the workers start, before every batch and before cached rows are committed."""
     s = run.settings
     vds = view(ds, s)
-    if run.signature != data_signature(vds):
+    if run.identity_schema >= IDENTITY_SCHEMA and run.signature != data_signature(vds):
         raise ResumeRefused("The data or variable settings changed since this search was created; "
                             "start a new search.")
     if run.status not in ("not_started", "partial", "cancelled"):

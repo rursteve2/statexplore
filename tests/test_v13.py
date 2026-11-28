@@ -406,8 +406,7 @@ def test_P0_02_structure_export_reproduces_model_and_comparisons(panel_ds, r_ses
     r_session.ensure_data(v)
     script = candidate_script(r_session.load_script, v, run.settings, run.family, candidate_from_row(run, row), comps)
     assert 'struct = "car1"' in script and "sx_comparisons" in script
-    folder = tmp_path / "export"
-    write_portable(script, folder, panel_ds)
+    folder = write_portable(script, tmp_path / "export", panel_ds, include_data=True)[0].parent  # v1.3.6: explicit consent; a NEW folder per export
     code = (f'source("{(folder / "analysis.R").as_posix()}"); cat("@@", sprintf("%.12g", c(sx_result$n, sx_result$loglik, '
             'sx_result$aic, sx_result$n_lik_params, sx_comparisons$LR[1], sx_comparisons$p[1])), "\\n")')
     p = subprocess.run([str(find_rscript()), "--vanilla", "-e", code], cwd=tmp_path, capture_output=True, text=True,

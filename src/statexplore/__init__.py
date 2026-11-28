@@ -1,2 +1,2 @@
 """StatExplore: exploratory statistical model discovery and teaching studio."""
-__version__ = "1.3.5"
+__version__ = "1.3.6"

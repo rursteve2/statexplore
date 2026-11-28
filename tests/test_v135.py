@@ -810,17 +810,21 @@ def test_audit_historical_identity_survives_data_replacement(tmp_path):
     p, run = _p50()
     orig_sha = run.data_snapshot["source_sha256"]
     a = read_audit(write_audit(run, p.dataset, tmp_path / "a")[0])
-    assert SCHEMA_VERSION == 2 and a["schema_version"] == 2
+    assert SCHEMA_VERSION == 3 and a["schema_version"] == 3            # v1.3.6: audit schema 3 (AUD135-06)
     h = a["data"]["historical"]
     assert h["source_sha256"] == orig_sha and h["analysis_signature"] == run.signature
-    assert a["data"]["current_context"]["matches_analysis"] is True
+    # v1.3.6 (AUD135-06): this v1.3.4 search has identity schema 2, which cannot prove the analysed values: the
+    # export-time context is labelled unverified, never "matches" (supersedes the v1.3.5 expectation True)
+    assert a["data"]["current_context"]["matches_analysis"] is False
+    assert a["data"]["current_context"]["state"] == "unverified" and h["identity_verifiable"] is False
     _swap_to_50e(p.dataset)
-    b = read_audit(write_audit(run, p.dataset, tmp_path / "b")[0])
+    bf = write_audit(run, p.dataset, tmp_path / "b")
+    b = read_audit(bf[0])
     assert b["data"]["historical"] == {**h}                       # unchanged, never the current file
     cur = b["data"]["current_context"]
     assert cur["matches_analysis"] is False and cur["source_sha256"] != orig_sha and "NOT the analysed data" in cur["label"]
     assert [c["key"] for c in b["candidates"]] == [c["key"] for c in a["candidates"]]
-    report = (tmp_path / "b" / f"search_{run.id}_audit_report.md").read_text(encoding="utf-8")
+    report = bf[1].read_text(encoding="utf-8")
     assert "DIFFERS from the analysed data" in report
 
 
@@ -851,19 +855,32 @@ def _validation_record(run) -> dict:
             "scripts": ["# chunk"], "reproduce_script": "dat <- utils::read.csv(\"x.csv\")\n# body\n"}
 
 
+def _v136_record(run) -> dict:
+    """v1.3.6: a current validation record (with its execution ledger) of a current search."""
+    return dict(_validation_record(run), execution={"parts": [{"part": "holdout:fold1", "mode": "holdout",
+                "split": "holdout", "fold": 1, "b": None, "chunk": 1, "status": "scored", "committed": True}]})
+
+
+def _out(files) -> Path:
+    return Path(files[-1]).parent        # v1.3.6: every export is a NEW folder (bundle_inventory.json at its root)
+
+
 def test_validation_export_refuses_runnable_bundle_over_other_data(tmp_path):
     from statexplore.discovery import validate as V
+    from statexplore.discovery.engine import create_run
 
-    p, run = _p50()
-    v = _validation_record(run)
-    ok = tmp_path / "ok"
-    V.export(v, str(ok), ds=p.dataset, include_data=True, run=run)
+    p, legacy = _p50()
+    # v1.3.6 (AUD135-06): the v1.3.4 search itself (identity schema 2) is unverified -> results only
+    lg = _out(V.export(_v136_record(legacy), str(tmp_path / "legacy"), ds=p.dataset, include_data=True, run=legacy))
+    assert json.loads((lg / "validation_manifest.json").read_text())["reproduction"]["runnable"] is False
+    run = create_run(p.dataset, legacy.settings)          # the same search declared under the current version
+    v = _v136_record(run)
+    ok = _out(V.export(v, str(tmp_path / "ok"), ds=p.dataset, include_data=True, run=run))
     man = json.loads((ok / "validation_manifest.json").read_text())
     assert man["reproduction"]["runnable"] is True and (ok / "validation_reproduce.R").exists()
     assert (ok / "validation_reproduce_data.csv").exists()
     _swap_to_50e(p.dataset)
-    bad = tmp_path / "bad"
-    V.export(v, str(bad), ds=p.dataset, include_data=True, run=run)
+    bad = _out(V.export(v, str(tmp_path / "bad"), ds=p.dataset, include_data=True, run=run))
     man = json.loads((bad / "validation_manifest.json").read_text())
     assert man["reproduction"]["runnable"] is False and (bad / "REPRODUCTION_UNAVAILABLE.txt").exists()
     assert not (bad / "validation_reproduce.R").exists() and not list(bad.glob("*_data.csv"))
@@ -871,8 +888,7 @@ def test_validation_export_refuses_runnable_bundle_over_other_data(tmp_path):
     # a v1.3.4 caller handing a wrong VIEW is refused as well (signature check without the run)
     from statexplore.discovery.space import view
 
-    old = tmp_path / "old"
-    V.export(v, str(old), ds=view(p.dataset, run.settings), include_data=True)
+    old = _out(V.export(v, str(tmp_path / "old"), ds=view(p.dataset, run.settings), include_data=True))
     assert (old / "REPRODUCTION_UNAVAILABLE.txt").exists()
 
 
@@ -880,10 +896,12 @@ def test_validation_export_filter_change_uses_rebuilt_original_view(tmp_path):
     from statexplore.core.derive import FilterSpec
     from statexplore.discovery import validate as V
 
-    p, run = _p50()
+    from statexplore.discovery.engine import create_run
+
+    p, legacy = _p50()
+    run = create_run(p.dataset, legacy.settings)          # v1.3.6: a current search (identity schema 3)
     p.dataset.filters = [FilterSpec(variable="TIME", op="<=", value=1e9)]
-    out = tmp_path / "f"
-    V.export(_validation_record(run), str(out), ds=p.dataset, include_data=True, run=run)
+    out = _out(V.export(_v136_record(run), str(tmp_path / "f"), ds=p.dataset, include_data=True, run=run))
     man = json.loads((out / "validation_manifest.json").read_text())
     assert man["reproduction"]["runnable"] is True            # rebuilt from the snapshot on byte-identical source data
 
@@ -1154,8 +1172,7 @@ def _repro_export(r_session, tmp_path: Path) -> tuple[Path, dict]:
     cfg = V.ValidationConfig(target="rows", modes=["holdout", "cv", "bootstrap"], k=2, B=3, seed=7, max_fits=100_000)
     v = V.ValidationRunner(r_session, d, run, cfg).execute()
     assert v["status"] == "complete" and v["coefs"] and v["trace"]
-    out = tmp_path / "export"
-    V.export(v, str(out), ds=d, include_data=True, run=run)
+    out = _out(V.export(v, str(tmp_path / "export"), ds=d, include_data=True, run=run))
     moved = tmp_path / "moved folder ü é"
     shutil.copytree(out, moved)
     return moved, v
@@ -1172,7 +1189,8 @@ def test_reproduction_verifies_everything_and_catches_tampering(r_session, tmp_p
     chk = pd.read_csv(moved / "validation_check_results.csv")
     assert (chk["status"] != "FAIL").all() and len(chk) > 40
     for name in ("predictions: predicted", "folds: selected_key", "bootstrap coefficients: estimate",
-                 "candidate trace: log_p", "selection frequencies (recomputed): selected",
+                 "candidate trace: log_p",
+                 "stability (recomputed from the reproduced draws and the declared pool): selected",   # v1.3.6 name
                  "performance (recomputed in R from the reproduced predictions): RMSE", "split manifest: fold",
                  "bootstrap draw manifest: same rows"):
         assert (chk.loc[chk["check"] == name, "status"] == "PASS").all() and (chk["check"] == name).any(), name
@@ -1209,24 +1227,30 @@ def test_reproduction_verifies_everything_and_catches_tampering(r_session, tmp_p
 
 @pytest.mark.r
 def test_reproduction_na_safe_failed_draw_comparison(tmp_path):
-    """Matched missing selections of failed draws are equal only when the statuses agree; no NA comparison crash."""
+    """Matched missing selections of failed draws are equal only when the statuses agree; no NA comparison crash.
+    v1.3.6: ported from sx_match to the typed comparator (AUD135-01) - same assertions."""
     from statexplore.discovery.validate import R_REPRO_CHECKS
 
-    lib = R_REPRO_CHECKS.split("sx_tol <- c(1e-6, 1e-6)")[0]
-    code = "sx_long <- function() FALSE\n" + lib + r"""
+    lib = R_REPRO_CHECKS.split("# ---- required files")[0]
+    code = ("sx_long <- function() FALSE\nsx_val_index <- 1:2; sx_val_keys <- c('a', 'b'); sx_val_labels <- c('A', 'B')\n"
+            "sx_val_full <- data.frame(y = 1)\nsx_alias <- character()\n" + lib + r"""
+spec <- list(keys = "b", status_ok = "fitted", cols = data.frame(name = c("b", "status", "selected_index"),
+  type = c("int", "text", "int"), flags = c("", "", "na need=fitted"), stringsAsFactors = FALSE))
 app <- data.frame(b = 1:3, status = c("fitted", "failed", "fitted"), selected_index = c(1, NA, 2))
+utils::write.csv(data.frame(b = c("1", "2", "3"), status = app$status, selected_index = c("1", "", "2")),
+                 "draws.csv", row.names = FALSE)
 rep <- app
-sx_match("draws", app, rep, "b", exact = c("status", "selected_index"))
+sx_compare("draws", "draws.csv", rep, spec)
 stopifnot(all(sx_chk$status == "PASS"))
 rep$status[2] <- "fitted"; rep$selected_index[2] <- 1
 sx_chk <- sx_chk[0, ]
-sx_match("draws", app, rep, "b", exact = c("status", "selected_index"))
+sx_compare("draws", "draws.csv", rep, spec)
 stopifnot(sum(sx_chk$status == "FAIL") == 2)
 sx_chk <- sx_chk[0, ]
-sx_match("draws", app, rbind(rep, rep[1, ]), "b")
+sx_compare("draws", "draws.csv", rbind(rep, rep[1, ]), spec)
 stopifnot(any(sx_chk$status == "FAIL"))
 cat("OK\n")
-"""
+""")
     res = rscript(code, tmp_path)
     assert res.returncode == 0 and "OK" in res.stdout, res.stderr[-2000:]
 
@@ -1252,8 +1276,7 @@ def test_51c_pipeline_bootstrap_reproduces_in_fresh_r(r_session, tmp_path):
     v = V.ValidationRunner(r_session, d, run, cfg).execute()
     assert v["status"] == "complete"
     assert all(b["selected_index"] == 17 for b in v["bootstrap"]) and v["folds"][0]["selected_index"] == 17
-    out = tmp_path / "e"
-    V.export(v, str(out), ds=d, include_data=True, run=run)
+    out = _out(V.export(v, str(tmp_path / "e"), ds=d, include_data=True, run=run))
     moved = tmp_path / "relocated ä folder"
     shutil.copytree(out, moved)
     res = run_r(moved, "validation_reproduce.R", timeout=3000)

@@ -593,8 +593,7 @@ def test_validation_manifest_identity_and_relocated_reproduction(r_session, tmp_
     assert v["search_identity"] == run.fit_id and len(v["search_identity"]) == 64 and v["validation_id"]
     hold = [x for x in v["realized"] if x["split"] == "holdout"][0]
     assert hold["test_units"] == math.ceil(0.2 * hold["units"])
-    out = tmp_path / "export"
-    V.export(v, str(out), ds=view(d, run.settings), include_data=True)
+    out = Path(V.export(v, str(tmp_path / "export"), ds=view(d, run.settings), include_data=True)[-1]).parent  # v1.3.6: explicit consent; a NEW folder per export
     moved = tmp_path / "moved folder ü"
     shutil.copytree(out, moved)
     shutil.rmtree(out)
@@ -718,7 +717,7 @@ def test_legacy_runs_without_identity_or_old_rules_are_never_reused():
     old_rules = DiscoveryRun(settings=s, family="gaussian", total=1, signature="sig", fit_id="F", rows=[row],
                              engine={"fit_rules": 3})
     good = DiscoveryRun(settings=s, family="gaussian", total=1, signature="sig", fit_id="F", rows=[row],
-                        engine={"fit_rules": engine.FIT_RULES})
+                        engine={"fit_rules": engine.FIT_RULES}, identity_schema=3)   # v1.3.6: current identity schema
     assert engine.cache_from(cur, [legacy, old_rules]) == {}
     assert list(engine.cache_from(cur, [legacy, old_rules, good])) == ["main|A"]
     from statexplore.discovery.rcode import FIT_RULES_R

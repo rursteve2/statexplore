@@ -39,13 +39,16 @@ sx_select_min <- function(score) {
 sx_fit_budget <- new.env()
 sx_budget_reset <- function(cap = Inf) {
   sx_fit_budget$cap <- cap; sx_fit_budget$used <- 0; sx_fit_budget$retries <- 0; sx_fit_budget$aux <- 0
+  sx_fit_budget$denied <- 0   # AUD135-05: fits REFUSED by the cap (work truncated), distinct from reaching the cap
 }
 sx_budget_reset()
 sx_budget_take <- function(kind = "fit") {
-  if (sx_fit_budget$used >= sx_fit_budget$cap)
+  if (sx_fit_budget$used >= sx_fit_budget$cap) {
+    sx_fit_budget$denied <- sx_fit_budget$denied + 1
     stop(structure(class = c("sx_budget", "error", "condition"), list(call = NULL, message = sprintf(
       "fit budget reached: %d model-fitting invocations of the %s allowed", as.integer(sx_fit_budget$used),
       format(sx_fit_budget$cap)))))
+  }
   sx_fit_budget$used <- sx_fit_budget$used + 1
   if (kind == "retry") sx_fit_budget$retries <- sx_fit_budget$retries + 1
   if (kind == "aux") sx_fit_budget$aux <- sx_fit_budget$aux + 1

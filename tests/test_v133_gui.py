@@ -137,7 +137,7 @@ def test_validation_panel_run_persist_reopen(window, qtbot, tmp_path):
     assert page.run.validation_runs[0]["config"]["target"] == "cluster"                 # unchanged
     from statexplore.discovery import validate as V
 
-    files = V.export(page.run.validation_runs[1], str(tmp_path / "val"))
+    files = V.export(page.run.validation_runs[1], str(tmp_path / "val"))     # v1.3.6: new folder, typed evidence
     assert any(f.endswith("split_manifest.csv") for f in files)
     # save, reopen: validation runs and their splits come back with the search
     p = tmp_path / "proj.sxp"

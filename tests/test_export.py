@@ -59,14 +59,17 @@ def _numbers(table_rows) -> list[float]:
 @pytest.mark.r
 def test_O_exported_r_scripts_reproduce_results(project_with_results, tmp_path):
     proj = project_with_results
-    folder = tmp_path / "export"
-    written = exporters.export(proj, [r.id for r in proj.results], folder, {"R", "py"})
+    # v1.3.6 (AUD135-03/07): a NEW export folder with one self-checking bundle per analysis (own data, with consent)
+    written = exporters.export(proj, [r.id for r in proj.results], tmp_path / "export", {"R", "py"}, include_data=True)
+    new = written[-1].parent
     env = dict(os.environ, R_LIBS=str(r_library()))
     rscript = str(find_rscript())
     for r in proj.results:
-        script = folder / f"{exporters.slug(r.title)}_{r.id}.R"
+        sub = f"{exporters.slug(r.title)}_{r.id}"
+        folder = new / sub
+        script = folder / f"{sub}.R"
         text = script.read_text(encoding="utf-8")
-        assert script in written and 'sx_data_file <- "data.csv"' in text
+        assert script in written and f'sx_data_file <- "{sub}_data.csv"' in text and (folder / f"{sub}_data.csv") in written
         assert "statexplore_" not in text.replace("# Source file", "")  # no temp-folder paths left
         done = subprocess.run([rscript, "--vanilla", script.name], cwd=folder, env=env, capture_output=True,
                               text=True, timeout=300)
@@ -79,13 +82,13 @@ def test_O_exported_r_scripts_reproduce_results(project_with_results, tmp_path):
             cols = [c for c in ft["columns"]]
             rows = list(zip(*[ft["data"][c] if isinstance(ft["data"][c], list) else [ft["data"][c]] for c in cols]))
             np.testing.assert_allclose(_numbers(rows), _numbers(t.rows), rtol=1e-9, err_msg=f"{r.title}: {t.name}")
-    assert (folder / "data.csv").is_file() and any(p.suffix == ".py" for p in written)
+    assert (folder / f"{sub}_data.csv").is_file() and any(p.suffix == ".py" for p in written)
 
 
 def test_xlsx_values_match(project_with_results, tmp_path):
     proj = project_with_results
-    folder = tmp_path / "x"
-    exporters.export(proj, [r.id for r in proj.results], folder, {"xlsx"}, search_ids=[proj.searches[0].id])
+    folder = exporters.export(proj, [r.id for r in proj.results], tmp_path / "x", {"xlsx"},
+                              search_ids=[proj.searches[0].id])[-1].parent          # v1.3.6: a new export folder
     book = pd.read_excel(folder / "statexplore_results.xlsx", sheet_name=None)
     r = proj.results[0]
     coef = next(t for t in r.tables if t.name == "Coefficients")
@@ -100,8 +103,7 @@ def test_docx_and_pdf(project_with_results, tmp_path, qtbot):
     from docx import Document
 
     proj = project_with_results
-    folder = tmp_path / "d"
-    exporters.export(proj, [r.id for r in proj.results], folder, {"docx", "pdf"})
+    folder = exporters.export(proj, [r.id for r in proj.results], tmp_path / "d", {"docx", "pdf"})[-1].parent
     doc = Document(str(folder / "statexplore_report.docx"))
     text = "\n".join(p.text for p in doc.paragraphs)
     assert "Interpretation." in text and "Linear regression" in text

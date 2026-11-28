@@ -21,8 +21,12 @@ class ReportsPage(QWidget):
         t = QLabel("Reports")
         t.setObjectName("pageTitle")
         lay.addWidget(t)
-        lay.addWidget(QLabel("Exported R scripts are self-contained: they read the exported data.csv and reproduce "
-                             "the analysis. Python scripts re-run the R script and load its result."))
+        intro = QLabel("Every export goes to a NEW folder inside the folder you choose (nothing there is "
+                       "overwritten). R format: one self-checking reproducibility bundle per analysis, written "
+                       "only when the data that analysis read can be proven; the analysis data are included only "
+                       "if you agree for this export. Python scripts re-run the R script and load its result.")
+        intro.setWordWrap(True)
+        lay.addWidget(intro)
         row = QHBoxLayout()
         rbox = QGroupBox("Analyses")
         rl = QVBoxLayout(rbox)
@@ -106,10 +110,27 @@ class ReportsPage(QWidget):
         folder = QFileDialog.getExistingDirectory(self, "Export folder")
         if not folder:
             return
+        include_data = False
+        if fmts & {"R", "py"} and rids:
+            # AUD135-03: explicit, per-export consent for the analysis data (default: not included)
+            ans = QMessageBox.question(self, "Include the data?",
+                              "Include the analysis data in the reproducibility bundles (only the columns each "
+                              "analysis uses)?\n\nYes: each bundle runs on its own. No (default): scripts, manifests "
+                              "and README only; the data file must be placed next to a script later and is checked by "
+                              "its SHA-256. Results and metadata are exported either way and are not anonymized.",
+                              QMessageBox.Yes | QMessageBox.No | QMessageBox.Cancel, QMessageBox.No)
+            if ans == QMessageBox.Cancel:
+                return
+            include_data = ans == QMessageBox.Yes
         try:
-            written = export(p, rids, Path(folder), fmts, sids, self.history.isChecked())
+            written = export(p, rids, Path(folder), fmts, sids, self.history.isChecked(), include_data=include_data)
         except Exception as e:  # surfaced to the user
             QMessageBox.warning(self, "Export failed", str(e))
             return
+        target = written[-1].parent if written else Path(folder)
+        refused = [w for w in written if w.name == "REPRODUCTION_UNAVAILABLE.txt"]
         self.log.setPlainText("\n".join(str(w) for w in written))
-        QMessageBox.information(self, "Reports", f"Wrote {len(written)} file(s) to {folder}.")
+        QMessageBox.information(self, "Reports", f"Wrote {len(written)} file(s) to the new folder\n{target}"
+                                + (f"\n\n{len(refused)} analysis(es) got no runnable reproduction: the data they analysed "
+                                   "cannot be proven (see REPRODUCTION_UNAVAILABLE.txt in their folders)." if refused else ""))
+        self.last_export = target

@@ -139,25 +139,47 @@ class CodeDialog(QDialog):
 
         from ...export.exporters import write_portable
 
+        data = self.dataset
+        if self.result is not None:
+            # AUD135-07: a stored result is reproduced only on the exact data it analysed (proven by the SHA-256 of
+            # the input R read), never on whatever the project holds now
+            import tempfile
+
+            from ...export.historical import Unverified, resolve
+
+            scratch = Path(tempfile.mkdtemp(prefix="sx_resolve_"))
+            try:
+                data = resolve(self.result, self.dataset, scratch)
+            except Unverified as e:
+                QMessageBox.warning(self, "Save", "No reproducibility bundle was written: " + str(e) + ".\n\nThe code "
+                                    "shown here is the exact historical record (Copy still works). Run the analysis "
+                                    "again for a new, separately labelled result that can be bundled.")
+                return
+            finally:
+                import shutil
+
+                shutil.rmtree(scratch, ignore_errors=True)
         folder = QFileDialog.getExistingDirectory(self, "Folder for the reproducibility bundle")
         if not folder:
             return
-        ans = QMessageBox.question(
-            self, "Include the data?", "Include the analysis data in the bundle (only the columns this script uses)?\n\n"
-            "Yes: the bundle runs on its own. No: only the script, manifest and README are written; the data file must "
-            "be placed in the folder later and is checked by its SHA-256.",
-            QMessageBox.Yes | QMessageBox.No | QMessageBox.Cancel)
+        ans = QMessageBox.question(self, "Include the data?",
+                          "Include the analysis data in the bundle (only the columns this script uses)?\n\n"
+                          "Yes: the bundle runs on its own. No (default): only the script, manifest and README are "
+                          "written; the data file must be placed in the folder later and is checked by its SHA-256.",
+                          QMessageBox.Yes | QMessageBox.No | QMessageBox.Cancel, QMessageBox.No)
         if ans == QMessageBox.Cancel:
             return
         try:
-            written = write_portable(self.scripts["complete"], Path(folder), self.dataset,
+            written = write_portable(self.scripts["complete"], Path(folder), data,
                                      include_data=ans == QMessageBox.Yes, **self.bundle)
         except Exception as e:  # file system errors are user-facing
             QMessageBox.warning(self, "Save", f"Could not save: {e}")
             return
-        QMessageBox.information(self, "Save", "Saved:\n" + "\n".join(str(p) for p in written)
-                                + "\n\nThe data file holds only the analysis columns (internal names v001…). Treat it "
-                                "with the same care as the original data.")
+        self.saved = written
+        QMessageBox.information(self, "Save", f"Saved to the new folder {written[0].parent}:\n"
+                                + "\n".join(p.name for p in written)
+                                + ("\n\nThe data file holds only the analysis columns (internal names v001…). Treat it "
+                                   "with the same care as the original data." if ans == QMessageBox.Yes else ""))
 
 
 class ImageView(QLabel):

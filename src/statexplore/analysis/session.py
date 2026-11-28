@@ -3,12 +3,12 @@ and packages responses as AnalysisResult objects."""
 from __future__ import annotations
 
 import hashlib
-import json
 import time
 import uuid
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import pandas as pd
 
 from ..core.dataset import Dataset
@@ -18,6 +18,19 @@ from ..rbridge.codegen import data_load_parts
 from ..rbridge.worker import RScriptError, RWorker
 
 ANALYSIS_HEADER = "\n# ---- StatExplore: analysis ----\n"
+PROVENANCE_SCHEMA = 1     # v1.3.6 (AUD135-07): result.values["analysis_provenance"]
+
+
+def _file_sha256(path: Path) -> str:
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def _text_sha256(text: str) -> str:
+    return hashlib.sha256((text or "").encode("utf-8")).hexdigest()
 
 
 class RSession:
@@ -30,26 +43,33 @@ class RSession:
         self._data_signature: str | None = None
         self._generation = -1
         self._load_script = ""
+        self._input_sha256 = ""
+        self._input_rows = 0
 
     # ---- data -------------------------------------------------------
     @staticmethod
     def _metadata_signature(ds: Dataset) -> str:
-        meta = [v.to_dict() for v in ds.variables.values()]
-        extra = [[d.to_dict() for d in ds.derived.values()], [f.to_dict() for f in ds.filters],
-                 {k: v for k, v in (ds.holdout.to_dict() if ds.holdout else {}).items() if k != "evaluations"}]
-        payload = json.dumps([ds.source.sha256, id(ds.raw), meta, extra], sort_keys=True, default=str)
-        return hashlib.sha256(payload.encode()).hexdigest()
+        """Everything the worker's prepared `dat` depends on: the CSV inputs (below) plus every variable's metadata
+        (coding, treatments), derived variables and filters. AUD135-06: keyed by the CONTENT identity of the raw
+        values, never by the process-local address of the frame (which can be reused by another frame)."""
+        from ..core.identity import canonical, content_id, view_metadata
+
+        return hashlib.sha256(canonical(["prepare", content_id(ds), view_metadata(ds)]).encode()).hexdigest()
 
     @staticmethod
     def _data_signature_of(ds: Dataset) -> str:
-        """What the exported CSV depends on: the data, which columns are exported with which
-        storage and user-missing codes, and the holdout split. Measures and treatments are
-        not part of it (they only change the R-side coding)."""
+        """What the exported CSV depends on: the data (content identity), which columns are exported with which
+        storage and user-missing codes, and the holdout split. Measures and treatments are not part of it (they only
+        change the R-side coding)."""
+        from ..core.identity import canonical, content_id
+
         base = [[v.alias, v.storage.value, v.missing_values, v.missing_ranges]
                 for v in ds.variables.values() if not ds.is_derived(v.name)]
         hold = {k: v for k, v in (ds.holdout.to_dict() if ds.holdout else {}).items() if k != "evaluations"}
-        payload = json.dumps([ds.source.sha256, id(ds.raw), base, hold], sort_keys=True, default=str)
-        return hashlib.sha256(payload.encode()).hexdigest()
+        labels = ds.holdout_labels()
+        realized = hashlib.sha256(np.packbits((labels == "holdout").to_numpy(dtype=bool)).tobytes()).hexdigest() \
+            if labels is not None else None
+        return hashlib.sha256(canonical(["csv", content_id(ds), base, hold or None, realized]).encode()).hexdigest()
 
     def export_csv(self, ds: Dataset, path: Path) -> None:
         export_data(ds, path)
@@ -57,7 +77,8 @@ class RSession:
     def ensure_data(self, ds: Dataset) -> None:
         """Make the worker's `dat` match `ds` (including any analysis-specific treatment).
         Two cached steps: the CSV read (data signature) and the coding (metadata signature),
-        so a treatment change re-codes the data without re-reading it."""
+        so a treatment change re-codes the data without re-reading it. The SHA-256 of the CSV bytes the worker read
+        is kept (`input_sha256`): it is the fit-time proof of the analysed input (AUD135-07)."""
         sig = self._metadata_signature(ds)
         fresh = self.worker.alive and self.worker.generation == self._generation
         if sig == self._signature and fresh:
@@ -66,9 +87,13 @@ class RSession:
         dsig = self._data_signature_of(ds)
         read, prepare = data_load_parts(ds, csv_path.as_posix())
         if dsig != self._data_signature or not fresh:
+            self._data_signature = None
+            self._input_sha256 = ""
             self.export_csv(ds, csv_path)
+            sha = _file_sha256(csv_path)
             self.worker.run(read, timeout=300)
-            self._data_signature = dsig
+            self._data_signature, self._input_sha256 = dsig, sha
+            self._input_rows = int(len(ds.raw))
             self._generation = self.worker.generation
         self._signature = None
         self.worker.run(prepare, timeout=300)
@@ -82,6 +107,21 @@ class RSession:
     def invalidate(self) -> None:
         self._signature = None
         self._data_signature = None
+        self._input_sha256 = ""
+
+    def provenance(self, ds: Dataset, script: str) -> dict[str, Any]:
+        """AUD135-07: the immutable analysis-view provenance of a result, captured at fit time right after
+        `ensure_data` (the worker, its CSV and the view are synchronized): content and view identities, the SHA-256 of
+        the exact CSV bytes R read (before any projection or pseudonymization), the script, and the snapshot needed to
+        rebuild the view later. Historical exports reproduce a result only when this proof can be re-established."""
+        from ..core.identity import IDENTITY_SCHEMA, content_id, view_id
+        from ..discovery.history import snapshot
+
+        return {"schema": PROVENANCE_SCHEMA, "identity_schema": IDENTITY_SCHEMA, "content_id": content_id(ds),
+                "view_id": view_id(ds), "input_sha256": self._input_sha256, "input_rows": self._input_rows,
+                "input_file": "data.csv", "load_script_sha256": _text_sha256(self._load_script),
+                "script_sha256": _text_sha256(script), "snapshot": snapshot(ds),
+                "treatments": [dict(t.to_dict(), description=d) for t, d in getattr(ds, "treatments", [])]}
 
     def new_plot_path(self) -> Path:
         return self.workdir / "plots" / f"{uuid.uuid4().hex[:12]}.png"
@@ -96,22 +136,26 @@ class RSession:
         """
         self.ensure_data(ds)
         script = self._load_script + ANALYSIS_HEADER + body
+        prov = self.provenance(ds, script)
         t0 = time.perf_counter()
         try:
             resp = self.worker.run(body, packages=packages, timeout=timeout)
         except RScriptError as e:
             versions = self.worker.request("versions", {"packages": packages}).result
-            return AnalysisResult(
+            failed = AnalysisResult(
                 kind=kind, title=title, engine=_engine(versions), script=script, inputs=inputs,
                 status=Status.FAILED, messages=[f"R error: {e}"] + explain_r_error(str(e)),
                 elapsed_s=time.perf_counter() - t0,
-            ), None
+            )
+            failed.values["analysis_provenance"] = prov
+            return failed, None
         result = AnalysisResult(
             kind=kind, title=title, engine=_engine(resp.versions), script=script, inputs=inputs,
             status=Status.WARNING if resp.warnings else Status.OK,
             messages=[f"R warning: {w}" for w in resp.warnings],
             elapsed_s=resp.elapsed,
         )
+        result.values["analysis_provenance"] = prov
         return result, resp.result
 
 

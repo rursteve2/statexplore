@@ -625,9 +625,9 @@ def test_cd08_exported_candidate_code_reproduces_in_fresh_r(r_session, tmp_path)
     r_session.ensure_data(v)
     script = candidate_script(r_session.load_script, v, run.settings, run.family, candidate_from_row(run, row),
                               comps, expected=row)
-    written = write_portable(script, tmp_path / "bundle", v, name="candidate")
+    written = write_portable(script, tmp_path / "bundle", v, name="candidate", include_data=True)  # v1.3.6: explicit consent; a NEW folder per export
     moved = tmp_path / "relocated"                                            # relocation: paths are relative
-    (tmp_path / "bundle").rename(moved)
+    written[0].parent.rename(moved)
     p = rscript('source("candidate.R")', moved)
     assert p.returncode == 0, p.stderr[-3000:]
     assert "Reproduced within tolerance" in p.stdout and "reproduced within tolerance" in p.stdout

@@ -356,7 +356,7 @@ class ValidationPanel(QWidget):
                 self, "Include the data?", "Include the analysis data (only the columns the validation uses) so that "
                 "validation_reproduce.R runs on its own?\n\nNo: the script, manifests and results are written; the "
                 "data file must be placed in the folder later and is checked by its SHA-256.",
-                QMessageBox.Yes | QMessageBox.No | QMessageBox.Cancel)
+                QMessageBox.Yes | QMessageBox.No | QMessageBox.Cancel, QMessageBox.No)
             if ans == QMessageBox.Cancel:
                 return
             run = self.get_run()
@@ -367,7 +367,9 @@ class ValidationPanel(QWidget):
             from pathlib import Path
 
             note = ""
-            if (Path(d) / "REPRODUCTION_UNAVAILABLE.txt").exists():
+            if any(Path(f).name == "REPRODUCTION_UNAVAILABLE.txt" for f in files):
                 note = ("\n\nNo runnable reproduction was written: the project's data are not the data this validation "
                         "analysed (see REPRODUCTION_UNAVAILABLE.txt). The historical results and code were exported.")
-            QMessageBox.information(self, "Validation", f"{len(files)} files written to {d}.{note}")
+            self.last_export = Path(files[-1]).parent if files else Path(d)
+            QMessageBox.information(self, "Validation", f"{len(files)} files written to the new folder "
+                                    f"{self.last_export}.{note}")

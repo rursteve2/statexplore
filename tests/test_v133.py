@@ -547,7 +547,7 @@ def test_validation_pipeline_bootstrap_failures_and_persistence(r_session, tmp_p
     files = V.export(v, str(tmp_path / "out dir é"))
     assert {Path(f).name for f in files} >= {"split_manifest.csv", "bootstrap_draws.csv", "predictions.csv",
                                              "folds.csv", "performance.csv", "stability.csv", "validation_code.R",
-                                             "validation_manifest.json"}
+                                             "validation_manifest.json", "execution_ledger.csv"}
 
 
 # ---- G4: portable reproducibility bundles (V133-EXP-01..04, Test 44B / 52) -------------------------------------------
@@ -573,12 +573,13 @@ def test_full_analysis_bundle_runs_relocated_offline_and_fails_closed(r_session,
     row = max(run.rows, key=lambda r: len(r.get("terms", [])))
     res, _ = mixed.run(r_session, d, mixed.spec_from_discovery(run, row))
     assert res.values["identity_check"] == "verified"
-    first = tmp_path / "export dir é"
-    files = write_portable(res.script, first, d, provenance=res.values.get("provenance"),
+    files = write_portable(res.script, tmp_path / "export dir é", d, provenance=res.values.get("provenance"),
                            identity=res.values.get("identity"), engine=res.engine, expected=fit_expectations(res),
                            packages=sorted(res.engine.packages),
-                           extra={"model_spec": res.values["model_spec"]})
-    assert {p.name for p in files} == {"analysis.R", "analysis_data.csv", "analysis_manifest.json", "README.txt"}
+                           extra={"model_spec": res.values["model_spec"]}, include_data=True)  # v1.3.6: explicit consent; a NEW folder per export
+    first = files[0].parent
+    assert {p.name for p in files} == {"analysis.R", "analysis_data.csv", "analysis_manifest.json", "README.txt",
+                                       "bundle_inventory.json"}
     text = (first / "analysis.R").read_text(encoding="utf-8")
     assert "sx_tmp" not in text and "AppData" not in text and "Temp" not in text      # V133-EXP-01: no temp paths
     man = json.loads((first / "analysis_manifest.json").read_text(encoding="utf-8"))
@@ -598,8 +599,8 @@ def test_full_analysis_bundle_runs_relocated_offline_and_fails_closed(r_session,
     assert bad.returncode != 0 and "SHA-256 differs" in bad.stderr
     # without data consent: no data file, README says where it must come from
     nod = write_portable(res.script, tmp_path / "nodata", d, include_data=False, identity=res.values.get("identity"))
-    assert not (tmp_path / "nodata" / "analysis_data.csv").exists() and len(nod) == 3
-    assert "NOT included" in (tmp_path / "nodata" / "README.txt").read_text(encoding="utf-8")
+    assert not (nod[0].parent / "analysis_data.csv").exists() and len(nod) == 4          # + bundle_inventory.json
+    assert "NOT included" in (nod[0].parent / "README.txt").read_text(encoding="utf-8")
 
 
 @pytest.mark.r
@@ -620,13 +621,13 @@ def test_amd_candidate_bundle_manifest_complete_and_reproduces(r_session, tmp_pa
     prov = provenance(from_discovery(run, row))
     script = candidate_script(r_session.load_script, v, run.settings, run.family, candidate_from_row(run, row), [],
                               expected=row, adjusted=[], provenance=prov)
-    write_portable(script, tmp_path / "amd", d, provenance=prov, identity=row.get("identity"), engine=run.engine,
-                   packages=FAMILY_PACKAGES[run.family])
-    man = json.loads((tmp_path / "amd" / "analysis_manifest.json").read_text(encoding="utf-8"))
+    amd = write_portable(script, tmp_path / "amd", d, provenance=prov, identity=row.get("identity"), engine=run.engine,
+                         packages=FAMILY_PACKAGES[run.family], include_data=True)[0].parent  # v1.3.6: explicit consent; a NEW folder per export
+    man = json.loads((amd / "analysis_manifest.json").read_text(encoding="utf-8"))
     assert man["r_versions"] and man["r_versions"]["r"] and man["provenance"] and man["identity"]
     assert set(man["r_packages"]) <= set(FAMILY_PACKAGES["lmm"])                   # V133-EXP-04: no geepack / nnet
     assert not {"geepack", "nnet", "ordinal", "detectseparation"} & set(man["r_packages"])
-    out = _run_bundle(tmp_path / "amd", "analysis.R")
+    out = _run_bundle(amd, "analysis.R")
     assert out.returncode == 0, out.stderr[-2000:]
     assert "Model identity reproduced" in out.stdout
 

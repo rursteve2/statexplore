@@ -216,6 +216,10 @@ def _full_selftest(say, rscript, tmp: Path) -> bool:
 def main() -> int:
     if "--selftest" in sys.argv:
         return selftest()
+    if "--acceptance" in sys.argv:          # v1.3.6: consolidated automated acceptance run (tests 55-61)
+        from .acceptance import main as acceptance_main
+
+        return acceptance_main(sys.argv)
     from PySide6.QtWidgets import QApplication
 
     from .gui.main_window import MainWindow

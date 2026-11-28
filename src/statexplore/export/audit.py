@@ -20,7 +20,8 @@ from pathlib import Path
 from typing import Any
 
 SCHEMA = "statexplore-audit"
-SCHEMA_VERSION = 2   # 2 = v1.3.5 (AUD134-07): historical data provenance separated from the export-time context
+SCHEMA_VERSION = 3   # 2 = v1.3.5 (AUD134-07): historical data provenance separated from the export-time context
+#                      3 = v1.3.6 (AUD135-06): data identity schema, content identity and its verification status
 REQUIRED = ("schema", "schema_version", "generated_utc", "application", "search", "data", "environment", "grammar",
             "candidates", "hypotheses", "validation", "limitations")
 
@@ -65,13 +66,24 @@ def historical_data(run: Any) -> dict[str, Any]:
             "source_sha256": snap.get("source_sha256") or unknown, "source_rows": snap.get("source_rows"),
             "source_size_bytes": snap.get("source_size_bytes"),
             "analysis_signature": run.signature, "fit_identity": run.fit_id or unknown, "n_sample": run.n_sample,
+            "identity_schema": int(getattr(run, "identity_schema", 2) or 2),
+            "content_id": snap.get("content_id") or unknown,
+            "identity_verifiable": int(getattr(run, "identity_schema", 2) or 2) >= 3 and bool(snap.get("content_id")),
+            "source_options": snap.get("source_options") if snap.get("content_id") else unknown,
             "filters": snap.get("filters") if snap else unknown, "derived": snap.get("derived") if snap else unknown,
             "holdout": snap.get("holdout") if snap else unknown, "treatments": list(run.settings.treatments or []),
             "snapshot_schema": snap.get("schema"), "snapshot": snap or None,
             "fingerprints": {
                 "source_sha256": "SHA-256 of the source FILE's bytes as imported (not of the analysed rows)",
-                "analysis_signature": "SHA-256 of (source SHA-256, variable metadata, derived variables, filters, holdout) "
-                                      "of the search's data view: the canonical analysed-content identity",
+                "analysis_signature": ("identity schema 3: SHA-256 of the search's data VIEW - the content identity of the "
+                                       "imported values (typed values, columns, rows, parse options such as the "
+                                       "worksheet), variable metadata, derived variables, filters, holdout and their "
+                                       "realized masks" if int(getattr(run, "identity_schema", 2) or 2) >= 3 else
+                                       "identity schema 2 (StatExplore 1.3.5 or earlier): SHA-256 of (source FILE SHA-256, "
+                                       "variable metadata, derived variables, filters, holdout); it does NOT identify the "
+                                       "imported values (e.g. the worksheet) - unverified"),
+                "content_id": "identity schema 3: SHA-256 of the imported values and their parse context (never the "
+                              "file hash alone)",
                 "fit_identity": "SHA-256 of the analysed data view, outcome family / coding, grouping, sample policy and "
                                 "fitting settings",
                 "per_fit": "each candidate's identity: SHA-256 of its realized rows, response, design and grouping "
@@ -264,13 +276,21 @@ def _atomic_write(path: Path, text: str) -> None:
 
 
 def write_audit(run: Any, ds: Any, folder: Path) -> list[Path]:
-    folder = Path(folder)
-    folder.mkdir(parents=True, exist_ok=True)
+    """The audit JSON + report in a NEW folder inside `folder` (AUD135-03: never mixed with an earlier export)."""
+    from .bundle import export_transaction
+
+    with export_transaction(folder, f"audit_{run.id}", False) as tx:
+        rels = audit_into(tx, "", run, ds)
+    return tx.published(rels)
+
+
+def audit_into(tx: Any, sub: str, run: Any, ds: Any) -> list[str]:
     rec = audit_record(run, ds)
     validate_record(rec)
-    j, m = folder / f"search_{run.id}_audit.json", folder / f"search_{run.id}_audit_report.md"
-    _atomic_write(j, canonical_json(rec))
-    _atomic_write(m, report_md(rec))
+    pre = (sub.strip("/") + "/") if sub else ""
+    j, m = pre + f"search_{run.id}_audit.json", pre + f"search_{run.id}_audit_report.md"
+    tx.write_text(j, canonical_json(rec), "metadata")
+    tx.write_text(m, report_md(rec), "report")
     return [j, m]
 
 

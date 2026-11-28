@@ -15,7 +15,7 @@ from ..core.project import Project
 from ..core.schema import AnalysisResult, Table
 
 FORMATS = {"xlsx": "Excel workbook", "pdf": "PDF report", "docx": "Word document",
-           "R": "R script (+ data.csv)", "py": "Python launcher script"}
+           "R": "R reproducibility bundle per analysis", "py": "Python launcher script"}
 
 _PLOT_PATH = re.compile(r'"[^"\n]*/plots/([0-9a-f]{12}\.(?:png|svg|pdf))"')
 _DATA_FILE = re.compile(r'^sx_data_file <- "[^"\n]*"$', re.M)
@@ -38,7 +38,9 @@ def export_data_csv(ds: Dataset, path: Path, aliases: Iterable[str] | None = Non
     """The same data file the R worker reads (base variables by alias, user-missing as NA); with `aliases`,
     only those columns (portable exports carry the analysis columns only)."""
     from ..analysis.session import export_data
+    from .bundle import guard_data_write
 
+    guard_data_write(Path(path))     # AUD135-03: never into a no-consent export, never unregistered
     export_data(ds, path, set(aliases) if aliases is not None else None)
 
 
@@ -298,33 +300,55 @@ def build_id() -> str:
 
 def write_portable(script: str, folder: Path, ds: Dataset, name: str = "analysis",
                    pseudonymize_ids: bool = True, provenance: dict | None = None, identity: dict | None = None,
-                   engine: Any = None, expected: dict | None = None, include_data: bool = True,
+                   engine: Any = None, expected: dict | None = None, include_data: bool = False,
                    packages: list[str] | None = None, extra: dict | None = None) -> list[Path]:
-    """Save a portable reproducibility bundle: script, the data file it reads (analysis columns only; only with the
-    user's consent), a schema-versioned manifest and a README. The script checks its packages first, refuses a data
-    file whose SHA-256 differs from the exported one, and (when known) stops unless the re-run analysed the same rows,
-    outcome coding, design and grouping (identity) and reproduced n / logLik / AIC / BIC (expected). Paths are
-    relative and output folders are created, so the folder can be moved and run in a clean, offline R session.
-    `packages` restricts the declared dependencies to those the executed model family needs (V133-EXP-04)."""
+    """Save a portable reproducibility bundle in a NEW folder inside `folder` (AUD135-03: never into a reused folder;
+    the returned paths name the actual location): script, the data file it reads (analysis columns only; only with
+    the user's explicit consent for this export), a schema-versioned manifest, a README and the bundle inventory. See
+    `portable_into`."""
+    from .bundle import export_transaction
+
+    with export_transaction(folder, name, include_data) as tx:
+        rels = portable_into(tx, "", script, ds, name=name, pseudonymize_ids=pseudonymize_ids, provenance=provenance,
+                             identity=identity, engine=engine, expected=expected, packages=packages, extra=extra)
+    return tx.published(rels)
+
+
+def portable_into(tx: Any, sub: str, script: str, ds: Dataset, name: str = "analysis",
+                  pseudonymize_ids: bool = True, provenance: dict | None = None, identity: dict | None = None,
+                  engine: Any = None, expected: dict | None = None, packages: list[str] | None = None,
+                  extra: dict | None = None, readme: str = "README.txt", result_json: str | None = None) -> list[str]:
+    """Write a portable bundle into the export transaction `tx` (sub-folder `sub`): the script checks its packages
+    first, refuses a data file whose SHA-256 differs from the exported one, and (when known) stops unless the re-run
+    analysed the same rows, outcome coding, design and grouping (identity) and reproduced n / logLik / AIC / BIC
+    (expected). Paths are relative and output folders are created, so the folder can be moved and run in a clean,
+    offline R session. `packages` restricts the declared dependencies to those the executed model family needs
+    (V133-EXP-04). Without data consent the data file is written only to private scratch (to compute its SHA-256)
+    and the bundle is code-only. Returns the registered relative paths (script, [data], manifest, readme)."""
     import datetime as _dt
 
     from .. import __version__
 
-    folder.mkdir(parents=True, exist_ok=True)
+    pre = (sub.strip("/") + "/") if sub else ""
+    include_data = tx.include_data
     data_name = f"{name}_data.csv"
     used = used_aliases(script)
-    data_path = folder / data_name
-    tmp_data = data_path if include_data else folder / f".{name}_data_hash.tmp"
-    export_data_csv(ds, tmp_data, used)
-    ids = _pseudonymize(tmp_data, sorted(set(_ID_COLUMN.findall(script)))) if pseudonymize_ids else []
-    md5, sha = _md5(tmp_data), _sha256(tmp_data)
-    rows = sum(1 for _ in open(tmp_data, encoding="utf-8")) - 1
+    if include_data:
+        data_path = tx.path(pre + data_name, "data")
+    else:
+        data_path = tx.scratch() / f"{name}_{id(script)}_data.csv"
+    export_data_csv(ds, data_path, used)
+    ids = _pseudonymize(data_path, sorted(set(_ID_COLUMN.findall(script)))) if pseudonymize_ids else []
+    md5, sha = _md5(data_path), _sha256(data_path)
+    rows = sum(1 for _ in open(data_path, encoding="utf-8")) - 1
     if not include_data:
-        tmp_data.unlink()
+        data_path.unlink()
     check = (f'sx_data_sha256 <- "{sha}"  # SHA-256 of {data_name} as exported (see {name}_manifest.json)\n'
              "if (!isTRUE(get0(\"sx_skip_checksum\")) && !identical(unname(tools::sha256sum(sx_data_file)), sx_data_sha256))\n"
              "  stop(\"The data file \", sx_data_file, \" is not the file exported with this script (SHA-256 differs). \",\n"
-             "       \"Use the exported file, or set sx_skip_checksum <- TRUE before source() to run anyway.\", call. = FALSE)")
+             "       \"Use the exported file, or set sx_skip_checksum <- TRUE before source() to run anyway (the run is then \",\n"
+             "       \"UNVERIFIED and is not a reproduction).\", call. = FALSE)\n"
+             "if (isTRUE(get0(\"sx_skip_checksum\"))) message(\"WARNING: the data checksum was skipped - this run is UNVERIFIED.\")")
     text, used = portable_text(script, data_name, check)
     found = required_packages(text)
     if packages is not None:
@@ -332,13 +356,19 @@ def write_portable(script: str, folder: Path, ds: Dataset, name: str = "analysis
     text = package_check(found) + 'dir.create("plots", showWarnings = FALSE)  # output folder for any plots\n' + text
     text += identity_check(identity)
     text += results_check(expected)
+    if result_json:
+        text += (f'\n# ---- write the result so it can be compared with StatExplore ----\n'
+                 f'jsonlite::write_json(sx_result, "{result_json}", auto_unbox = TRUE, digits = I(17), '
+                 f'null = "null", na = "null", force = TRUE)\n')
     if ids:
         text = ("# Participant IDs in the data file are order-preserving codes (1, 2, ...), not the original IDs; "
                 "grouping, row order and results are unchanged.\n" + text)
-    (folder / f"{name}.R").write_text(text, encoding="utf-8")
+    tx.write_text(pre + f"{name}.R", text, "script")
     versions = _engine_versions(engine)
-    manifest = {"manifest_schema": 2, "created": _dt.datetime.now().isoformat(timespec="seconds"),
+    tx.bundle_kind = "runnable"      # code-only when the data are withheld (decided by the transaction)
+    manifest = {"manifest_schema": 3, "created": _dt.datetime.now().isoformat(timespec="seconds"),
                 "statexplore": __version__, "build": build_id(),
+                "bundle_kind": "runnable" if include_data else "code-only",
                 "script": f"{name}.R", "data": {"file": data_name, "included": bool(include_data), "sha256": sha,
                                                 "md5": md5, "rows": rows,
                                                 "columns": sorted(used) if used is not None else None,
@@ -351,21 +381,22 @@ def write_portable(script: str, folder: Path, ds: Dataset, name: str = "analysis
                 "tolerance": {"logLik/AIC/BIC": "abs 1e-4 + rel 1e-6", "n, identity fingerprints": "exact"},
                 **({"model": extra} if extra else {}),
                 "notes": "Paths are relative to this folder. Run: source(\"" + name + ".R\") or Rscript " + name + ".R"}
-    (folder / f"{name}_manifest.json").write_text(json.dumps(manifest, indent=2, default=str), encoding="utf-8")
-    readme = [f"StatExplore reproducibility bundle ({build_id()})", "",
-              f"Run in R (no network needed):  Rscript {name}.R   (from this folder), or source(\"{name}.R\") from anywhere.",
-              f"Data: {data_name} " + ("(included: analysis columns only, exported with your consent)" if include_data else
-                                      "(NOT included: place the analysis-columns file here; its SHA-256 must be "
-                                      f"{sha})"),
-              f"R packages used by this script: {', '.join(found) or 'base R only'}"
-              + (f" (recorded versions: R {versions.get('r')})" if versions else ""),
-              "The script stops with a message if the data file differs from the exported one, if the analysed rows, "
-              "outcome coding, design or grouping differ from the recorded model, or if n / logLik / AIC / BIC are "
-              "not reproduced within abs 1e-4 + rel 1e-6.",
-              "Treat the data file with the same care as the original data." if include_data else ""]
-    (folder / "README.txt").write_text("\n".join(readme) + "\n", encoding="utf-8")
-    out = [folder / f"{name}.R", folder / f"{name}_manifest.json", folder / "README.txt"]
-    return out[:1] + ([data_path] if include_data else []) + out[1:]
+    tx.write_text(pre + f"{name}_manifest.json", json.dumps(manifest, indent=2, default=str), "manifest")
+    lines = [f"StatExplore reproducibility bundle ({build_id()})", "",
+             f"Run in R (no network needed):  Rscript {name}.R   (from this folder), or source(\"{name}.R\") from anywhere.",
+             f"Data: {data_name} " + ("(included: analysis columns only, exported with your consent)" if include_data else
+                                     "(NOT included - code-only bundle: place the analysis-columns file here; its "
+                                     f"SHA-256 must be {sha})"),
+             f"R packages used by this script: {', '.join(found) or 'base R only'}"
+             + (f" (recorded versions: R {versions.get('r')})" if versions else ""),
+             "The script stops with a message if the data file differs from the exported one, if the analysed rows, "
+             "outcome coding, design or grouping differ from the recorded model, or if n / logLik / AIC / BIC are "
+             "not reproduced within abs 1e-4 + rel 1e-6.",
+             "Results and metadata in this folder are not anonymized." + (
+                 " Treat the data file with the same care as the original data." if include_data else "")]
+    tx.write_text(pre + readme, "\n".join(lines) + "\n", "readme")
+    out = [pre + f"{name}.R"] + ([pre + data_name] if include_data else []) + [pre + f"{name}_manifest.json", pre + readme]
+    return out
 
 
 FAMILY_PACKAGES = {   # packages a model family's executed code can need (anything else is not declared)
@@ -536,12 +567,24 @@ def write_pdf(results: list[AnalysisResult], artifacts: dict[str, bytes], path: 
 # ---- orchestration ----------------------------------------------------------------------
 
 def export(project: Project, result_ids: Iterable[str], folder: Path, formats: set[str],
-           search_ids: Iterable[str] = (), include_history: bool = True) -> list[Path]:
-    folder = Path(folder)
-    folder.mkdir(parents=True, exist_ok=True)
+           search_ids: Iterable[str] = (), include_history: bool = True, include_data: bool = False) -> list[Path]:
+    """Reports export into a NEW folder inside `folder` (AUD135-03; the returned paths name it). R / Python formats
+    write one self-checking reproducibility bundle PER ANALYSIS (its own script and, only with `include_data` consent,
+    its own data file) and only when the data that analysis actually read can be proven (AUD135-07,
+    `historical.resolve`); otherwise the analysis gets REPRODUCTION_UNAVAILABLE.txt with the reason and its recorded
+    code as a labelled, non-runnable record. Tables, reports, plots, search settings and audits are always written."""
+    from .bundle import export_transaction
+
     ids = list(result_ids)
     results = [r for r in project.results if r.id in ids]
-    written: list[Path] = []
+    with export_transaction(folder, "statexplore_export", include_data) as tx:
+        rels = _export_into(tx, project, results, formats, search_ids, include_history)
+    return tx.published(rels)
+
+
+def _export_into(tx: Any, project: Project, results: list[AnalysisResult], formats: set[str],
+                 search_ids: Iterable[str], include_history: bool) -> list[str]:
+    written: list[str] = []
     extra: dict[str, pd.DataFrame] = {}
     for sid in search_ids:
         from ..discovery.engine import results_frame, summary
@@ -570,51 +613,69 @@ def export(project: Project, result_ids: Iterable[str], folder: Path, formats: s
                     "presentation: highlight": json.dumps(project.settings.get("discovery_highlight")
                                                           or {"mode": "adjusted", "alpha": 0.05, "only": False})}
         extra[f"search {run.id} settings"] = pd.DataFrame({"setting": list(settings), "value": [str(v) for v in settings.values()]})
-        (folder / f"search_{run.id}_settings.json").write_text(json.dumps(run.meta_dict(), indent=2, default=str))
-        written.append(folder / f"search_{run.id}_settings.json")
-        from .audit import write_audit      # V134-015: versioned machine-readable audit + human-readable report
+        rel = f"search_{run.id}_settings.json"
+        tx.write_text(rel, json.dumps(run.meta_dict(), indent=2, default=str), "metadata")
+        written.append(rel)
+        from .audit import audit_into      # V134-015: versioned machine-readable audit + human-readable report
 
-        written += write_audit(run, project.dataset, folder)
+        written += audit_into(tx, "", run, project.dataset)
     if "xlsx" in formats and (results or extra):
-        p = folder / "statexplore_results.xlsx"
-        write_xlsx(results, p, extra)
-        written.append(p)
+        rel = "statexplore_results.xlsx"
+        write_xlsx(results, tx.path(rel, "results"), extra)
+        written.append(rel)
     if "docx" in formats and results:
-        p = folder / "statexplore_report.docx"
-        write_docx(results, project.artifacts, p)
-        written.append(p)
+        rel = "statexplore_report.docx"
+        write_docx(results, project.artifacts, tx.path(rel, "report"))
+        written.append(rel)
     if "pdf" in formats and results:
-        p = folder / "statexplore_report.pdf"
-        write_pdf(results, project.artifacts, p)
-        written.append(p)
+        rel = "statexplore_report.pdf"
+        write_pdf(results, project.artifacts, tx.path(rel, "report"))
+        written.append(rel)
     if formats & {"R", "py"} and results:
-        cols: set[str] | None = set()
+        from .historical import Unverified, refusal_text, resolve
+
+        runnable = 0
         for r in results:
-            u = used_aliases(r.script)
-            cols = None if u is None or cols is None else cols | u
-        export_data_csv(project.dataset, folder / "data.csv", cols)
-        written.append(folder / "data.csv")
-        for r in results:
-            name = f"{slug(r.title)}_{r.id}.R"
-            (folder / name).write_text(portable_script(r), encoding="utf-8")
-            written.append(folder / name)
+            sub = f"{slug(r.title)}_{r.id}"
+            try:
+                view = resolve(r, project.dataset, tx.scratch())
+            except Unverified as e:
+                written.append(tx.write_text(f"{sub}/REPRODUCTION_UNAVAILABLE.txt", refusal_text(r, str(e)),
+                                             "metadata").relative_to(tx.stage).as_posix())
+                written.append(tx.write_text(
+                    f"{sub}/recorded_code_not_runnable.R",
+                    "# HISTORICAL RECORD - NOT A RUNNABLE REPRODUCTION: " + str(e).replace("\n", " ") + "\n"
+                    "# The exact code StatExplore ran for this result (its data file is not part of this export).\n"
+                    + r.script, "metadata").relative_to(tx.stage).as_posix())
+                tx.notes.append(f"result {r.id}: reproduction refused ({e})")
+                continue
+            vals = r.values
+            name = sub
+            written += portable_into(
+                tx, sub, r.script, view, name=name, provenance=vals.get("provenance"), identity=vals.get("identity"),
+                engine=r.engine, expected=fit_expectations(r),
+                packages=sorted((getattr(r.engine, "packages", None) or {}).keys()) or None,
+                extra={"result_id": r.id, "title": r.title, "analysis_provenance": vals.get("analysis_provenance")},
+                result_json=f"result_{r.id}.json")
+            runnable += 1
             if "py" in formats:
-                pyn = f"{slug(r.title)}_{r.id}.py"
-                (folder / pyn).write_text(python_launcher(r, name), encoding="utf-8")
-                written.append(folder / pyn)
-    plots_dir = folder / "plots"
+                rel = f"{sub}/{name}.py"
+                tx.write_text(rel, python_launcher(r, f"{name}.R"), "script")
+                written.append(rel)
+        if not runnable:
+            tx.bundle_kind = "results-only"
     for r in results:
         for key in r.plots:
             if key in project.artifacts:
-                plots_dir.mkdir(exist_ok=True)
-                (plots_dir / Path(key).name).write_bytes(project.artifacts[key])
-                written.append(plots_dir / Path(key).name)
+                rel = f"plots/{Path(key).name}"
+                tx.write_bytes(rel, project.artifacts[key], "plot")
+                written.append(rel)
     if include_history:
         hist = pd.DataFrame([{"id": r.id, "run": r.created_at, "kind": r.kind, "title": r.title,
                               "status": r.status.value, "n_used": r.n_used, "engine": r.engine.version,
                               "messages": " | ".join(r.messages)} for r in project.results])
-        hist.to_csv(folder / "analysis_history.csv", index=False)
+        hist.to_csv(tx.path("analysis_history.csv", "metadata"), index=False)
         changes = pd.DataFrame([c.to_dict() for c in project.dataset.changes])
-        changes.to_csv(folder / "variable_changes.csv", index=False)
-        written += [folder / "analysis_history.csv", folder / "variable_changes.csv"]
-    return written
+        changes.to_csv(tx.path("variable_changes.csv", "metadata"), index=False)
+        written += ["analysis_history.csv", "variable_changes.csv"]
+    return list(dict.fromkeys(written))

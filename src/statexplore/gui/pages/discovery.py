@@ -1939,7 +1939,8 @@ class DiscoveryPage(QWidget):
             return self.state.dataset, None
         box = QMessageBox(self)
         box.setIcon(QMessageBox.Icon.Warning)
-        box.setWindowTitle("The project changed since this search")
+        box.setWindowTitle("The original data of this search cannot be verified" if ctx.state == "unverified" else
+                           "The project changed since this search")
         diffs = "\n".join(f"• {d}" for d in ctx.differences)
         original = None
         if ctx.original is not None:
