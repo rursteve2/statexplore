@@ -9,13 +9,16 @@ variables, runs standard statistical tests, searches automatically for interacti
 draws graphs with a short plain-English interpretation underneath. It also shows you the exact
 statistical code behind every result.
 
-**Current version: 1.3.4** (November 2026) — [download](https://github.com/rursteve2/statexplore/releases/latest) ·
-[release notes](docs/RELEASE_NOTES_v1.3.4.md). 1.3.4 is a corrective release: bootstrap validation no longer reuses
-another resample's reduced-model fits, p-values below the double range keep their exact magnitude (log scale) in
-ranking, adjustment and selection, GEE structures fit their own working correlation with QIC / QICu / CIC, validation
-selects only on training data from the declared search space, and Discovery gains time-eligible interactions
-(opt-in), candidate reordering, resume reasons, educational R code and an exportable audit trail. Earlier highlights are listed below
-and in the release notes.
+**Current version: 1.3.6** (November 2026) — [download](https://github.com/rursteve2/statexplore/releases/latest) ·
+[release notes](docs/RELEASE_NOTES_v1.3.6.md). 1.3.6 is a corrective release:
+
+- data are identified by their imported content (including the worksheet), not by the file's hash;
+- older results are exported only with the exact data they analysed;
+- every export goes to a new folder, and analysis data are included only with your consent;
+- partial validations are reproduced exactly as far as they ran;
+- exported evidence is verified field by field.
+
+Earlier highlights are listed below and in the release notes.
 
 **New in 1.1:** a *Measurement Review* that flags variables whose declared level looks wrong (for
 example ordered answer scales stored as "nominal"), a per-analysis **"treat as continuous"** option,
@@ -82,9 +85,9 @@ yourself (see 2B).
 ### Download it (for most people)
 1. Go to the **[Releases page](https://github.com/rursteve2/statexplore/releases/latest)**.
 2. Under **Assets**, download **one** of:
-   - **`StatExplore-1.3.4-Setup.exe`**: the installer (recommended). Double-click it and click
+   - **`StatExplore-1.3.6-Setup.exe`**: the installer (recommended). Double-click it and click
      through; then start **StatExplore** from the Start menu or the desktop shortcut.
-   - **`StatExplore-1.3.4-portable.zip`**: no installation. Right-click ▸ *Extract All…* into, for
+   - **`StatExplore-1.3.6-portable.zip`**: no installation. Right-click ▸ *Extract All…* into, for
      example, your Documents folder, open the extracted `StatExplore` folder and double-click
      **`StatExplore.exe`**.
 3. **If Windows says "Windows protected your PC":** click **More info**, then **Run anyway**. This
@@ -369,11 +372,16 @@ StatExplore keeps three things apart:
 - **Project file (`.sxp`):** File ▸ Save Project. One file holds a copy of the data, your variable
   settings, derived variables, filters, holdout, all results, graphs, searches and model sets.
   Open it later with File ▸ Open Project. The original data file isn't needed again.
-- **Reports page:** tick analyses and searches, choose formats, pick a folder:
+- **Reports page:** tick analyses and searches, choose formats, pick a folder. Every export creates a **new
+  sub-folder** there (the message names it); nothing already in the folder is overwritten.
   - **Excel:** every table, plus summaries and code.
   - **Word / PDF:** a readable report with interpretations, graphs and tables.
-  - **R script (+ data.csv):** reproduces each analysis outside StatExplore. Run it in R or RStudio
-    from the export folder.
+  - **R reproducibility bundle:** one folder per analysis, with a script that checks its data file, packages and
+    results, and reproduces the analysis outside StatExplore.
+    - You are asked whether to include the analysis data (the default is No). Without the data, place the file next
+      to the script later; it is checked by its SHA-256.
+    - A result whose original data cannot be proven (for example after the data were replaced, or one saved by 1.3.5
+      or earlier) gets `REPRODUCTION_UNAVAILABLE.txt` with the reason instead of a script.
   - **Python script:** reruns the R script and loads the result.
   - Plus the analysis history and a log of every variable change.
 - **Privacy:** nothing leaves your computer. Note that project files and exports contain your data;
@@ -474,6 +482,40 @@ undoable setting.
 - Clustered (three-level) Discovery is Gaussian only; clustered GEE, marginal (mmrm), binary and ordinal mixed
   models are refused in Discovery with a reason. Crossed or multiple-membership designs are not supported.
 - Results from before 1.3.2 carry no identity fingerprints: their refits are reported as unverifiable.
+- Searches and results saved by 1.3.5 or earlier cannot prove which data values they analysed:
+  - they stay viewable;
+  - they cannot be resumed or exported as runnable reproductions;
+  - use *New search from this one* to refit them as a new, linked search.
+- The same values imported from a different file count as different data (deliberately conservative).
+
+**New in 1.3.6:** corrective release (`docs/RELEASE_NOTES_v1.3.6.md`, evidence in `docs/v1.3.6/`).
+
+- **Data identity.** Data are identified by their imported content: values, rows, columns and import options such as
+  the worksheet. A search on one worksheet is never cached, resumed or reproduced on another.
+- **Historical exports.** Every result records a SHA-256 of the exact data R read, and its export carries that data
+  view or explains why not.
+- **New export folders.** Every export (Reports, Validation, Code ▸ Save bundle, audit trail) creates a new folder and
+  asks before including data.
+- **Validation accounting.** Validations record what was planned, committed and not run; reproductions replay
+  exactly the committed parts.
+- **Exact budget.** Finishing with exactly the fit budget counts as complete.
+- **Typed verification.** Reproduction scripts check every exported value by its declared type and recompute
+  stability, estimands and realized sizes in R.
+- **Acceptance kit.** `StatExplore-1.3.6-Acceptance-Kit.zip` on the release page runs the automated acceptance tests
+  against the installed program (`StatExplore.exe --acceptance`).
+
+**New in 1.3.5:** corrective release (`docs/RELEASE_NOTES_v1.3.5.md`, evidence in `docs/v1.3.5/`).
+
+- **Log-tail selection.** Every selection and ranking (including adjusted p, BH and Holm) uses exact log-tail
+  p-values, also in the legacy Validation Workspace.
+- **Resume.** A search resumes only when every retained result is compatible; otherwise *New search from this one*
+  refits it as a linked search.
+- **Minimum candidates.** The minimum number of candidate predictors applies to the single-focal strategy.
+- **Fixed-candidate validation** validates the saved model, verified by its key.
+- **Pool scope.** The validation pool scope (cumulative, original, first N) is explicit.
+- **Audit history.** Audit exports keep the historical data identity apart from the current project.
+- **Budgets and cancellation.** A hard fit budget, and cancellation checks before every batch.
+- **Reproduction checks.** Reproduction scripts verify every evidence file.
 
 **New in 1.3.4:** corrective release (`docs/RELEASE_NOTES_v1.3.4.md`, evidence in `docs/v1.3.4/`): per-sample,
 content-keyed fit caches (bootstrap draws never share reduced fits); native log-tail p-values everywhere (display
@@ -516,8 +558,11 @@ for the 1.1 upgrade: **[docs/spec-compliance-v1.1.md](docs/spec-compliance-v1.1.
 **[docs/spec-compliance-v1.2.md](docs/spec-compliance-v1.2.md)** (with a feature matrix); for 1.3 (defect
 traceability, test evidence, limitations): **[docs/spec-compliance-v1.3.md](docs/spec-compliance-v1.3.md)**,
 [1.3.1](docs/spec-compliance-v1.3.1.md), [1.3.2](docs/v1.3.2/spec-compliance-v1.3.2.md),
-[1.3.3](docs/v1.3.3/evidence_report_v1.3.3.md), [1.3.4](docs/v1.3.4/evidence_report_v1.3.4.md).
-Release notes: [docs/RELEASE_NOTES_v1.3.4.md](docs/RELEASE_NOTES_v1.3.4.md), [1.3.3](docs/RELEASE_NOTES_v1.3.3.md), [1.3.2](docs/RELEASE_NOTES_v1.3.2.md), [1.3.1](docs/RELEASE_NOTES_v1.3.1.md),
+[1.3.3](docs/v1.3.3/evidence_report_v1.3.3.md), [1.3.4](docs/v1.3.4/evidence_report_v1.3.4.md),
+[1.3.5](docs/v1.3.5/evidence_report_v1.3.5.md), [1.3.6](docs/v1.3.6/evidence_report_v1.3.6.md) (defect register,
+traceability with exact test ids, benchmark, acceptance guide in the same folder).
+Release notes: [docs/RELEASE_NOTES_v1.3.6.md](docs/RELEASE_NOTES_v1.3.6.md), [1.3.5](docs/RELEASE_NOTES_v1.3.5.md),
+[1.3.4](docs/RELEASE_NOTES_v1.3.4.md), [1.3.3](docs/RELEASE_NOTES_v1.3.3.md), [1.3.2](docs/RELEASE_NOTES_v1.3.2.md), [1.3.1](docs/RELEASE_NOTES_v1.3.1.md),
 [1.3.0](docs/RELEASE_NOTES_v1.3.0.md), [1.2.0](docs/RELEASE_NOTES_v1.2.0.md),
 [1.1.0](docs/RELEASE_NOTES_v1.1.0.md).
 The discovery grammar is in [docs/formula-grammar.md](docs/formula-grammar.md).
