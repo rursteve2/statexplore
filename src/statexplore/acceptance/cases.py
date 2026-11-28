@@ -399,7 +399,7 @@ def case_59(ctx) -> None:
         ok = rr.returncode == 0 and tab.get("n") == [15] and all(
             abs(tab[k][0] - v) <= 1e-9 * max(1, abs(v)) for k, v in (("mean", m), ("t", t), ("ci_low", lo), ("ci_high", hi)))
         ctx.check(f"bundle of result {res.id} reproduces its own n / mean / t / CI (t.test oracle)", True, ok,
-                  "rel 1e-9", "script-R")
+                  tol="rel 1e-9", kind="script-R")
 
 
 # ---- 60 ---------------------------------------------------------------------------------------------------------------
@@ -443,7 +443,7 @@ def case_60(ctx) -> None:
     time.sleep(1.0)
     ctx.check("cancel: status cancelled, no rows after acknowledgement", ("cancelled", k), (canc.status, len(canc.rows)),
               kind="app+R")
-    ctx.check("cancel latency < 30 s", True, lat < 30, f"{lat:.1f} s", "app+R")
+    ctx.check("cancel latency < 30 s", True, lat < 30, tol=f"measured {lat:.1f} s", kind="app+R")
     pre = engine.create_run(d, _settings(mode="D", max_models=100, **huge))
     ev2 = threading.Event()
     ev2.set()
@@ -496,7 +496,7 @@ def case_61(ctx) -> None:
         view_id(d)
     warm = (time.perf_counter() - t2) / 100
     ctx.check("100k content identity: cold hash < 5 s, cached identity < 50 ms", True, cold < 5 and warm < 0.05,
-              f"cold {cold:.2f} s, warm {warm * 1000:.1f} ms")
+              tol=f"measured cold {cold:.2f} s, warm {warm * 1000:.1f} ms")
     s = dict(outcome="Y", family="gaussian", participant="StudentID", time="Time", required=["Time"], structure="ri",
              cluster="School", strategy="focal", covariate_mode="focal", max_predictors=3, min_predictors=2,
              include_main=False, workers=4, max_models=None, max_minutes=None, study="longitudinal", correction="BH",
@@ -507,8 +507,8 @@ def case_61(ctx) -> None:
     tf = engine.tests_frame(run, interpret=False)
     ctx.check("54B: 15 candidates, 2 BH-significant", (15, 2), (len(run.rows), int(tf["sig_adj"].sum())),
               kind="app+R")
-    ctx.check("54B wall time recorded (reference ~50 s on the developer machine)", True, wall > 0, f"{wall:.1f} s "
-              f"(load {load:.1f} s)", "app+R")
+    ctx.check("54B wall time recorded (reference ~50 s on the developer machine)", True, wall > 0,
+              tol=f"measured {wall:.1f} s (load {load:.1f} s)", kind="app+R")
     rk = engine.discovery_ranking(tf, by="p_adj")
     top = rk.head(2)
     ctx.check("54B adjusted sort: two planted interactions first, log10 p < -300, ordered by log tail", True,

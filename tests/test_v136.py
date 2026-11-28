@@ -1257,3 +1257,43 @@ def test_adversarial_round2_port_reused_folders_and_exact_cap(tmp_path):
     r = _runner(_ChunkSession(cost=1))
     r.budget["cap"] = 1
     assert r.execute()["status"] == "complete"                                   # exact_cap_complete_status
+
+
+# ---- the consolidated acceptance runner ------------------------------------------------------------------------------------
+
+def test_acceptance_checks_cannot_pass_vacuously(tmp_path):
+    """A check's outcome is the comparison (or an explicit ok=); a tolerance text can never be taken as 'ok'."""
+    from statexplore.acceptance import Ctx
+
+    c = Ctx(tmp_path, tmp_path, quick=True)
+    c.case = "x"
+    assert c.check("equal", 1, 1) and not c.check("differs", 1, 2)
+    assert not c.check("explicit", True, True, ok=False)
+    with pytest.raises(TypeError):
+        c.check("positional ok", True, False, "some tolerance text")      # noqa
+    assert not c.close("nan", 1.0, float("nan"), 1e-6) and c.close("near", 1.0, 1.0 + 1e-9, 1e-6)
+    assert [r["status"] for r in c.rows] == ["PASS", "FAIL", "FAIL", "FAIL", "PASS"]
+
+
+@pytest.mark.r
+@pytest.mark.slow
+@pytest.mark.timeout(3600)
+def test_acceptance_runner_source_mode_writes_evidence_zip(tmp_path):
+    """Source-mode run of the diagnostic and two cases: one evidence ZIP with results, environment, logs and hashes."""
+    import zipfile
+
+    from statexplore.acceptance import run
+
+    fx = tmp_path / "fixtures"
+    fx.mkdir()
+    for name in ("StatExplore_Test52D_Persistence.sxp", "StatExplore_Test50_Reproducibility.sxp",
+                 "StatExplore_Test50E_ModifiedValues.csv"):
+        shutil.copy(FX4 / name, fx / name)
+    shutil.copy(WORKBOOK, fx / WORKBOOK.name)
+    z = run(fx, tmp_path / "out", only={"D", "57", "59"}, quick=True)
+    with zipfile.ZipFile(z) as zf:
+        names = set(zf.namelist())
+        res = json.loads(zf.read("results.json"))["results"]
+    assert {"results.csv", "results.json", "summary.md", "environment.json", "SHA256SUMS.txt", "run.log"} <= names
+    assert res and all(r["status"] == "PASS" for r in res), [r for r in res if r["status"] != "PASS"]
+    assert {r["case"] for r in res} == {"D", "57", "59"}

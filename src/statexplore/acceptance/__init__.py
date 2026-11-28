@@ -52,7 +52,7 @@ class Ctx:
             with open(self.live, "a", encoding="utf-8") as f:
                 f.write(line + "\n")
 
-    def check(self, name: str, expected: Any, actual: Any, ok: bool | None = None, tol: str = "exact",
+    def check(self, name: str, expected: Any, actual: Any, *, ok: bool | None = None, tol: str = "exact",
               kind: str = "app", evidence: str = "") -> bool:
         if ok is None:
             ok = expected == actual
@@ -64,7 +64,7 @@ class Ctx:
     def close(self, name: str, expected: float, actual: Any, abs_tol: float, kind: str = "app+R") -> bool:
         ok = actual is not None and isinstance(actual, (int, float)) and math.isfinite(actual) and \
             abs(float(actual) - expected) <= abs_tol
-        return self.check(name, expected, actual, ok, f"abs {abs_tol:g}", kind)
+        return self.check(name, expected, actual, ok=ok, tol=f"abs {abs_tol:g}", kind=kind)
 
     def blocked(self, name: str, why: str) -> None:
         self.rows.append({"case": self.case, "check": name, "expected": "", "actual": why, "tolerance": "",
