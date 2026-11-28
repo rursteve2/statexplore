@@ -19,7 +19,7 @@ echo Using "%EXE%"
 echo Fixtures: "%~dp0fixtures"
 echo Results:  "%OUT%"
 echo.
-echo Running about 30-60 minutes. Progress is written to results\acceptance_live_*.log
+echo Running about 10 minutes (quick: about 5). Progress is written to results\acceptance_live_*.log
 echo (open it in Notepad and press F5 to refresh). Do not close this window.
 echo.
 start "" /wait "%EXE%" --acceptance --fixtures "%~dp0fixtures" --out "%OUT%" %2 %3

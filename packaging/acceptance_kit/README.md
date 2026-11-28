@@ -10,8 +10,8 @@ compare" loop: run it once and upload one ZIP.
 2. Extract this kit anywhere (for example `D:\SX136 kit`).
 3. Double-click **`Run_Acceptance.bat`**. It finds the installed `StatExplore.exe` (Program Files or your user
    Programs folder). For another copy: `Run_Acceptance.bat "D:\path\StatExplore.exe"`.
-   `Run_Acceptance.bat "" --quick` shortens the 51C bootstrap (3 draws instead of 20; about 15 minutes).
-4. Wait (about 30–60 minutes on a 4-core machine). Progress: `results\acceptance_live_*.log`.
+   `Run_Acceptance.bat "" --quick` shortens the 51C bootstrap (3 draws instead of 20).
+4. Wait (about 7 minutes on the developer's 4-core machine; quick mode about 3). Progress: `results\acceptance_live_*.log`.
 5. Upload `results\StatExplore_v1.3.6_Acceptance_Results_<timestamp>.zip`.
 
 The run uses the R that ships with StatExplore. It installs nothing, needs no network, uploads nothing, and works on
