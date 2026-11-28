@@ -94,7 +94,7 @@ def validation_55l(pkg: Path, repeats: int) -> dict:
                 V.export(v, tempfile.mkdtemp(), ds=d, include_data=True)
             exp = time.perf_counter() - t1
         out.append({"wall_s": round(fit, 3), "export_s": round(exp, 3), "status": v["status"],
-                    "fits_used": v["fit_budget"]["used"], "peak_mb": round(smp.peak / 1024)})
+                    "fits_used": (v.get("fit_budget") or {}).get("used"), "peak_mb": round(smp.peak / 1024)})
     return {"runs": out, "median_s": statistics.median(r["wall_s"] for r in out)}
 
 

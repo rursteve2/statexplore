@@ -1,0 +1,67 @@
+{
+  "checks": [
+    {
+      "test": "original_analysis_sample",
+      "expected": 15,
+      "actual": 15,
+      "passed": true
+    },
+    {
+      "test": "original_script_contains_t_test",
+      "expected": true,
+      "actual": true,
+      "passed": true
+    },
+    {
+      "test": "unchanged_export_values",
+      "expected": true,
+      "actual": true,
+      "passed": true
+    },
+    {
+      "test": "current_sample_same_size",
+      "expected": 15,
+      "actual": 15,
+      "passed": true
+    },
+    {
+      "test": "current_train_membership_changed",
+      "expected": true,
+      "actual": true,
+      "passed": true
+    },
+    {
+      "test": "historical_result_unchanged",
+      "expected": true,
+      "actual": true,
+      "passed": true
+    },
+    {
+      "test": "historical_bundle_refused_or_original",
+      "expected": true,
+      "actual": false,
+      "passed": false
+    },
+    {
+      "test": "historical_runnable_bundle_not_substituted",
+      "expected": true,
+      "actual": false,
+      "passed": false
+    }
+  ],
+  "observations": {
+    "recorded_n": 15,
+    "original_train_n": 15,
+    "original_train_mean": 9.7,
+    "current_train_n": 15,
+    "exported_train_n": 15,
+    "exported_train_mean": 10.3,
+    "recorded_identity": null,
+    "export_refused": false,
+    "reason": "",
+    "exported_script_has_identity_check": false,
+    "script_count": 1
+  },
+  "pass": 6,
+  "fail": 2
+}

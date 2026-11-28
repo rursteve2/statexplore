@@ -1,0 +1,40 @@
+........................................................................ [  9%]
+........................................................................ [ 19%]
+........................................................................ [ 28%]
+........................................................................ [ 38%]
+........................................................................ [ 48%]
+.......................................................s................ [ 57%]
+........................................................................ [ 67%]
+........................................................................ [ 77%]
+........................................................................ [ 86%]
+........................................................................ [ 96%]
+............................                                             [100%]
+============================== warnings summary ===============================
+tests/test_v13.py::test_P1_04_likelihood_parameter_count
+tests/test_v13.py::test_P1_04_likelihood_parameter_count
+tests/test_v13.py::test_P1_04_likelihood_parameter_count
+tests/test_v134.py::test_48d_gee_structures_fit_their_own_working_correlation
+tests/test_v134.py::test_48d_gee_structures_fit_their_own_working_correlation
+tests/test_v134.py::test_48d_gee_structures_fit_their_own_working_correlation
+tests/test_v134.py::test_48d_gee_structures_fit_their_own_working_correlation
+tests/test_v134.py::test_48d_gee_structures_fit_their_own_working_correlation
+tests/test_v134.py::test_48d_gee_structures_fit_their_own_working_correlation
+  E:\sx_v135_base\src\statexplore\discovery\engine.py:1229: Pandas4Warning: 'bool' is not supported as a fill value for float64 dtype. In a future version, calling fillna with an incompatible value will raise. Explicitly cast to a common dtype before filling.
+    df[c] = df[c].fillna(False).astype(bool)
+
+tests/test_v13.py::test_P1_04_likelihood_parameter_count
+tests/test_v134.py::test_48d_gee_structures_fit_their_own_working_correlation
+tests/test_v134.py::test_48d_gee_structures_fit_their_own_working_correlation
+  E:\sx_v135_base\src\statexplore\discovery\engine.py:1230: Pandas4Warning: 'str' is not supported as a fill value for float64 dtype. In a future version, calling fillna with an incompatible value will raise. Explicitly cast to a common dtype before filling.
+    df["tier"] = df["tier"].fillna("")
+
+tests/test_v13.py::test_P1_04_likelihood_parameter_count
+tests/test_v134.py::test_48d_gee_structures_fit_their_own_working_correlation
+tests/test_v134.py::test_48d_gee_structures_fit_their_own_working_correlation
+  E:\sx_v135_base\src\statexplore\discovery\engine.py:1231: Pandas4Warning: 'str' is not supported as a fill value for float64 dtype. In a future version, calling fillna with an incompatible value will raise. Explicitly cast to a common dtype before filling.
+    df["validation"] = df["validation"].fillna("")
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+SKIPPED [1] tests\test_v132_gui.py:192: screenshots only when STATEXPLORE_SHOTS is set (evidence run, not a functional test)
+747 passed, 1 skipped, 15 warnings in 1549.74s (0:25:49)

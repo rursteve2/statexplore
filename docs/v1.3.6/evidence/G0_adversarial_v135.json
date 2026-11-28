@@ -1,0 +1,229 @@
+[
+  {
+    "test": "fresh_matching_export_runnable",
+    "expected": true,
+    "actual": true,
+    "status": "PASS"
+  },
+  {
+    "test": "fresh_matching_export_data_present",
+    "expected": true,
+    "actual": true,
+    "status": "PASS"
+  },
+  {
+    "test": "fresh_mismatch_refuses",
+    "expected": false,
+    "actual": false,
+    "status": "PASS"
+  },
+  {
+    "test": "fresh_mismatch_no_script",
+    "expected": false,
+    "actual": false,
+    "status": "PASS"
+  },
+  {
+    "test": "reused_mismatch_manifest_refuses",
+    "expected": false,
+    "actual": false,
+    "status": "PASS"
+  },
+  {
+    "test": "reused_mismatch_no_stale_script",
+    "expected": false,
+    "actual": true,
+    "status": "FAIL"
+  },
+  {
+    "test": "reused_mismatch_no_stale_data",
+    "expected": false,
+    "actual": true,
+    "status": "FAIL"
+  },
+  {
+    "test": "reused_portable_declines_data",
+    "expected": false,
+    "actual": false,
+    "status": "PASS"
+  },
+  {
+    "test": "reused_portable_no_stale_data",
+    "expected": false,
+    "actual": true,
+    "status": "FAIL"
+  },
+  {
+    "test": "precancel_status",
+    "expected": "cancelled",
+    "actual": "cancelled",
+    "status": "PASS"
+  },
+  {
+    "test": "precancel_no_executed_chunks",
+    "expected": 0,
+    "actual": 0,
+    "status": "PASS"
+  },
+  {
+    "test": "precancel_no_results",
+    "expected": 0,
+    "actual": 0,
+    "status": "PASS"
+  },
+  {
+    "test": "precancel_manifest_scope",
+    "status": "OBSERVED",
+    "expected": "planned manifests distinguished from executed evidence",
+    "actual": {
+      "planned_split_rows": 12000,
+      "planned_draw_rows": 18000,
+      "executed_chunks": 0,
+      "expected_files": [
+        {
+          "file": "split_manifest.csv",
+          "required": true,
+          "rows": 12000,
+          "applicable": true
+        },
+        {
+          "file": "bootstrap_draws.csv",
+          "required": true,
+          "rows": 18000,
+          "applicable": true
+        },
+        {
+          "file": "predictions.csv",
+          "required": false,
+          "rows": 0,
+          "applicable": true
+        },
+        {
+          "file": "folds.csv",
+          "required": false,
+          "rows": 0,
+          "applicable": true
+        },
+        {
+          "file": "performance.csv",
+          "required": false,
+          "rows": 0,
+          "applicable": true
+        },
+        {
+          "file": "stability.csv",
+          "required": false,
+          "rows": 0,
+          "applicable": true
+        },
+        {
+          "file": "bootstrap_results.csv",
+          "required": false,
+          "rows": 0,
+          "applicable": true
+        },
+        {
+          "file": "bootstrap_estimands.csv",
+          "required": false,
+          "rows": 0,
+          "applicable": false
+        },
+        {
+          "file": "bootstrap_coefficients.csv",
+          "required": false,
+          "rows": 0,
+          "applicable": false
+        },
+        {
+          "file": "candidate_trace.csv",
+          "required": false,
+          "rows": 0,
+          "applicable": false
+        },
+        {
+          "file": "realized_sizes.csv",
+          "required": true,
+          "rows": 3,
+          "applicable": true
+        }
+      ]
+    }
+  },
+  {
+    "test": "exact_cap_used",
+    "expected": 1,
+    "actual": 1,
+    "status": "PASS"
+  },
+  {
+    "test": "exact_cap_completed_fold",
+    "expected": 1,
+    "actual": 1,
+    "status": "PASS"
+  },
+  {
+    "test": "exact_cap_complete_status",
+    "expected": "complete",
+    "actual": "partial",
+    "status": "FAIL"
+  },
+  {
+    "test": "exact_cap_status_detail",
+    "status": "OBSERVED",
+    "expected": "no remaining parts",
+    "actual": {
+      "status": "partial",
+      "problems": [
+        "fit budget reached: 1 of 1 model-fitting invocations used; the remaining training parts / draws were not run (finished ones are kept; a part stopped by the budget is never scored)"
+      ],
+      "folds": 1,
+      "calls": 1,
+      "fit_budget": {
+        "cap": 1,
+        "used": 1,
+        "retries": 0,
+        "aux": 0,
+        "cache_hits": 0,
+        "cache_misses": 1,
+        "exhausted": true,
+        "requested_bound": 1,
+        "estimate": 2,
+        "unit": "model-fitting invocations (full, reduced, null and selected refits; each optimizer retry and each auxiliary fit counts; cache hits are free and counted separately)"
+      }
+    }
+  },
+  {
+    "test": "partial_cancel_recorded",
+    "expected": "cancelled",
+    "actual": "cancelled",
+    "status": "PASS"
+  },
+  {
+    "test": "partial_one_executed_chunk",
+    "expected": 1,
+    "actual": 1,
+    "status": "PASS"
+  },
+  {
+    "test": "partial_replay_scope",
+    "status": "OBSERVED",
+    "expected": "executed and planned manifests tracked separately",
+    "actual": {
+      "folds": 1,
+      "chunks": 1,
+      "split_ids_in_export": [
+        "cv1",
+        "holdout"
+      ],
+      "draw_ids_in_export": [
+        1,
+        2
+      ],
+      "split_ids_executed": [
+        "holdout"
+      ],
+      "draws_executed": 0,
+      "script_has_full_manifest_check": true
+    }
+  }
+]

@@ -1,0 +1,608 @@
+requirement,origin,test_node,status
+AUD135-01,v1.3.6 finding,tests/test_v135.py::test_reproduction_na_safe_failed_draw_comparison,PASS
+AUD135-01,v1.3.6 finding,tests/test_v136.py::test_each_field_family_tamper_fails_with_a_named_check[cand_key],PASS
+AUD135-01,v1.3.6 finding,tests/test_v136.py::test_each_field_family_tamper_fails_with_a_named_check[coef],PASS
+AUD135-01,v1.3.6 finding,tests/test_v136.py::test_each_field_family_tamper_fails_with_a_named_check[coef_key],PASS
+AUD135-01,v1.3.6 finding,tests/test_v136.py::test_each_field_family_tamper_fails_with_a_named_check[column],PASS
+AUD135-01,v1.3.6 finding,tests/test_v136.py::test_each_field_family_tamper_fails_with_a_named_check[dup],PASS
+AUD135-01,v1.3.6 finding,tests/test_v136.py::test_each_field_family_tamper_fails_with_a_named_check[estimand],PASS
+AUD135-01,v1.3.6 finding,tests/test_v136.py::test_each_field_family_tamper_fails_with_a_named_check[fold],PASS
+AUD135-01,v1.3.6 finding,tests/test_v136.py::test_each_field_family_tamper_fails_with_a_named_check[freq],PASS
+AUD135-01,v1.3.6 finding,tests/test_v136.py::test_each_field_family_tamper_fails_with_a_named_check[id],PASS
+AUD135-01,v1.3.6 finding,tests/test_v136.py::test_each_field_family_tamper_fails_with_a_named_check[ledger],PASS
+AUD135-01,v1.3.6 finding,tests/test_v136.py::test_each_field_family_tamper_fails_with_a_named_check[malformed],PASS
+AUD135-01,v1.3.6 finding,tests/test_v136.py::test_each_field_family_tamper_fails_with_a_named_check[median],PASS
+AUD135-01,v1.3.6 finding,tests/test_v136.py::test_each_field_family_tamper_fails_with_a_named_check[merge_ids],PASS
+AUD135-01,v1.3.6 finding,tests/test_v136.py::test_each_field_family_tamper_fails_with_a_named_check[metric],PASS
+AUD135-01,v1.3.6 finding,tests/test_v136.py::test_each_field_family_tamper_fails_with_a_named_check[orig_id],PASS
+AUD135-01,v1.3.6 finding,tests/test_v136.py::test_each_field_family_tamper_fails_with_a_named_check[pred],PASS
+AUD135-01,v1.3.6 finding,tests/test_v136.py::test_each_field_family_tamper_fails_with_a_named_check[realized],PASS
+AUD135-01,v1.3.6 finding,tests/test_v136.py::test_each_field_family_tamper_fails_with_a_named_check[reason],PASS
+AUD135-01,v1.3.6 finding,tests/test_v136.py::test_each_field_family_tamper_fails_with_a_named_check[score_inf],PASS
+AUD135-01,v1.3.6 finding,tests/test_v136.py::test_each_field_family_tamper_fails_with_a_named_check[sign],PASS
+AUD135-01,v1.3.6 finding,tests/test_v136.py::test_each_field_family_tamper_fails_with_a_named_check[trace_df],PASS
+AUD135-01,v1.3.6 finding,tests/test_v136.py::test_each_field_family_tamper_fails_with_a_named_check[trace_flags],PASS
+AUD135-01,v1.3.6 finding,tests/test_v136.py::test_each_field_family_tamper_fails_with_a_named_check[universe],PASS
+AUD135-01,v1.3.6 finding,tests/test_v136.py::test_evidence_csv_round_trip_into_r,PASS
+AUD135-01,v1.3.6 finding,tests/test_v136.py::test_owner_diagnostic_num_id_sel_cases_on_generated_verifier,PASS
+AUD135-02,v1.3.6 finding,tests/test_v134.py::test_validation_manifest_identity_and_relocated_reproduction,PASS
+AUD135-02,v1.3.6 finding,tests/test_v135.py::test_51c_pipeline_bootstrap_reproduces_in_fresh_r,PASS
+AUD135-02,v1.3.6 finding,tests/test_v135.py::test_reproduction_verifies_everything_and_catches_tampering,PASS
+AUD135-02,v1.3.6 finding,tests/test_v136.py::test_complete_reproduction_verifies_every_field,PASS
+AUD135-02,v1.3.6 finding,tests/test_v136.py::test_each_field_family_tamper_fails_with_a_named_check[cand_key],PASS
+AUD135-02,v1.3.6 finding,tests/test_v136.py::test_each_field_family_tamper_fails_with_a_named_check[coef],PASS
+AUD135-02,v1.3.6 finding,tests/test_v136.py::test_each_field_family_tamper_fails_with_a_named_check[coef_key],PASS
+AUD135-02,v1.3.6 finding,tests/test_v136.py::test_each_field_family_tamper_fails_with_a_named_check[column],PASS
+AUD135-02,v1.3.6 finding,tests/test_v136.py::test_each_field_family_tamper_fails_with_a_named_check[dup],PASS
+AUD135-02,v1.3.6 finding,tests/test_v136.py::test_each_field_family_tamper_fails_with_a_named_check[estimand],PASS
+AUD135-02,v1.3.6 finding,tests/test_v136.py::test_each_field_family_tamper_fails_with_a_named_check[fold],PASS
+AUD135-02,v1.3.6 finding,tests/test_v136.py::test_each_field_family_tamper_fails_with_a_named_check[freq],PASS
+AUD135-02,v1.3.6 finding,tests/test_v136.py::test_each_field_family_tamper_fails_with_a_named_check[id],PASS
+AUD135-02,v1.3.6 finding,tests/test_v136.py::test_each_field_family_tamper_fails_with_a_named_check[ledger],PASS
+AUD135-02,v1.3.6 finding,tests/test_v136.py::test_each_field_family_tamper_fails_with_a_named_check[malformed],PASS
+AUD135-02,v1.3.6 finding,tests/test_v136.py::test_each_field_family_tamper_fails_with_a_named_check[median],PASS
+AUD135-02,v1.3.6 finding,tests/test_v136.py::test_each_field_family_tamper_fails_with_a_named_check[merge_ids],PASS
+AUD135-02,v1.3.6 finding,tests/test_v136.py::test_each_field_family_tamper_fails_with_a_named_check[metric],PASS
+AUD135-02,v1.3.6 finding,tests/test_v136.py::test_each_field_family_tamper_fails_with_a_named_check[orig_id],PASS
+AUD135-02,v1.3.6 finding,tests/test_v136.py::test_each_field_family_tamper_fails_with_a_named_check[pred],PASS
+AUD135-02,v1.3.6 finding,tests/test_v136.py::test_each_field_family_tamper_fails_with_a_named_check[realized],PASS
+AUD135-02,v1.3.6 finding,tests/test_v136.py::test_each_field_family_tamper_fails_with_a_named_check[reason],PASS
+AUD135-02,v1.3.6 finding,tests/test_v136.py::test_each_field_family_tamper_fails_with_a_named_check[score_inf],PASS
+AUD135-02,v1.3.6 finding,tests/test_v136.py::test_each_field_family_tamper_fails_with_a_named_check[sign],PASS
+AUD135-02,v1.3.6 finding,tests/test_v136.py::test_each_field_family_tamper_fails_with_a_named_check[trace_df],PASS
+AUD135-02,v1.3.6 finding,tests/test_v136.py::test_each_field_family_tamper_fails_with_a_named_check[trace_flags],PASS
+AUD135-02,v1.3.6 finding,tests/test_v136.py::test_each_field_family_tamper_fails_with_a_named_check[universe],PASS
+AUD135-02,v1.3.6 finding,tests/test_v136.py::test_missing_file_and_data_checksum,PASS
+AUD135-02,v1.3.6 finding,tests/test_v136.py::test_owner_summary_cases_sum01_to_sum07[coefficient-bootstrap coefficients: estimate],PASS
+AUD135-02,v1.3.6 finding,tests/test_v136.py::test_owner_summary_cases_sum01_to_sum07[count-stability],PASS
+AUD135-02,v1.3.6 finding,tests/test_v136.py::test_owner_summary_cases_sum01_to_sum07[frequency-stability (recomputed from the reproduced draws and the declared pool): freq_of_attempted],PASS
+AUD135-02,v1.3.6 finding,tests/test_v136.py::test_owner_summary_cases_sum01_to_sum07[key-stability (recomputed from the reproduced draws and the declared pool): candidate_key],PASS
+AUD135-02,v1.3.6 finding,tests/test_v136.py::test_owner_summary_cases_sum01_to_sum07[none-None],PASS
+AUD135-02,v1.3.6 finding,tests/test_v136.py::test_owner_summary_cases_sum01_to_sum07[sign-stability (recomputed from the reproduced draws and the declared pool): positive_sign],PASS
+AUD135-02,v1.3.6 finding,tests/test_v136.py::test_owner_summary_cases_sum01_to_sum07[summary-bootstrap estimands (recomputed from the reproduced coefficients): estimate_median],PASS
+AUD135-03,v1.3.6 finding,tests/test_v136.py::test_adversarial_round2_port_reused_folders_and_exact_cap,PASS
+AUD135-03,v1.3.6 finding,tests/test_v136.py::test_audit_export_goes_to_a_new_folder,PASS
+AUD135-03,v1.3.6 finding,tests/test_v136.py::test_multiple_results_get_separately_bound_bundles,PASS
+AUD135-03,v1.3.6 finding,tests/test_v136.py::test_portable_exports_never_reuse_a_folder,PASS
+AUD135-03,v1.3.6 finding,tests/test_v136.py::test_transaction_policy_negative_controls,PASS
+AUD135-03,v1.3.6 finding,tests/test_v136_gui.py::test_code_dialog_refuses_unprovable_history_and_saves_provable,PASS
+AUD135-03,v1.3.6 finding,tests/test_v136_gui.py::test_reports_export_asks_consent_and_writes_a_new_folder,PASS
+AUD135-03,v1.3.6 finding,tests/test_v136_gui.py::test_validation_panel_export_goes_to_new_folders_with_consent,PASS
+AUD135-04,v1.3.6 finding,tests/test_v136.py::test_budget_exactly_exhausted_with_work_remaining_is_partial_not_dispatched,PASS
+AUD135-04,v1.3.6 finding,tests/test_v136.py::test_cancel_before_and_after_first_chunk_and_late_cancel,PASS
+AUD135-04,v1.3.6 finding,tests/test_v136.py::test_cancelled_validation_replays_committed_scope_only,PASS
+AUD135-04,v1.3.6 finding,tests/test_v136.py::test_lost_worker_and_invalid_response_are_uncommitted_and_counters_unknown,PASS
+AUD135-04,v1.3.6 finding,tests/test_v136.py::test_partial_bootstrap_chunks_and_budget_inside_a_chunk,PASS
+AUD135-05,v1.3.6 finding,tests/test_v135.py::test_hard_fit_budget_counts_and_stops,PASS
+AUD135-05,v1.3.6 finding,tests/test_v136.py::test_adversarial_round2_port_reused_folders_and_exact_cap,PASS
+AUD135-05,v1.3.6 finding,tests/test_v136.py::test_exact_budget_boundary_holdout[100-complete-3-0],PASS
+AUD135-05,v1.3.6 finding,tests/test_v136.py::test_exact_budget_boundary_holdout[2-partial-2-1],PASS
+AUD135-05,v1.3.6 finding,tests/test_v136.py::test_exact_budget_boundary_holdout[3-complete-3-0],PASS
+AUD135-05,v1.3.6 finding,tests/test_v136.py::test_exact_budget_complete_and_one_short_partial_real_r,PASS
+AUD135-05,v1.3.6 finding,tests/test_v136.py::test_zero_budget_runs_nothing,PASS
+AUD135-06,v1.3.6 finding,tests/test_v134.py::test_legacy_runs_without_identity_or_old_rules_are_never_reused,PASS
+AUD135-06,v1.3.6 finding,tests/test_v136.py::test_console_import_and_reshape_change_the_content_identity,PASS
+AUD135-06,v1.3.6 finding,tests/test_v136.py::test_content_identity_definition,PASS
+AUD135-06,v1.3.6 finding,tests/test_v136.py::test_identity_survives_project_save_reopen_and_reimport,PASS
+AUD135-06,v1.3.6 finding,tests/test_v136.py::test_legacy_identity_is_unverified_everywhere,PASS
+AUD135-06,v1.3.6 finding,tests/test_v136.py::test_session_data_keys_do_not_use_object_addresses,PASS
+AUD135-06,v1.3.6 finding,tests/test_v136.py::test_value_digest_is_computed_once_per_revision,PASS
+AUD135-06,v1.3.6 finding,tests/test_v136.py::test_workbook_sheets_fit_differently_in_one_worker_both_orders,PASS
+AUD135-06,v1.3.6 finding,tests/test_v136.py::test_workbook_sheets_have_distinct_identities_everywhere,PASS
+AUD135-06,v1.3.6 finding,tests/test_v136_gui.py::test_legacy_search_dialog_title_says_unverified,PASS
+AUD135-07,v1.3.6 finding,tests/test_v136.py::test_failed_result_keeps_provenance_and_stays_failed,PASS
+AUD135-07,v1.3.6 finding,tests/test_v136.py::test_historical_one_sample_t_real_r_seed_change,PASS
+AUD135-07,v1.3.6 finding,tests/test_v136.py::test_historical_report_exports_the_original_view_or_refuses,PASS
+AUD135-07,v1.3.6 finding,tests/test_v136.py::test_multiple_results_get_separately_bound_bundles,PASS
+AUD135-07,v1.3.6 finding,tests/test_v136.py::test_result_without_provenance_is_refused,PASS
+AUD135-07,v1.3.6 finding,tests/test_v136_gui.py::test_code_dialog_refuses_unprovable_history_and_saves_provable,PASS
+AUD135-07,v1.3.6 finding,tests/test_v136_gui.py::test_reports_export_asks_consent_and_writes_a_new_folder,PASS
+V136-D1,v1.3.6 discovered,tests/test_v136.py::test_portable_exports_never_reuse_a_folder,PASS
+V136-D1,v1.3.6 discovered,tests/test_v136.py::test_transaction_policy_negative_controls,PASS
+V136-D2,v1.3.6 discovered,tests/test_v136.py::test_exact_budget_complete_and_one_short_partial_real_r,PASS
+V136-D2,v1.3.6 discovered,tests/test_v136.py::test_partial_bootstrap_chunks_and_budget_inside_a_chunk,PASS
+V136-D3,v1.3.6 discovered,tests/test_v136.py::test_session_data_keys_do_not_use_object_addresses,PASS
+V136-D4,v1.3.6 discovered,tests/test_v136.py::test_content_identity_definition,PASS
+V136-D5,v1.3.6 discovered,tests/test_v135.py::test_validation_export_refuses_runnable_bundle_over_other_data,PASS
+V136-D6,v1.3.6 discovered,tests/test_v134_gui.py::test_simulated_display_scaling_layout[1.25],PASS
+V136-D6,v1.3.6 discovered,tests/test_v134_gui.py::test_simulated_display_scaling_layout[1.5],PASS
+V136-D6,v1.3.6 discovered,tests/test_v134_gui.py::test_simulated_display_scaling_layout[1],PASS
+V136-D6,v1.3.6 discovered,tests/test_v134_gui.py::test_simulated_display_scaling_layout[2],PASS
+AUD134-01,AUD134 (v1.3.5 fix),tests/test_v135.py::test_55l_legacy_procedure_cv_selects_by_log_tail,PASS
+AUD134-01,AUD134 (v1.3.5 fix),tests/test_v135.py::test_55l_legacy_stability_selects_by_log_tail,PASS
+AUD134-01,AUD134 (v1.3.5 fix),tests/test_v135.py::test_hard_fit_budget_counts_and_stops,PASS
+AUD134-01,AUD134 (v1.3.5 fix),tests/test_v135.py::test_shared_selector_orders_underflowed_tails_and_ties,PASS
+AUD134-02,AUD134 (v1.3.5 fix),tests/test_v134.py::test_51c_log_tails_ranking_and_adjustment,PASS
+AUD134-02,AUD134 (v1.3.5 fix),tests/test_v134.py::test_54b_extreme_tails_have_finite_log_p,PASS
+AUD134-02,AUD134 (v1.3.5 fix),tests/test_v135.py::test_adjusted_ranking_is_within_family,PASS
+AUD134-02,AUD134 (v1.3.5 fix),tests/test_v135.py::test_adjusted_ranking_uses_log_tails[False-BH],PASS
+AUD134-02,AUD134 (v1.3.5 fix),tests/test_v135.py::test_adjusted_ranking_uses_log_tails[False-holm],PASS
+AUD134-02,AUD134 (v1.3.5 fix),tests/test_v135.py::test_adjusted_ranking_uses_log_tails[True-BH],PASS
+AUD134-02,AUD134 (v1.3.5 fix),tests/test_v135.py::test_adjusted_ranking_uses_log_tails[True-holm],PASS
+AUD134-02,AUD134 (v1.3.5 fix),tests/test_v135.py::test_gui_table_sorts_adjusted_p_and_log10_by_log_tail,PASS
+AUD134-02,AUD134 (v1.3.5 fix),tests/test_v135.py::test_unknown_magnitude_is_labelled_not_zero,PASS
+AUD134-03,AUD134 (v1.3.5 fix),tests/test_v134.py::test_52d_partial_search_resumable_with_reason_states,PASS
+AUD134-03,AUD134 (v1.3.5 fix),tests/test_v134.py::test_52d_resume_continues_same_search_to_15,PASS
+AUD134-03,AUD134 (v1.3.5 fix),tests/test_v134_gui.py::test_reopened_partial_search_shows_resume_and_reasons,PASS
+AUD134-03,AUD134 (v1.3.5 fix),tests/test_v134_gui.py::test_resume_after_real_restart_two_processes,PASS
+AUD134-03,AUD134 (v1.3.5 fix),tests/test_v135.py::test_52d_historical_resume_is_refused_with_reason,PASS
+AUD134-03,AUD134 (v1.3.5 fix),tests/test_v135.py::test_historical_gee_search_with_old_rules_is_refused,PASS
+AUD134-03,AUD134 (v1.3.5 fix),tests/test_v135.py::test_resume_compatibility_matrix[bad_key-key differs],PASS
+AUD134-03,AUD134 (v1.3.5 fix),tests/test_v135.py::test_resume_compatibility_matrix[dup_idx-duplicate],PASS
+AUD134-03,AUD134 (v1.3.5 fix),tests/test_v135.py::test_resume_compatibility_matrix[gap-have no result],PASS
+AUD134-03,AUD134 (v1.3.5 fix),tests/test_v135.py::test_resume_compatibility_matrix[grammar-grammar],PASS
+AUD134-03,AUD134 (v1.3.5 fix),tests/test_v135.py::test_resume_compatibility_matrix[no_engine-no recorded R / package versions],PASS
+AUD134-03,AUD134 (v1.3.5 fix),tests/test_v135.py::test_resume_compatibility_matrix[no_fit_id-no recorded fit identity],PASS
+AUD134-03,AUD134 (v1.3.5 fix),tests/test_v135.py::test_resume_compatibility_matrix[no_key-no candidate key],PASS
+AUD134-03,AUD134 (v1.3.5 fix),tests/test_v135.py::test_resume_compatibility_matrix[no_rules-fit rules (not recorded)],PASS
+AUD134-03,AUD134 (v1.3.5 fix),tests/test_v135.py::test_resume_compatibility_matrix[none-],PASS
+AUD134-03,AUD134 (v1.3.5 fix),tests/test_v135.py::test_resume_compatibility_matrix[old_rules-fit rules 3],PASS
+AUD134-03,AUD134 (v1.3.5 fix),tests/test_v135.py::test_resume_compatibility_matrix[out_of_range-outside the search space],PASS
+AUD134-03,AUD134 (v1.3.5 fix),tests/test_v135.py::test_resume_refused_on_changed_data_and_coding,PASS
+AUD134-03,AUD134 (v1.3.5 fix),tests/test_v135.py::test_same_version_partial_resumes_to_exact_15_and_engine_mismatch_refused,PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[combinations-focal-1-3-2],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[combinations-focal-1-3-3],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[combinations-focal-1-4-2],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[combinations-focal-1-4-3],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[combinations-focal-1-5-2],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[combinations-focal-1-5-3],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[combinations-focal-2-3-2],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[combinations-focal-2-3-3],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[combinations-focal-2-4-2],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[combinations-focal-2-4-3],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[combinations-focal-2-5-2],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[combinations-focal-2-5-3],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[combinations-focal-3-3-2],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[combinations-focal-3-3-3],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[combinations-focal-3-4-2],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[combinations-focal-3-4-3],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[combinations-focal-3-5-2],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[combinations-focal-3-5-3],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[combinations-focal-4-4-2],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[combinations-focal-4-4-3],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[combinations-focal-4-5-2],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[combinations-focal-4-5-3],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[factorial-focal-1-3-2],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[factorial-focal-1-3-3],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[factorial-focal-1-4-2],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[factorial-focal-1-4-3],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[factorial-focal-1-5-2],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[factorial-focal-1-5-3],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[factorial-focal-2-3-2],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[factorial-focal-2-3-3],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[factorial-focal-2-4-2],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[factorial-focal-2-4-3],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[factorial-focal-2-5-2],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[factorial-focal-2-5-3],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[factorial-focal-3-3-2],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[factorial-focal-3-3-3],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[factorial-focal-3-4-2],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[factorial-focal-3-4-3],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[factorial-focal-3-5-2],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[factorial-focal-3-5-3],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[factorial-focal-4-4-2],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[factorial-focal-4-4-3],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[factorial-focal-4-5-2],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[factorial-focal-4-5-3],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[focal-focal-1-3-2],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[focal-focal-1-3-3],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[focal-focal-1-4-2],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[focal-focal-1-4-3],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[focal-focal-1-5-2],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[focal-focal-1-5-3],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[focal-focal-2-3-2],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[focal-focal-2-3-3],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[focal-focal-2-4-2],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[focal-focal-2-4-3],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[focal-focal-2-5-2],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[focal-focal-2-5-3],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[focal-focal-3-3-2],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[focal-focal-3-3-3],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[focal-focal-3-4-2],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[focal-focal-3-4-3],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[focal-focal-3-5-2],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[focal-focal-3-5-3],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[focal-focal-4-4-2],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[focal-focal-4-4-3],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[focal-focal-4-5-2],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[focal-focal-4-5-3],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[focal-subsets-1-3-2],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[focal-subsets-1-3-3],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[focal-subsets-1-4-2],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[focal-subsets-1-4-3],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[focal-subsets-1-5-2],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[focal-subsets-1-5-3],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[focal-subsets-2-3-2],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[focal-subsets-2-3-3],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[focal-subsets-2-4-2],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[focal-subsets-2-4-3],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[focal-subsets-2-5-2],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[focal-subsets-2-5-3],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[focal-subsets-3-3-2],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[focal-subsets-3-3-3],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[focal-subsets-3-4-2],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[focal-subsets-3-4-3],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[focal-subsets-3-5-2],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[focal-subsets-3-5-3],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[focal-subsets-4-4-2],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[focal-subsets-4-4-3],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[focal-subsets-4-5-2],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[focal-subsets-4-5-3],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[main-focal-1-3-2],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[main-focal-1-3-3],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[main-focal-1-4-2],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[main-focal-1-4-3],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[main-focal-1-5-2],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[main-focal-1-5-3],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[main-focal-2-3-2],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[main-focal-2-3-3],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[main-focal-2-4-2],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[main-focal-2-4-3],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[main-focal-2-5-2],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[main-focal-2-5-3],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[main-focal-3-3-2],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[main-focal-3-3-3],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[main-focal-3-4-2],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[main-focal-3-4-3],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[main-focal-3-5-2],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[main-focal-3-5-3],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[main-focal-4-4-2],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[main-focal-4-4-3],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[main-focal-4-5-2],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[main-focal-4-5-3],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[time-focal-1-3-2],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[time-focal-1-3-3],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[time-focal-1-4-2],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[time-focal-1-4-3],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[time-focal-1-5-2],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[time-focal-1-5-3],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[time-focal-2-3-2],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[time-focal-2-3-3],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[time-focal-2-4-2],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[time-focal-2-4-3],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[time-focal-2-5-2],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[time-focal-2-5-3],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[time-focal-3-3-2],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[time-focal-3-3-3],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[time-focal-3-4-2],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[time-focal-3-4-3],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[time-focal-3-5-2],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[time-focal-3-5-3],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[time-focal-4-4-2],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[time-focal-4-4-3],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[time-focal-4-5-2],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[time-focal-4-5-3],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[time-subsets-1-3-2],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[time-subsets-1-3-3],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[time-subsets-1-4-2],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[time-subsets-1-4-3],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[time-subsets-1-5-2],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[time-subsets-1-5-3],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[time-subsets-2-3-2],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[time-subsets-2-3-3],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[time-subsets-2-4-2],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[time-subsets-2-4-3],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[time-subsets-2-5-2],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[time-subsets-2-5-3],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[time-subsets-3-3-2],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[time-subsets-3-3-3],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[time-subsets-3-4-2],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[time-subsets-3-4-3],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[time-subsets-3-5-2],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[time-subsets-3-5-3],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[time-subsets-4-4-2],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[time-subsets-4-4-3],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[time-subsets-4-5-2],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_counts_and_enumeration_match_bruteforce_oracle[time-subsets-4-5-3],PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_focal_minimum_example_from_the_audit,PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_grammar4_changes_are_detected_for_historical_focal_searches,PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_large_counts_preserved_without_materializing,PASS
+AUD134-04,AUD134 (v1.3.5 fix),tests/test_v135.py::test_min_control_disabled_for_workflow_b,PASS
+AUD134-05,AUD134 (v1.3.5 fix),tests/test_v135.py::test_fixed_candidate_refusals[missing_key],PASS
+AUD134-05,AUD134 (v1.3.5 fix),tests/test_v135.py::test_fixed_candidate_refusals[missing_row],PASS
+AUD134-05,AUD134 (v1.3.5 fix),tests/test_v135.py::test_fixed_candidate_refusals[other_spec],PASS
+AUD134-05,AUD134 (v1.3.5 fix),tests/test_v135.py::test_fixed_candidate_refusals[reordered],PASS
+AUD134-05,AUD134 (v1.3.5 fix),tests/test_v135.py::test_historical_fixed_candidate_is_the_saved_model_not_the_current_index,PASS
+AUD134-05,AUD134 (v1.3.5 fix),tests/test_v135.py::test_pipeline_pool_with_mismatching_saved_keys_is_refused,PASS
+AUD134-05,AUD134 (v1.3.5 fix),tests/test_v135.py::test_reproduction_verifies_everything_and_catches_tampering,PASS
+AUD134-06,AUD134 (v1.3.5 fix),tests/test_v134.py::test_test_outcomes_never_reach_training,PASS
+AUD134-06,AUD134 (v1.3.5 fix),tests/test_v134.py::test_validation_pool_ignores_full_data_outcomes,PASS
+AUD134-06,AUD134 (v1.3.5 fix),tests/test_v135.py::test_scope_edge_cases,PASS
+AUD134-06,AUD134 (v1.3.5 fix),tests/test_v135.py::test_scope_original_cumulative_and_prefix,PASS
+AUD134-07,AUD134 (v1.3.5 fix),tests/test_v134.py::test_audit_record_roundtrip_and_refusals,PASS
+AUD134-07,AUD134 (v1.3.5 fix),tests/test_v134.py::test_validation_manifest_identity_and_relocated_reproduction,PASS
+AUD134-07,AUD134 (v1.3.5 fix),tests/test_v135.py::test_audit_historical_identity_survives_data_replacement,PASS
+AUD134-07,AUD134 (v1.3.5 fix),tests/test_v135.py::test_audit_missing_historical_metadata_is_unknown_and_tails_round_trip,PASS
+AUD134-07,AUD134 (v1.3.5 fix),tests/test_v135.py::test_validation_export_filter_change_uses_rebuilt_original_view,PASS
+AUD134-07,AUD134 (v1.3.5 fix),tests/test_v135.py::test_validation_export_refuses_runnable_bundle_over_other_data,PASS
+AUD134-08,AUD134 (v1.3.5 fix),tests/test_v135.py::test_fixed_candidate_retrieval_never_scans_the_space,PASS
+AUD134-09,AUD134 (v1.3.5 fix),tests/test_v135.py::test_53c_budget_and_cancel_on_huge_declared_space,PASS
+AUD134-09,AUD134 (v1.3.5 fix),tests/test_v135.py::test_cancel_after_completion_keeps_complete,PASS
+AUD134-09,AUD134 (v1.3.5 fix),tests/test_v135.py::test_cancel_mid_cache_stops_at_exact_cursor,PASS
+AUD134-09,AUD134 (v1.3.5 fix),tests/test_v135.py::test_cancel_with_inflight_batch_kills_and_records_nothing,PASS
+AUD134-09,AUD134 (v1.3.5 fix),tests/test_v135.py::test_deadline_before_dispatch_with_fake_clock,PASS
+AUD134-09,AUD134 (v1.3.5 fix),tests/test_v135.py::test_mixed_cached_and_fresh_budget_counts_attempts,PASS
+AUD134-09,AUD134 (v1.3.5 fix),tests/test_v135.py::test_precancelled_all_cached_commits_nothing,PASS
+AUD134-10,AUD134 (v1.3.5 fix),tests/test_v134.py::test_huge_space_validation_refused_without_materializing,PASS
+AUD134-10,AUD134 (v1.3.5 fix),tests/test_v135.py::test_hard_fit_budget_counts_and_stops,PASS
+AUD134-10,AUD134 (v1.3.5 fix),tests/test_v135.py::test_retry_factor_for_nlme_structures,PASS
+AUD134-10,AUD134 (v1.3.5 fix),tests/test_v135.py::test_workload_bound_covers_uncached_plan,PASS
+AUD134-11,AUD134 (v1.3.5 fix),tests/test_v134.py::test_validation_manifest_identity_and_relocated_reproduction,PASS
+AUD134-11,AUD134 (v1.3.5 fix),tests/test_v135.py::test_51c_pipeline_bootstrap_reproduces_in_fresh_r,PASS
+AUD134-11,AUD134 (v1.3.5 fix),tests/test_v135.py::test_reproduction_na_safe_failed_draw_comparison,PASS
+AUD134-11,AUD134 (v1.3.5 fix),tests/test_v135.py::test_reproduction_verifies_everything_and_catches_tampering,PASS
+V135-D1,V135-D (v1.3.5 fix),tests/test_v135.py::test_adjusted_ranking_uses_log_tails[False-BH],PASS
+V135-D1,V135-D (v1.3.5 fix),tests/test_v135.py::test_adjusted_ranking_uses_log_tails[False-holm],PASS
+V135-D1,V135-D (v1.3.5 fix),tests/test_v135.py::test_adjusted_ranking_uses_log_tails[True-BH],PASS
+V135-D1,V135-D (v1.3.5 fix),tests/test_v135.py::test_adjusted_ranking_uses_log_tails[True-holm],PASS
+V135-D2,V135-D (v1.3.5 fix),tests/test_v134.py::test_51c_log_tails_ranking_and_adjustment,PASS
+V135-D3,V135-D (v1.3.5 fix),tests/test_v134_gui.py::test_reopened_partial_search_shows_resume_and_reasons,PASS
+V134-001,V134 issue group (17),tests/test_v134.py::test_47b_bootstrap_every_fit_matches_independent_refits,PASS
+V134-001,V134 issue group (17),tests/test_v134.py::test_51h3_bootstrap_matches_fresh_log_oracle,PASS
+V134-001,V134 issue group (17),tests/test_v134.py::test_bootstrap_chunking_and_cache_do_not_change_results,PASS
+V134-001,V134 issue group (17),tests/test_v134.py::test_fit_key_adversaries,PASS
+V134-001,V134 issue group (17),tests/test_v134.py::test_reduced_cache_never_crosses_bootstrap_draws,PASS
+V134-002,V134 issue group (17),tests/test_v134.py::test_51c_log_tails_ranking_and_adjustment,PASS
+V134-002,V134 issue group (17),tests/test_v134.py::test_51h3_bootstrap_matches_fresh_log_oracle,PASS
+V134-002,V134 issue group (17),tests/test_v134.py::test_54b_extreme_tails_have_finite_log_p,PASS
+V134-002,V134 issue group (17),tests/test_v134.py::test_log_bh_holm_match_p_adjust_and_order_underflow,PASS
+V134-003,V134 issue group (17),tests/test_v134.py::test_47b_bootstrap_every_fit_matches_independent_refits,PASS
+V134-003,V134 issue group (17),tests/test_v134.py::test_51h3_bootstrap_matches_fresh_log_oracle,PASS
+V134-003,V134 issue group (17),tests/test_v134.py::test_stability_counts_by_identity_not_label,PASS
+V134-004,V134 issue group (17),tests/test_v134.py::test_huge_space_validation_refused_without_materializing,PASS
+V134-004,V134 issue group (17),tests/test_v134.py::test_test_outcomes_never_reach_training,PASS
+V134-004,V134 issue group (17),tests/test_v134.py::test_validation_pool_ignores_full_data_outcomes,PASS
+V134-005,V134 issue group (17),tests/test_v134.py::test_48d_gee_structures_fit_their_own_working_correlation,PASS
+V134-005,V134 issue group (17),tests/test_v134.py::test_gee_aic_rule_refused_in_validation,PASS
+V134-006,V134 issue group (17),tests/test_v134.py::test_gee_aic_rule_refused_in_validation,PASS
+V134-006,V134 issue group (17),tests/test_v134.py::test_model_comparison_needs_identical_rows_not_equal_n,PASS
+V134-007,V134 issue group (17),tests/test_v134.py::test_51d_combined_grammar_twelve_candidates_and_off_by_default,PASS
+V134-007,V134 issue group (17),tests/test_v134.py::test_51d_planted_candidate_matches_independent_lme4,PASS
+V134-007,V134 issue group (17),tests/test_v134.py::test_time_eligible_count_matches_brute_force[1-2-4-True-1],PASS
+V134-007,V134 issue group (17),tests/test_v134.py::test_time_eligible_count_matches_brute_force[2-2-5-True-1],PASS
+V134-007,V134 issue group (17),tests/test_v134.py::test_time_eligible_count_matches_brute_force[3-2-5-True-1],PASS
+V134-007,V134 issue group (17),tests/test_v134.py::test_time_eligible_count_matches_brute_force[3-3-6-False-1],PASS
+V134-007,V134 issue group (17),tests/test_v134.py::test_time_eligible_count_matches_brute_force[4-2-6-True-2],PASS
+V134-007,V134 issue group (17),tests/test_v134.py::test_time_eligible_count_matches_brute_force[5-3-4-True-1],PASS
+V134-007,V134 issue group (17),tests/test_v134.py::test_time_eligible_refused_without_required_time,PASS
+V134-007,V134 issue group (17),tests/test_v134.py::test_time_strategy_honours_minimum_candidates,PASS
+V134-007,V134 issue group (17),tests/test_v134_gui.py::test_time_eligible_control_round_trip,PASS
+V134-008,V134 issue group (17),tests/test_v134.py::test_validation_manifest_identity_and_relocated_reproduction,PASS
+V134-009,V134 issue group (17),tests/test_v134.py::test_52d_partial_search_resumable_with_reason_states,PASS
+V134-009,V134 issue group (17),tests/test_v134.py::test_52d_resume_continues_same_search_to_15,PASS
+V134-009,V134 issue group (17),tests/test_v134_gui.py::test_reopened_partial_search_shows_resume_and_reasons,PASS
+V134-009,V134 issue group (17),tests/test_v134_gui.py::test_resume_after_real_restart_two_processes,PASS
+V134-010,V134 issue group (17),tests/test_v134.py::test_reduced_cache_never_crosses_bootstrap_draws,PASS
+V134-010,V134 issue group (17),tests/test_v134.py::test_reference_flags_make_only_their_test_provisional,PASS
+V134-011,V134 issue group (17),tests/test_v134.py::test_51h3_bootstrap_matches_fresh_log_oracle,PASS
+V134-011,V134 issue group (17),tests/test_v134.py::test_negative_delta_r2_and_underflow_wording,PASS
+V134-012,V134 issue group (17),tests/test_v134.py::test_fit_key_adversaries,PASS
+V134-012,V134 issue group (17),tests/test_v134.py::test_legacy_runs_without_identity_or_old_rules_are_never_reused,PASS
+V134-013,V134 issue group (17),tests/test_v134_gui.py::test_candidate_reorder_controls,PASS
+V134-014,V134 issue group (17),tests/test_v133.py::test_full_analysis_bundle_runs_relocated_offline_and_fails_closed,PASS
+V134-014,V134 issue group (17),tests/test_v134.py::test_educational_script_runs_and_is_labelled,PASS
+V134-014,V134 issue group (17),tests/test_v134_gui.py::test_code_dialog_modes_and_find,PASS
+V134-015,V134 issue group (17),tests/test_v134.py::test_audit_record_roundtrip_and_refusals,PASS
+V134-015,V134 issue group (17),tests/test_v134_gui.py::test_audit_button_writes_files,PASS
+V134-016,V134 issue group (17),tests/test_v133.py::test_51_cancel_kills_running_batches_and_resume_completes_exactly_once,PASS
+V134-016,V134 issue group (17),tests/test_v134.py::test_huge_space_validation_refused_without_materializing,PASS
+V134-017,V134 issue group (17),tests/test_v134_gui.py::test_simulated_display_scaling_layout[1.25],PASS
+V134-017,V134 issue group (17),tests/test_v134_gui.py::test_simulated_display_scaling_layout[1.5],PASS
+V134-017,V134 issue group (17),tests/test_v134_gui.py::test_simulated_display_scaling_layout[1],PASS
+V134-017,V134 issue group (17),tests/test_v134_gui.py::test_simulated_display_scaling_layout[2],PASS
+STAT-22,Appendix A (92 inherited),tests/test_v13.py::test_P0_01_verify_tolerances,PASS
+STAT-22,Appendix A (92 inherited),tests/test_v132.py::test_identity_35a_reversed_ordinal_coding,PASS
+STAT-22,Appendix A (92 inherited),tests/test_v132.py::test_identity_35c_disjoint_rows_with_equal_fit_never_verified,PASS
+STAT-22,Appendix A (92 inherited),tests/test_v132.py::test_identity_cross_module_lmm_verified_and_cluster_mismatch,PASS
+STAT-22,Appendix A (92 inherited),tests/test_v132.py::test_identity_legacy_origin_is_unverifiable,PASS
+STAT-22,Appendix A (92 inherited),tests/test_v132.py::test_identity_shifted_outcome_same_rows_is_mismatch,PASS
+STAT-22,Appendix A (92 inherited),tests/test_v133.py::test_stat47_transfer_refit_plot_and_reml_keep_the_model,PASS
+STAT-39,Appendix A (92 inherited),tests/test_v132.py::test_cd09_history_context_rebuild_and_new_analysis,PASS
+STAT-39,Appendix A (92 inherited),tests/test_v133.py::test_50_filter_reconstruct_960_verified_new_800_and_current_view_untouched,PASS
+STAT-17,Appendix A (92 inherited),tests/test_v132.py::test_cd03_b_tests_match_reference_and_flag_car1_apvar,PASS
+STAT-17,Appendix A (92 inherited),tests/test_v132.py::test_cmp_residual_boundary_and_not_nested,PASS
+STAT-17,Appendix A (92 inherited),tests/test_v132.py::test_lr_python_service_negative_and_boundary_rules,PASS
+STAT-18,Appendix A (92 inherited),tests/test_v132.py::test_diag_nlme_near_boundary_detected_and_controls_clean,PASS
+STAT-19,Appendix A (92 inherited),tests/test_v132.py::test_cmp_family_aware_glmm_clmm_gee,PASS
+STAT-20,Appendix A (92 inherited),tests/test_v132.py::test_cd07_irregular_time_ar1_vs_car1_and_missing_predictor_rows,PASS
+STAT-20,Appendix A (92 inherited),tests/test_v132.py::test_report_preflight_complete_rows_range,PASS
+STAT-21,Appendix A (92 inherited),tests/test_v132.py::test_cd06_reused_ids_local_policy_and_global_refusal,PASS
+STAT-21,Appendix A (92 inherited),tests/test_v132.py::test_stat21_clustered_mixed_matches_reference[intercept-ar1-3L_RI_AR1-7],PASS
+STAT-21,Appendix A (92 inherited),tests/test_v132.py::test_stat21_clustered_mixed_matches_reference[intercept-car1-3L_RI_CAR1-7],PASS
+STAT-21,Appendix A (92 inherited),tests/test_v132.py::test_stat21_clustered_mixed_matches_reference[intercept-independent-3L_RI_Independent-6],PASS
+STAT-21,Appendix A (92 inherited),tests/test_v132.py::test_stat21_clustered_mixed_matches_reference[slope-ar1-3L_RS_AR1-9],PASS
+STAT-21,Appendix A (92 inherited),tests/test_v132.py::test_stat21_clustered_mixed_matches_reference[slope-car1-3L_RS_CAR1-9],PASS
+STAT-21,Appendix A (92 inherited),tests/test_v132.py::test_stat21_clustered_mixed_matches_reference[slope-independent-3L_RS_Independent-8],PASS
+STAT-21,Appendix A (92 inherited),tests/test_v132.py::test_stat21_clustered_mixed_matches_reference[slope_uncorrelated-ar1-3L_DIAG_AR1-8],PASS
+STAT-21,Appendix A (92 inherited),tests/test_v132.py::test_stat21_clustered_mixed_matches_reference[slope_uncorrelated-car1-3L_DIAG_CAR1-8],PASS
+STAT-21,Appendix A (92 inherited),tests/test_v132.py::test_stat21_clustered_mixed_matches_reference[slope_uncorrelated-independent-3L_DIAG_Independent-7],PASS
+STAT-21,Appendix A (92 inherited),tests/test_v132.py::test_stat21_random_comparison_keeps_cluster,PASS
+STAT-28,Appendix A (92 inherited),tests/test_v13.py::test_P1_02_03_preflight_reports_observed_waves_and_gap_compression,PASS
+STAT-32,Appendix A (92 inherited),tests/test_v132.py::test_diag_37d_gradient_warning_kept_per_model_and_deduplicated,PASS
+STAT-33,Appendix A (92 inherited),tests/test_v132.py::test_cmp_family_aware_glmm_clmm_gee,PASS
+STAT-36,Appendix A (92 inherited),tests/test_v131.py::test_30_exports_fail_clearly_on_changed_data_or_missing_packages,PASS
+STAT-36,Appendix A (92 inherited),tests/test_v131.py::test_30_exports_reproduce_and_verify_in_clean_r,PASS
+STAT-36,Appendix A (92 inherited),tests/test_v132.py::test_cd08_exported_candidate_code_reproduces_in_fresh_r,PASS
+STAT-36,Appendix A (92 inherited),tests/test_v133.py::test_full_analysis_bundle_runs_relocated_offline_and_fails_closed,PASS
+STAT-44,Appendix A (92 inherited),tests/test_v132.py::test_diag_lme4_uncorrelated_slope_survives_postprocessing,PASS
+STAT-45,Appendix A (92 inherited),tests/test_v132.py::test_diag_direct_r2_not_misleading_fallback,PASS
+STAT-23,Appendix A (92 inherited),tests/test_v132.py::test_lr_contrast_reference_follows_hypothesis,PASS
+STAT-23,Appendix A (92 inherited),tests/test_v132.py::test_stat21_random_comparison_keeps_cluster,PASS
+STAT-24,Appendix A (92 inherited),tests/test_v132.py::test_cd01_workflow_b_18_combinations[False],PASS
+STAT-24,Appendix A (92 inherited),tests/test_v132.py::test_cd01_workflow_b_18_combinations[True],PASS
+STAT-25,Appendix A (92 inherited),tests/test_v132.py::test_cmp_family_aware_glmm_clmm_gee,PASS
+STAT-26,Appendix A (92 inherited),tests/test_v131.py::test_26_po_check_detects_non_proportional_odds,PASS
+STAT-26,Appendix A (92 inherited),tests/test_v131.py::test_26_po_check_matches_nominal_test_main_and_interaction,PASS
+STAT-26,Appendix A (92 inherited),tests/test_v131.py::test_26_po_check_sparse_categories_gives_specific_reason,PASS
+STAT-27,Appendix A (92 inherited),tests/test_v131.py::test_28_gee_identity_and_blocked_single_level_transfer,PASS
+STAT-29,Appendix A (92 inherited),tests/test_v131.py::test_28_glmm_and_clmm_keep_family_and_predictors,PASS
+STAT-30,Appendix A (92 inherited),tests/test_v131.py::test_28_glmm_and_clmm_keep_family_and_predictors,PASS
+STAT-34,Appendix A (92 inherited),tests/test_v132.py::test_cmp_all_failed_is_explicit,PASS
+STAT-35,Appendix A (92 inherited),tests/test_v131.py::test_29_wording_does_not_claim_equal_spacing_for_person_gaps,PASS
+STAT-38,Appendix A (92 inherited),tests/test_v132.py::test_diag_lme4_uncorrelated_slope_survives_postprocessing,PASS
+STAT-40,Appendix A (92 inherited),tests/test_v132.py::test_stat40_duplicate_labels_keep_codes_and_event,PASS
+STAT-41,Appendix A (92 inherited),tests/test_v132.py::test_lr_python_service_negative_and_boundary_rules,PASS
+STAT-41,Appendix A (92 inherited),tests/test_v132.py::test_lr_r_twin_matches_python,PASS
+STAT-42,Appendix A (92 inherited),tests/test_v132.py::test_report_nlme_tiny_f_probabilities,PASS
+STAT-43,Appendix A (92 inherited),tests/test_v132.py::test_stat21_clustered_mixed_matches_reference[intercept-ar1-3L_RI_AR1-7],PASS
+STAT-43,Appendix A (92 inherited),tests/test_v132.py::test_stat21_clustered_mixed_matches_reference[intercept-car1-3L_RI_CAR1-7],PASS
+STAT-43,Appendix A (92 inherited),tests/test_v132.py::test_stat21_clustered_mixed_matches_reference[intercept-independent-3L_RI_Independent-6],PASS
+STAT-43,Appendix A (92 inherited),tests/test_v132.py::test_stat21_clustered_mixed_matches_reference[slope-ar1-3L_RS_AR1-9],PASS
+STAT-43,Appendix A (92 inherited),tests/test_v132.py::test_stat21_clustered_mixed_matches_reference[slope-car1-3L_RS_CAR1-9],PASS
+STAT-43,Appendix A (92 inherited),tests/test_v132.py::test_stat21_clustered_mixed_matches_reference[slope-independent-3L_RS_Independent-8],PASS
+STAT-43,Appendix A (92 inherited),tests/test_v132.py::test_stat21_clustered_mixed_matches_reference[slope_uncorrelated-ar1-3L_DIAG_AR1-8],PASS
+STAT-43,Appendix A (92 inherited),tests/test_v132.py::test_stat21_clustered_mixed_matches_reference[slope_uncorrelated-car1-3L_DIAG_CAR1-8],PASS
+STAT-43,Appendix A (92 inherited),tests/test_v132.py::test_stat21_clustered_mixed_matches_reference[slope_uncorrelated-independent-3L_DIAG_Independent-7],PASS
+STAT-46,Appendix A (92 inherited),tests/test_v132.py::test_diag_37d_gradient_warning_kept_per_model_and_deduplicated,PASS
+UI-28,Appendix A (92 inherited),tests/test_v131.py::test_32_layout_with_1_3_100_candidate_rows[100],PASS
+UI-28,Appendix A (92 inherited),tests/test_v131.py::test_32_layout_with_1_3_100_candidate_rows[1],PASS
+UI-28,Appendix A (92 inherited),tests/test_v131.py::test_32_layout_with_1_3_100_candidate_rows[3],PASS
+UI-29,Appendix A (92 inherited),tests/test_v131.py::test_33_measurement_review_search_sort_and_saved_override,PASS
+UI-30,Appendix A (92 inherited),tests/test_v131.py::test_34_entities_scrollbar_dropdowns_and_tables,PASS
+UI-31,Appendix A (92 inherited),tests/test_v131.py::test_33_selected_predictors_first_display_only,PASS
+UI-31,Appendix A (92 inherited),tests/test_v132_gui.py::test_ui31_selected_first_in_every_multiselect,PASS
+UI-32,Appendix A (92 inherited),tests/test_v131.py::test_34_entities_scrollbar_dropdowns_and_tables,PASS
+UI-33,Appendix A (92 inherited),tests/test_v131.py::test_34_entities_scrollbar_dropdowns_and_tables,PASS
+UI-34,Appendix A (92 inherited),tests/test_v131.py::test_34_entities_scrollbar_dropdowns_and_tables,PASS
+UI-35,Appendix A (92 inherited),tests/test_v12_gui.py::test_longitudinal_candidate_refits_in_mixed_workspace,PASS
+UI-35,Appendix A (92 inherited),tests/test_v131.py::test_27_bic_identical_in_discovery_full_analysis_and_base_r,PASS
+UI-35,Appendix A (92 inherited),tests/test_v132.py::test_cd09_history_context_rebuild_and_new_analysis,PASS
+UI-35,Appendix A (92 inherited),tests/test_v133.py::test_spec_diff_ignores_presentation_and_lists_model_changes,PASS
+UI-36,Appendix A (92 inherited),tests/test_v12_gui.py::test_longitudinal_candidate_refits_in_mixed_workspace,PASS
+UI-36,Appendix A (92 inherited),tests/test_v131.py::test_27_bic_identical_in_discovery_full_analysis_and_base_r,PASS
+UI-36,Appendix A (92 inherited),tests/test_v132.py::test_cd09_history_context_rebuild_and_new_analysis,PASS
+UI-36,Appendix A (92 inherited),tests/test_v133.py::test_spec_diff_ignores_presentation_and_lists_model_changes,PASS
+UI-37,Appendix A (92 inherited),tests/test_v12_gui.py::test_longitudinal_candidate_refits_in_mixed_workspace,PASS
+UI-37,Appendix A (92 inherited),tests/test_v131.py::test_27_bic_identical_in_discovery_full_analysis_and_base_r,PASS
+UI-37,Appendix A (92 inherited),tests/test_v132.py::test_cd09_history_context_rebuild_and_new_analysis,PASS
+UI-37,Appendix A (92 inherited),tests/test_v133.py::test_spec_diff_ignores_presentation_and_lists_model_changes,PASS
+UI-38,Appendix A (92 inherited),tests/test_v12_gui.py::test_longitudinal_candidate_refits_in_mixed_workspace,PASS
+UI-38,Appendix A (92 inherited),tests/test_v131.py::test_27_bic_identical_in_discovery_full_analysis_and_base_r,PASS
+UI-38,Appendix A (92 inherited),tests/test_v132.py::test_cd09_history_context_rebuild_and_new_analysis,PASS
+UI-38,Appendix A (92 inherited),tests/test_v133.py::test_spec_diff_ignores_presentation_and_lists_model_changes,PASS
+UI-39,Appendix A (92 inherited),tests/test_v132.py::test_cd09_history_context_rebuild_and_new_analysis,PASS
+UI-39,Appendix A (92 inherited),tests/test_v136_trace.py::test_ui39_filter_context_note_names_historical_views,PASS
+UI-40,Appendix A (92 inherited),tests/test_v136_trace.py::test_ui40_no_duplicated_holm_wording,PASS
+UI-41,Appendix A (92 inherited),tests/test_v132_gui.py::test_ui42_49_57_csv_status_reload_and_cluster_columns,PASS
+UI-42,Appendix A (92 inherited),tests/test_v132_gui.py::test_ui42_49_57_csv_status_reload_and_cluster_columns,PASS
+UI-43,Appendix A (92 inherited),tests/test_v132_gui.py::test_ui43_frozen_column_stays_inside_viewport,PASS
+UI-44,Appendix A (92 inherited),tests/test_v131.py::test_33_measurement_review_search_sort_and_saved_override,PASS
+UI-44,Appendix A (92 inherited),tests/test_v131.py::test_33_selected_predictors_first_display_only,PASS
+UI-45,Appendix A (92 inherited),tests/test_v131.py::test_33_measurement_review_search_sort_and_saved_override,PASS
+UI-45,Appendix A (92 inherited),tests/test_v131.py::test_33_selected_predictors_first_display_only,PASS
+UI-46,Appendix A (92 inherited),tests/test_v132_gui.py::test_ui46_47_measurement_review_wording,PASS
+UI-47,Appendix A (92 inherited),tests/test_v132_gui.py::test_ui46_47_measurement_review_wording,PASS
+UI-48,Appendix A (92 inherited),tests/test_v132_gui.py::test_ui42_49_57_csv_status_reload_and_cluster_columns,PASS
+UI-49,Appendix A (92 inherited),tests/test_v132_gui.py::test_ui42_49_57_csv_status_reload_and_cluster_columns,PASS
+UI-50,Appendix A (92 inherited),tests/test_v132_gui.py::test_ui50_empty_search_explained,PASS
+UI-51,Appendix A (92 inherited),tests/test_v135.py::test_focal_minimum_example_from_the_audit,PASS
+UI-51,Appendix A (92 inherited),tests/test_v135.py::test_min_control_disabled_for_workflow_b,PASS
+UI-52,Appendix A (92 inherited),tests/test_v136_trace.py::test_ui52_whole_model_text_is_not_an_interaction_claim,PASS
+UI-53,Appendix A (92 inherited),tests/test_v136_trace.py::test_ui53_random_intercept_plot_subtitle_follows_available_intervals,PASS
+UI-54,Appendix A (92 inherited),tests/test_v132.py::test_stat21_random_comparison_keeps_cluster,PASS
+UI-55,Appendix A (92 inherited),tests/test_v136_trace.py::test_ui55_structure_comparison_text_matches_its_estimand,PASS
+UI-56,Appendix A (92 inherited),tests/test_v132.py::test_cd04_time_only_b_without_candidates,PASS
+UI-56,Appendix A (92 inherited),tests/test_v132_gui.py::test_cd12_cluster_controls_one_state_and_valid_structures,PASS
+UI-57,Appendix A (92 inherited),tests/test_v132.py::test_stat21_clustered_mixed_matches_reference[intercept-ar1-3L_RI_AR1-7],PASS
+UI-57,Appendix A (92 inherited),tests/test_v132.py::test_stat21_clustered_mixed_matches_reference[intercept-car1-3L_RI_CAR1-7],PASS
+UI-57,Appendix A (92 inherited),tests/test_v132.py::test_stat21_clustered_mixed_matches_reference[intercept-independent-3L_RI_Independent-6],PASS
+UI-57,Appendix A (92 inherited),tests/test_v132.py::test_stat21_clustered_mixed_matches_reference[slope-ar1-3L_RS_AR1-9],PASS
+UI-57,Appendix A (92 inherited),tests/test_v132.py::test_stat21_clustered_mixed_matches_reference[slope-car1-3L_RS_CAR1-9],PASS
+UI-57,Appendix A (92 inherited),tests/test_v132.py::test_stat21_clustered_mixed_matches_reference[slope-independent-3L_RS_Independent-8],PASS
+UI-57,Appendix A (92 inherited),tests/test_v132.py::test_stat21_clustered_mixed_matches_reference[slope_uncorrelated-ar1-3L_DIAG_AR1-8],PASS
+UI-57,Appendix A (92 inherited),tests/test_v132.py::test_stat21_clustered_mixed_matches_reference[slope_uncorrelated-car1-3L_DIAG_CAR1-8],PASS
+UI-57,Appendix A (92 inherited),tests/test_v132.py::test_stat21_clustered_mixed_matches_reference[slope_uncorrelated-independent-3L_DIAG_Independent-7],PASS
+UI-57,Appendix A (92 inherited),tests/test_v132_gui.py::test_ui42_49_57_csv_status_reload_and_cluster_columns,PASS
+STAT-15,Appendix A (92 inherited),tests/test_v131.py::test_26_po_check_detects_non_proportional_odds,PASS
+STAT-15,Appendix A (92 inherited),tests/test_v131.py::test_26_po_check_matches_nominal_test_main_and_interaction,PASS
+STAT-15,Appendix A (92 inherited),tests/test_v131.py::test_26_po_check_sparse_categories_gives_specific_reason,PASS
+STAT-16,Appendix A (92 inherited),tests/test_v131.py::test_27_bic_identical_in_discovery_full_analysis_and_base_r,PASS
+STAT-16,Appendix A (92 inherited),tests/test_v132.py::test_cd01_workflow_b_18_combinations[False],PASS
+STAT-16,Appendix A (92 inherited),tests/test_v132.py::test_cd01_workflow_b_18_combinations[True],PASS
+STAT-31,Appendix A (92 inherited),tests/test_v131.py::test_28_timeout_and_cancel_are_never_complete,PASS
+STAT-31,Appendix A (92 inherited),tests/test_v132.py::test_stat31_cancel_long_task_no_orphan,PASS
+STAT-31,Appendix A (92 inherited),tests/test_v133.py::test_51_cancel_kills_running_batches_and_resume_completes_exactly_once,PASS
+STAT-37,Appendix A (92 inherited),tests/test_v131.py::test_31_bounded_search_resume_reopen_no_duplicates,PASS
+STAT-37,Appendix A (92 inherited),tests/test_v133.py::test_51_cancel_kills_running_batches_and_resume_completes_exactly_once,PASS
+STAT-47,Appendix A (92 inherited),tests/test_v133.py::test_fitted_vs_requested_fails_closed_on_injected_mismatch,PASS
+STAT-47,Appendix A (92 inherited),tests/test_v133.py::test_spec_diff_ignores_presentation_and_lists_model_changes,PASS
+STAT-47,Appendix A (92 inherited),tests/test_v133.py::test_stat47_transfer_refit_plot_and_reml_keep_the_model,PASS
+V133-STATE-01,Appendix A (92 inherited),tests/test_v133.py::test_stat47_transfer_refit_plot_and_reml_keep_the_model,PASS
+V133-STATE-02,Appendix A (92 inherited),tests/test_v133.py::test_stat47_transfer_refit_plot_and_reml_keep_the_model,PASS
+V133-STATE-03,Appendix A (92 inherited),tests/test_v133.py::test_stat47_transfer_refit_plot_and_reml_keep_the_model,PASS
+V133-STATE-04,Appendix A (92 inherited),tests/test_v133.py::test_stat47_transfer_refit_plot_and_reml_keep_the_model,PASS
+V133-STATE-05,Appendix A (92 inherited),tests/test_v133.py::test_custom_term_subset_and_hierarchy_refusal,PASS
+V133-STATE-05,Appendix A (92 inherited),tests/test_v133.py::test_term_presets_custom_and_hierarchy,PASS
+V133-STAT-01,Appendix A (92 inherited),tests/test_v133.py::test_48c_time_comparison_keeps_ar1_cluster_and_terms,PASS
+V133-STAT-02,Appendix A (92 inherited),tests/test_v133.py::test_45a_preflight_composite_key_counts,PASS
+V133-STAT-03,Appendix A (92 inherited),tests/test_v132.py::test_cd05_explicit_cluster_on_off_same_rows,PASS
+V133-STAT-03,Appendix A (92 inherited),tests/test_v133.py::test_45a_local_ids_fit_matches_reference_and_unclustered_keeps_composite,PASS
+V133-VAL-01,Appendix A (92 inherited),tests/test_v133.py::test_validation_gee_participant_target_marginal_mean,PASS
+V133-VAL-01,Appendix A (92 inherited),tests/test_v133.py::test_validation_pipeline_bootstrap_failures_and_persistence,PASS
+V133-VAL-01,Appendix A (92 inherited),tests/test_v133.py::test_validation_predictions_match_independent_oracle_and_do_not_leak,PASS
+V133-VAL-01,Appendix A (92 inherited),tests/test_v133.py::test_validation_rows_target_gaussian_and_binary,PASS
+V133-VAL-01,Appendix A (92 inherited),tests/test_v133.py::test_validation_splits_deterministic_disjoint_and_draw_ids_unique,PASS
+V133-VAL-01,Appendix A (92 inherited),tests/test_v133_gui.py::test_validation_panel_run_persist_reopen,PASS
+V133-EXP-01,Appendix A (92 inherited),tests/test_v133.py::test_full_analysis_bundle_runs_relocated_offline_and_fails_closed,PASS
+V133-EXP-02,Appendix A (92 inherited),tests/test_v133.py::test_amd_candidate_bundle_manifest_complete_and_reproduces,PASS
+V133-EXP-03,Appendix A (92 inherited),tests/test_v133.py::test_full_analysis_bundle_runs_relocated_offline_and_fails_closed,PASS
+V133-EXP-04,Appendix A (92 inherited),tests/test_v133.py::test_amd_candidate_bundle_manifest_complete_and_reproduces,PASS
+V133-UI-01,Appendix A (92 inherited),tests/test_v133_gui.py::test_preflight_labels,PASS
+V133-UI-02,Appendix A (92 inherited),tests/test_v133_gui.py::test_workflow_b_copy_and_composite_key_labels,PASS
+V133-UI-03,Appendix A (92 inherited),tests/test_v133_gui.py::test_blocked_start_resets_progress,PASS
+V133-UI-04,Appendix A (92 inherited),tests/test_v133_gui.py::test_workflow_b_copy_and_composite_key_labels,PASS
+V133-UI-05,Appendix A (92 inherited),tests/test_v133_gui.py::test_preflight_labels,PASS
+V133-UI-06,Appendix A (92 inherited),tests/test_v133_gui.py::test_csv_save_and_interpretation,PASS
+V133-UI-07,Appendix A (92 inherited),tests/test_v133_gui.py::test_csv_save_and_interpretation,PASS
+V133-UI-08,Appendix A (92 inherited),tests/test_v133.py::test_51_bh_holm_per_family_match_p_adjust,PASS
+V133-UI-09,Appendix A (92 inherited),tests/test_v133.py::test_51_independent_enumeration_oracle_for_three_candidates,PASS
+V133-CMP-01,Appendix A (92 inherited),tests/test_v132.py::test_cmp_family_aware_glmm_clmm_gee,PASS
+V133-CMP-01,Appendix A (92 inherited),tests/test_v133.py::test_glmm_and_clmm_match_independent_likelihoods,PASS
+V133-DIAG-01,Appendix A (92 inherited),tests/test_v133.py::test_lr_material_negative_withheld_and_tiny_negative_clamped,PASS
+V133-DIAG-01,Appendix A (92 inherited),tests/test_v133.py::test_optimizer_fallback_same_spec_structural_no_retry_all_fail,PASS
+V133-HIST-01,Appendix A (92 inherited),tests/test_v133.py::test_50_filter_reconstruct_960_verified_new_800_and_current_view_untouched,PASS
+V133-HIST-01,Appendix A (92 inherited),tests/test_v133.py::test_50d_three_category_coding_change_detected_and_original_rebuilt,PASS
+V133-DISC-01,Appendix A (92 inherited),tests/test_v133.py::test_51_bh_holm_per_family_match_p_adjust,PASS
+V133-DISC-01,Appendix A (92 inherited),tests/test_v133.py::test_51_independent_enumeration_oracle_for_three_candidates,PASS
+V133-QA-01,Appendix A (92 inherited),tests/test_v133.py::test_matrix_standalone_full_analysis_reml_matches_reference[cluster_DIAG_AR1],PASS
+V133-QA-01,Appendix A (92 inherited),tests/test_v133.py::test_matrix_standalone_full_analysis_reml_matches_reference[cluster_DIAG_CAR1],PASS
+V133-QA-01,Appendix A (92 inherited),tests/test_v133.py::test_matrix_standalone_full_analysis_reml_matches_reference[cluster_DIAG_independent],PASS
+V133-QA-01,Appendix A (92 inherited),tests/test_v133.py::test_matrix_standalone_full_analysis_reml_matches_reference[cluster_RI_AR1],PASS
+V133-QA-01,Appendix A (92 inherited),tests/test_v133.py::test_matrix_standalone_full_analysis_reml_matches_reference[cluster_RI_CAR1],PASS
+V133-QA-01,Appendix A (92 inherited),tests/test_v133.py::test_matrix_standalone_full_analysis_reml_matches_reference[cluster_RI_independent],PASS
+V133-QA-01,Appendix A (92 inherited),tests/test_v133.py::test_matrix_standalone_full_analysis_reml_matches_reference[cluster_RS_AR1],PASS
+V133-QA-01,Appendix A (92 inherited),tests/test_v133.py::test_matrix_standalone_full_analysis_reml_matches_reference[cluster_RS_CAR1],PASS
+V133-QA-01,Appendix A (92 inherited),tests/test_v133.py::test_matrix_standalone_full_analysis_reml_matches_reference[cluster_RS_independent],PASS
+V133-QA-01,Appendix A (92 inherited),tests/test_v133.py::test_matrix_standalone_full_analysis_reml_matches_reference[participant_DIAG_AR1],PASS
+V133-QA-01,Appendix A (92 inherited),tests/test_v133.py::test_matrix_standalone_full_analysis_reml_matches_reference[participant_DIAG_CAR1],PASS
+V133-QA-01,Appendix A (92 inherited),tests/test_v133.py::test_matrix_standalone_full_analysis_reml_matches_reference[participant_DIAG_independent],PASS
+V133-QA-01,Appendix A (92 inherited),tests/test_v133.py::test_matrix_standalone_full_analysis_reml_matches_reference[participant_RI_AR1],PASS
+V133-QA-01,Appendix A (92 inherited),tests/test_v133.py::test_matrix_standalone_full_analysis_reml_matches_reference[participant_RI_CAR1],PASS
+V133-QA-01,Appendix A (92 inherited),tests/test_v133.py::test_matrix_standalone_full_analysis_reml_matches_reference[participant_RI_independent],PASS
+V133-QA-01,Appendix A (92 inherited),tests/test_v133.py::test_matrix_standalone_full_analysis_reml_matches_reference[participant_RS_AR1],PASS
+V133-QA-01,Appendix A (92 inherited),tests/test_v133.py::test_matrix_standalone_full_analysis_reml_matches_reference[participant_RS_CAR1],PASS
+V133-QA-01,Appendix A (92 inherited),tests/test_v133.py::test_matrix_standalone_full_analysis_reml_matches_reference[participant_RS_independent],PASS
+V133-QA-01,Appendix A (92 inherited),tests/test_v133.py::test_matrix_workflow_a_focal_matches_reference[cluster_DIAG_AR1],PASS
+V133-QA-01,Appendix A (92 inherited),tests/test_v133.py::test_matrix_workflow_a_focal_matches_reference[cluster_DIAG_CAR1],PASS
+V133-QA-01,Appendix A (92 inherited),tests/test_v133.py::test_matrix_workflow_a_focal_matches_reference[cluster_DIAG_independent],PASS
+V133-QA-01,Appendix A (92 inherited),tests/test_v133.py::test_matrix_workflow_a_focal_matches_reference[cluster_RI_AR1],PASS
+V133-QA-01,Appendix A (92 inherited),tests/test_v133.py::test_matrix_workflow_a_focal_matches_reference[cluster_RI_CAR1],PASS
+V133-QA-01,Appendix A (92 inherited),tests/test_v133.py::test_matrix_workflow_a_focal_matches_reference[cluster_RI_independent],PASS
+V133-QA-01,Appendix A (92 inherited),tests/test_v133.py::test_matrix_workflow_a_focal_matches_reference[cluster_RS_AR1],PASS
+V133-QA-01,Appendix A (92 inherited),tests/test_v133.py::test_matrix_workflow_a_focal_matches_reference[cluster_RS_CAR1],PASS
+V133-QA-01,Appendix A (92 inherited),tests/test_v133.py::test_matrix_workflow_a_focal_matches_reference[cluster_RS_independent],PASS
+V133-QA-01,Appendix A (92 inherited),tests/test_v133.py::test_matrix_workflow_a_focal_matches_reference[participant_DIAG_AR1],PASS
+V133-QA-01,Appendix A (92 inherited),tests/test_v133.py::test_matrix_workflow_a_focal_matches_reference[participant_DIAG_CAR1],PASS
+V133-QA-01,Appendix A (92 inherited),tests/test_v133.py::test_matrix_workflow_a_focal_matches_reference[participant_DIAG_independent],PASS
+V133-QA-01,Appendix A (92 inherited),tests/test_v133.py::test_matrix_workflow_a_focal_matches_reference[participant_RI_AR1],PASS
+V133-QA-01,Appendix A (92 inherited),tests/test_v133.py::test_matrix_workflow_a_focal_matches_reference[participant_RI_CAR1],PASS
+V133-QA-01,Appendix A (92 inherited),tests/test_v133.py::test_matrix_workflow_a_focal_matches_reference[participant_RI_independent],PASS
+V133-QA-01,Appendix A (92 inherited),tests/test_v133.py::test_matrix_workflow_a_focal_matches_reference[participant_RS_AR1],PASS
+V133-QA-01,Appendix A (92 inherited),tests/test_v133.py::test_matrix_workflow_a_focal_matches_reference[participant_RS_CAR1],PASS
+V133-QA-01,Appendix A (92 inherited),tests/test_v133.py::test_matrix_workflow_a_focal_matches_reference[participant_RS_independent],PASS
+V133-QA-01,Appendix A (92 inherited),tests/test_v133.py::test_matrix_workflow_b_nine_structures_match_reference[cluster],PASS
+V133-QA-01,Appendix A (92 inherited),tests/test_v133.py::test_matrix_workflow_b_nine_structures_match_reference[participant],PASS
+V133-QA-02,Appendix A (92 inherited),tests/test_v133_gui.py::test_validation_panel_run_persist_reopen,PASS
+V133-QA-02,Appendix A (92 inherited),tests/test_v134_gui.py::test_resume_after_real_restart_two_processes,PASS
+V133-QA-03,Appendix A (92 inherited),tests/test_console_packages.py::test_O_offline_by_construction,PASS
+V133-QA-03,Appendix A (92 inherited),tests/test_v133.py::test_full_analysis_bundle_runs_relocated_offline_and_fails_closed,PASS

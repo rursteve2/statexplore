@@ -1,0 +1,223 @@
+{
+  "checks": [
+    {
+      "test": "same_workbook_hash",
+      "expected": true,
+      "observed": true,
+      "passed": true
+    },
+    {
+      "test": "different_values",
+      "expected": true,
+      "observed": true,
+      "passed": true
+    },
+    {
+      "test": "same_metadata",
+      "expected": true,
+      "observed": true,
+      "passed": true
+    },
+    {
+      "test": "same_sheet_signature",
+      "expected": true,
+      "observed": true,
+      "passed": true
+    },
+    {
+      "test": "same_sheet_fit_identity",
+      "expected": true,
+      "observed": true,
+      "passed": true
+    },
+    {
+      "test": "same_sheet_context",
+      "expected": "current",
+      "observed": "current",
+      "passed": true
+    },
+    {
+      "test": "same_sheet_cache_admitted",
+      "expected": true,
+      "observed": true,
+      "passed": true
+    },
+    {
+      "test": "same_sheet_resume_allowed",
+      "expected": true,
+      "observed": true,
+      "passed": true
+    },
+    {
+      "test": "same_sheet_bundle_allowed",
+      "expected": true,
+      "observed": true,
+      "passed": true
+    },
+    {
+      "test": "different_sheet_signature_distinct",
+      "expected": true,
+      "observed": true,
+      "passed": true
+    },
+    {
+      "test": "different_sheet_fit_identity_distinct",
+      "expected": true,
+      "observed": true,
+      "passed": true
+    },
+    {
+      "test": "different_sheet_context_not_current",
+      "expected": true,
+      "observed": true,
+      "passed": true
+    },
+    {
+      "test": "different_sheet_cache_not_admitted",
+      "expected": false,
+      "observed": false,
+      "passed": true
+    },
+    {
+      "test": "different_sheet_resume_refused",
+      "expected": true,
+      "observed": true,
+      "passed": true
+    },
+    {
+      "test": "different_sheet_audit_not_matched",
+      "expected": false,
+      "observed": false,
+      "passed": true
+    },
+    {
+      "test": "different_sheet_bundle_refused_or_original",
+      "expected": true,
+      "observed": true,
+      "passed": true
+    }
+  ],
+  "observations": {
+    "source_sha256": "b22ed8f4b06dc3964b96413ca2bfa88863ed168db2bcd24747b5c204731ce02e",
+    "source_options": [
+      {
+        "sheet": "A"
+      },
+      {
+        "sheet": "B"
+      }
+    ],
+    "signature_A": "ec24cfe8f6bbee75fa216d2d080f63d849c432ce0311bc7f3c4198b64a764735",
+    "signature_B": "7ad8f91b98b55c5886a86639dd22fa661774c1415390300c366e2145a3b3b04b",
+    "fit_id_A": "f9e3caa12993adef04ed65a581bf90c0cefb0d679640a29f8d1999ca34c30c89",
+    "fit_id_B": "5e8dffc15f48146fba6f8c2dc6d8d3fc00de8525c90f521a9ff5994a8f4fb298",
+    "corr_y_xz_A": 0.9991717923620217,
+    "corr_y_xz_B": 0.07341307696951486,
+    "wrong_bundle_reason": "the project's data are not the data this validation analysed (the imported data values differ from those the search used (same source file, different content: e.g. another worksheet, other import options or edited values))",
+    "candidate_key": "x:z|x+x:z+z",
+    "snapshot": {
+      "schema": 3,
+      "identity_schema": 3,
+      "content_id": "be4895976b02e9b926b34df5c973e9ef30d81721b49169171e842e4c3adf1bd1",
+      "source_options": {
+        "sheet": "A"
+      },
+      "source_sha256": "b22ed8f4b06dc3964b96413ca2bfa88863ed168db2bcd24747b5c204731ce02e",
+      "source_file": "AUD135_06_two_sheets.xlsx",
+      "source_format": "xlsx",
+      "source_size_bytes": 14638,
+      "source_rows": 80,
+      "variables": [
+        {
+          "name": "y",
+          "alias": "v001",
+          "storage": "numeric",
+          "measure": "continuous",
+          "display_name": "y",
+          "label": "",
+          "value_labels": [],
+          "missing_values": [],
+          "missing_ranges": [],
+          "role": "none",
+          "reference_level": null,
+          "source_measure": "",
+          "suggested_measure": "continuous",
+          "suggestion_reasons": [
+            "Numeric quantitative data: 80 distinct values, no category labels."
+          ],
+          "measure_status": "source",
+          "category_order": null,
+          "coding_direction": ""
+        },
+        {
+          "name": "x",
+          "alias": "v002",
+          "storage": "numeric",
+          "measure": "continuous",
+          "display_name": "x",
+          "label": "",
+          "value_labels": [],
+          "missing_values": [],
+          "missing_ranges": [],
+          "role": "none",
+          "reference_level": null,
+          "source_measure": "",
+          "suggested_measure": "continuous",
+          "suggestion_reasons": [
+            "Numeric quantitative data: 80 distinct values, no category labels."
+          ],
+          "measure_status": "source",
+          "category_order": null,
+          "coding_direction": ""
+        },
+        {
+          "name": "z",
+          "alias": "v003",
+          "storage": "numeric",
+          "measure": "continuous",
+          "display_name": "z",
+          "label": "",
+          "value_labels": [],
+          "missing_values": [],
+          "missing_ranges": [],
+          "role": "none",
+          "reference_level": null,
+          "source_measure": "",
+          "suggested_measure": "continuous",
+          "suggestion_reasons": [
+            "Numeric quantitative data: 80 distinct values, no category labels."
+          ],
+          "measure_status": "source",
+          "category_order": null,
+          "coding_direction": ""
+        },
+        {
+          "name": "w",
+          "alias": "v004",
+          "storage": "numeric",
+          "measure": "continuous",
+          "display_name": "w",
+          "label": "",
+          "value_labels": [],
+          "missing_values": [],
+          "missing_ranges": [],
+          "role": "none",
+          "reference_level": null,
+          "source_measure": "",
+          "suggested_measure": "continuous",
+          "suggestion_reasons": [
+            "Numeric quantitative data: 80 distinct values, no category labels."
+          ],
+          "measure_status": "source",
+          "category_order": null,
+          "coding_direction": ""
+        }
+      ],
+      "derived": [],
+      "filters": [],
+      "holdout": null
+    }
+  },
+  "pass": 16,
+  "fail": 0
+}

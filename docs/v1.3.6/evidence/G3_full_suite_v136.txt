@@ -1,0 +1,198 @@
+........................................................................ [  8%]
+........................................................................ [ 17%]
+........................................................................ [ 26%]
+........................................................................ [ 35%]
+........................................................................ [ 43%]
+.......................................................s................ [ 52%]
+........................................................................ [ 61%]
+......F.F...........................F................................... [ 70%]
+........................................................................ [ 79%]
+........................................................................ [ 87%]
+........................................................................ [ 96%]
+...............FFF.........                                              [100%]
+================================== FAILURES ===================================
+________ test_validation_manifest_identity_and_relocated_reproduction _________
+
+r_session = <statexplore.analysis.session.RSession object at 0x00000178F419EE50>
+tmp_path = WindowsPath('E:/sx_tmp/G3_full_suite_v136/test_validation_manifest_ident0')
+
+    @pytest.mark.r
+    @pytest.mark.slow
+    @pytest.mark.timeout(3600)
+    def test_validation_manifest_identity_and_relocated_reproduction(r_session, tmp_path):
+        from statexplore.discovery import validate as V
+        from statexplore.discovery.space import view
+        from statexplore.rbridge.locate import find_rscript
+    
+        d = fx("Test43B_PositiveInteraction_Rerun")
+        run = search(d, outcome="Y", candidates=["GROUP"], required=["TIME"], participant="ID", time="TIME", cluster="SCHOOL",
+                     structure="ri", strategy="main", include_main=True)
+        cfg = V.ValidationConfig(target="cluster", modes=["holdout", "cv", "bootstrap"], k=5, B=3, seed=133,
+                                 pipeline="fixed", candidate=0)
+        v = V.ValidationRunner(r_session, d, run, cfg).execute()
+        assert v["search_identity"] == run.fit_id and len(v["search_identity"]) == 64 and v["validation_id"]
+        hold = [x for x in v["realized"] if x["split"] == "holdout"][0]
+        assert hold["test_units"] == math.ceil(0.2 * hold["units"])
+        out = Path(V.export(v, str(tmp_path / "export"), ds=view(d, run.settings), include_data=True)[-1]).parent  # v1.3.6: explicit consent; a NEW folder per export
+        moved = tmp_path / "moved folder ü"
+        shutil.copytree(out, moved)
+        shutil.rmtree(out)
+        lib = Path(__file__).resolve().parents[1] / "r" / "library"
+        env = dict(os.environ, R_LIBS=str(lib), R_LIBS_USER=str(lib))
+        res = subprocess.run([str(find_rscript()), "--vanilla", "validation_reproduce.R"], cwd=moved, capture_output=True,
+                             text=True, timeout=1800, env=env)
+>       assert res.returncode == 0, res.stderr[-3000:]
+E       AssertionError: VERIFICATION FAILED: 2 of 189 checks (see validation_check_results.csv): folds: train_score; bootstrap draws: train_score
+E         
+E       assert 1 == 0
+E        +  where 1 = CompletedProcess(args=['C:\\Program Files\\R\\R-4.6.2\\bin\\x64\\Rscript.exe', '--vanilla', 'validation_reproduce.R'],...CATION FAILED: 2 of 189 checks (see validation_check_results.csv): folds: train_score; bootstrap draws: train_score\n').returncode
+
+tests\test_v134.py:604: AssertionError
+_________________ test_52d_resume_continues_same_search_to_15 _________________
+
+tmp_path = WindowsPath('E:/sx_tmp/G3_full_suite_v136/test_52d_resume_continues_same0')
+
+    @pytest.mark.r
+    @pytest.mark.slow
+    @pytest.mark.timeout(3600)
+    def test_52d_resume_continues_same_search_to_15(tmp_path):
+        """v1.3.5 (AUD134-03) supersedes the v1.3.4 expectation: the owner's 52D partial search (fit rules 3) is refused at
+        the engine level and stays unchanged on disk; the same-version 5 + 10 continuation is covered by
+        test_v135::test_same_version_partial_resumes_to_exact_15_and_engine_mismatch_refused."""
+        from statexplore.core.project import Project
+        from statexplore.discovery import engine
+    
+        src = tmp_path / "p.sxp"
+        shutil.copy(FX / "StatExplore_Test52D_Persistence.sxp", src)
+        p = Project.open(src)
+        run = next(r for r in p.searches if r.id == "ea77ac2fedc4")
+        first5 = {r["idx"]: (r["loglik"], r["p"]) for r in run.rows}
+        run.settings.max_models = 10
+>       with pytest.raises(engine.ResumeRefused, match="fit rules 3"):
+E       AssertionError: Regex pattern did not match.
+E         Expected regex: 'fit rules 3'
+E         Actual message: 'This search cannot be resumed: this search was recorded with data identity schema 2 (StatExplore 1.3.5 or earlier: source file hash + metadata), which cannot prove which imported values it analysed (for example which worksheet of a workbook); its results stay viewable as history, but they are not reused, resumed or reproduced as verified. Start a new search from it.'
+
+tests\test_v134.py:658: AssertionError
+______________ test_52d_historical_resume_is_refused_with_reason ______________
+
+    def test_52d_historical_resume_is_refused_with_reason():
+        """Saved 52D: grammar 2, fit rules 3, 5 of 15 done. v1.3.4 allowed the resume (mixing fit rules 3 and 4 in one
+        multiplicity family); v1.3.5 refuses with the reason and offers a new linked search. The original stays unchanged."""
+        from statexplore.discovery import engine
+    
+        p, run = _52d()
+        before = _fingerprint(run)
+        assert run.engine.get("fit_rules") == 3 and run.grammar == 2 and run.n_done == 5 and len(p.dataset.raw) == 960
+        assert not run.resumable
+        why = run.resume_reason(p.dataset)
+        assert "fit rules 3" in why and "new search" in why
+>       with pytest.raises(engine.ResumeRefused, match="fit rules 3"):
+E       AssertionError: Regex pattern did not match.
+E         Expected regex: 'fit rules 3'
+E         Actual message: 'This search cannot be resumed: this search was recorded with data identity schema 2 (StatExplore 1.3.5 or earlier: source file hash + metadata), which cannot prove which imported values it analysed (for example which worksheet of a workbook); its results stay viewable as history, but they are not reused, resumed or reproduced as verified. Start a new search from it.'
+
+tests\test_v135.py:317: AssertionError
+___________ test_ui52_whole_model_text_is_not_an_interaction_claim ____________
+
+    def test_ui52_whole_model_text_is_not_an_interaction_claim():
+        """UI-52: a whole-model test (no interaction) is described as the predictors jointly explaining the outcome, never
+        as an interaction / relationship that differs across a moderator."""
+        from statexplore.discovery.engine import interpret_row
+        from statexplore.discovery.space import SearchSettings
+    
+        s = SearchSettings(outcome="Y", candidates=["A", "B"])
+>       txt = interpret_row(_row(test_type="overall", label="A + B vs intercept-only model"), s, "gaussian")
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\test_v136_trace.py:46: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+r = {'formula': 'Y ~ A + B', 'label': 'A + B vs intercept-only model', 'interaction': 'A × B', 'p': 0.01, ...}
+s = SearchSettings(outcome='Y', candidates=['A', 'B'], required=[], max_predictors=3, max_order=2, covariate_mode='focal',..., structures=[], time_interactions=False, cluster=None, id_policy='global', cluster_compare=False, time_eligible=False)
+family = 'gaussian'
+
+    def interpret_row(r: dict[str, Any], s: SearchSettings, family: str = "gaussian") -> str:
+        """Short teaching interpretation of one tested hypothesis (§10.8, M §11): what was tested,
+        the result with its test and family, direction when one coefficient is tested, and caveats."""
+>       if r["status"] in ("invalid", "failed"):
+           ^^^^^^^^^^^
+E       KeyError: 'status'
+
+src\statexplore\discovery\engine.py:1482: KeyError
+__________ test_ui55_structure_comparison_text_matches_its_estimand ___________
+
+    def test_ui55_structure_comparison_text_matches_its_estimand():
+        """UI-55: workflow B structure comparisons describe dependence between observations, not predictor discoveries."""
+        from statexplore.discovery.engine import interpret_row
+        from statexplore.discovery.space import SearchSettings
+    
+        s = SearchSettings(outcome="Y", candidates=["A"])
+>       txt = interpret_row(_row(test_type="structure", label="AR(1) vs independent: residual correlation"), s, "lmm")
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\test_v136_trace.py:58: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+r = {'formula': 'Y ~ A + B', 'label': 'AR(1) vs independent: residual correlation', 'interaction': 'A × B', 'p': 0.01, ...}
+s = SearchSettings(outcome='Y', candidates=['A'], required=[], max_predictors=3, max_order=2, covariate_mode='focal', alph..., structures=[], time_interactions=False, cluster=None, id_policy='global', cluster_compare=False, time_eligible=False)
+family = 'lmm'
+
+    def interpret_row(r: dict[str, Any], s: SearchSettings, family: str = "gaussian") -> str:
+        """Short teaching interpretation of one tested hypothesis (§10.8, M §11): what was tested,
+        the result with its test and family, direction when one coefficient is tested, and caveats."""
+>       if r["status"] in ("invalid", "failed"):
+           ^^^^^^^^^^^
+E       KeyError: 'status'
+
+src\statexplore\discovery\engine.py:1482: KeyError
+____ test_ui53_random_intercept_plot_subtitle_follows_available_intervals _____
+
+    def test_ui53_random_intercept_plot_subtitle_follows_available_intervals():
+        """UI-53: the random-intercept plot claims interval bars only when intervals exist; otherwise it says so."""
+        from statexplore.analysis import mixed
+    
+        src = inspect.getsource(mixed)
+>       assert '"Sorted; bars = approximate 95% intervals (lme4 conditional variances)"' in src
+E       assert '"Sorted; bars = approximate 95% intervals (lme4 conditional variances)"' in '"""Mixed-effects and longitudinal models (§9.6, §9.7, §15).\n\nOne default engine per covariance structure, recorded ...d (boundary, singular, "\n            "convergence or optimizer fallback); the p-value is then not clean evidence.")\n'
+
+tests\test_v136_trace.py:67: AssertionError
+============================== warnings summary ===============================
+tests/test_v13.py::test_P1_04_likelihood_parameter_count
+tests/test_v13.py::test_P1_04_likelihood_parameter_count
+tests/test_v13.py::test_P1_04_likelihood_parameter_count
+tests/test_v134.py::test_48d_gee_structures_fit_their_own_working_correlation
+tests/test_v134.py::test_48d_gee_structures_fit_their_own_working_correlation
+tests/test_v134.py::test_48d_gee_structures_fit_their_own_working_correlation
+tests/test_v134.py::test_48d_gee_structures_fit_their_own_working_correlation
+tests/test_v134.py::test_48d_gee_structures_fit_their_own_working_correlation
+tests/test_v134.py::test_48d_gee_structures_fit_their_own_working_correlation
+  C:\Users\Stephen\Desktop\My stuff\statexplore\src\statexplore\discovery\engine.py:1257: Pandas4Warning: 'bool' is not supported as a fill value for float64 dtype. In a future version, calling fillna with an incompatible value will raise. Explicitly cast to a common dtype before filling.
+    df[c] = df[c].fillna(False).astype(bool)
+
+tests/test_v13.py::test_P1_04_likelihood_parameter_count
+tests/test_v134.py::test_48d_gee_structures_fit_their_own_working_correlation
+tests/test_v134.py::test_48d_gee_structures_fit_their_own_working_correlation
+  C:\Users\Stephen\Desktop\My stuff\statexplore\src\statexplore\discovery\engine.py:1258: Pandas4Warning: 'str' is not supported as a fill value for float64 dtype. In a future version, calling fillna with an incompatible value will raise. Explicitly cast to a common dtype before filling.
+    df["tier"] = df["tier"].fillna("")
+
+tests/test_v13.py::test_P1_04_likelihood_parameter_count
+tests/test_v134.py::test_48d_gee_structures_fit_their_own_working_correlation
+tests/test_v134.py::test_48d_gee_structures_fit_their_own_working_correlation
+  C:\Users\Stephen\Desktop\My stuff\statexplore\src\statexplore\discovery\engine.py:1259: Pandas4Warning: 'str' is not supported as a fill value for float64 dtype. In a future version, calling fillna with an incompatible value will raise. Explicitly cast to a common dtype before filling.
+    df["validation"] = df["validation"].fillna("")
+
+tests/test_v136.py::test_each_field_family_tamper_fails_with_a_named_check[universe]
+  C:\Users\Stephen\Desktop\My stuff\statexplore\tests\test_v136.py:992: Pandas4Warning: The inplace keyword in DataFrame.drop is deprecated and will be removed in a future version (PDEP-8).
+  See https://pandas.pydata.org/docs/dev/whatsnew/v3.1.0.html#deprecation-inplace for more details.
+    ("universe", "stability.csv", lambda df: df.drop(index=len(df) - 1, inplace=True),
+
+tests/test_v136.py::test_each_field_family_tamper_fails_with_a_named_check[column]
+  C:\Users\Stephen\Desktop\My stuff\statexplore\tests\test_v136.py:1016: Pandas4Warning: The inplace keyword in DataFrame.drop is deprecated and will be removed in a future version (PDEP-8).
+  See https://pandas.pydata.org/docs/dev/whatsnew/v3.1.0.html#deprecation-inplace for more details.
+    ("column", "candidate_trace.csv", lambda df: df.drop(columns="rows_sig", inplace=True), "candidate trace: columns"),
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+SKIPPED [1] tests\test_v132_gui.py:192: screenshots only when STATEXPLORE_SHOTS is set (evidence run, not a functional test)
+exit 1

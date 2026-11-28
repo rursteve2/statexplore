@@ -584,3 +584,42 @@ DPI recorded NOT RUN (no VM required).
 - 52D is now refused (fit rules 3) with 'New search from this one'; v1.3.4 tests expecting its resume were updated.
 - 55L fixture (n 6000) for legacy underflow: 51C/54B are longitudinal (legacy workspace is single-level).
 - Open: physical DPI NOT RUN; clean install = owner-approved deferral; in-place upgrade = owner step.
+
+---
+
+# v1.3.6 corrective patch (handoff `E:\Downloads\StatExplore_v1.3.6_Developer_Handoff.zip` + supplement; started 2026-11-28)
+
+Baseline: tag v1.3.5 = b7610a0 (source zip 20376a44… = tag tree, 339 files byte-identical; 21f698a→b7610a0 docs only).
+Branch `release/v1.3.6`. Clean worktree `E:\sx_v135_base`. Work/evidence `E:\sx_v136_work` (pkg\ = extracted handoff).
+Owner decisions 2026-11-28: clean-machine install = owner-approved deferral (standing, never ask again); release as a
+normal "Latest" GitHub release. Physical DPI stays NOT RUN (no new approval).
+
+## Design decisions (v1.3.6)
+| # | Decision | Finding |
+|---|---|---|
+| M1 | `core/identity.py`: content identity schema 3 = SHA-256 over canonical typed columns (kind, little-endian float64 bits / int64 datetimes / length-prefixed UTF-8 text, null mask), column names+order, row count/index, source format + parse options (sheet, delimiter, encoding, reshape) + source file SHA (conservative). Cached per Dataset ONLY for the same raw object (`is`) + shape/dtype guard; raw is immutable by contract (all writers make new Datasets) | 06 |
+| M2 | View identity = content id + variable metadata + derived specs + filters + holdout spec + REALIZED filter/holdout masks + derived values; `data_signature` = view identity (schema 3); `fit_identity` identity_schema 3; runs record `identity_schema` 3; legacy (<3) runs are UNVERIFIED: no cache, resume, rebuild or runnable reproduction; history viewable; "New search from this one" | 06 |
+| M3 | Snapshot schema 3 adds `content_id`; `rebuild` only after the current content id equals it; `context` compares content ids, never only the source file hash | 06 |
+| M4 | RSession: no `id(ds.raw)`; worker data keyed by content id + CSV SHA-256 of the bytes written; every result gets `analysis_provenance` (schema 1: content id, view id, input CSV SHA-256, rows, script SHA-256, snapshot) | 06/07 |
+| M5 | Historical export resolver: regenerate the full worker-input CSV from the current view, else from the snapshot rebuild (content id must match), and compare its SHA-256 with the provenance; else refuse (results/report only + reason). One sub-bundle per result (own script/data), never one shared data.csv | 07 |
+| M6 | `export/bundle.py` transaction: every export goes to a NEW child folder (never reused), staged in a hidden sibling and renamed on success; cleanup on failure; a central registry is the only writer API; analysis data only via `tx.write_data` and only with explicit consent; inventory check: no unregistered or undeclared data file; hash scratch outside the bundle; manifest `bundle_kind` = results-only / code-only / runnable | 03 |
+| M7 | Reports: explicit per-export data consent (default No); R/Py scripts per result in their own sub-bundle via the portable writer | 03/07 |
+| M8 | Validation ledger: immutable plan (parts), attempts log, committed chunks only after a validated response; uncertain chunks after errors; counters lower-bound/unknown; R budget `denied` flag (any denial in a part → that part `budget`); status from evidence: complete iff every planned part committed and succeeded and no denial (used == cap is complete); stop before dispatch when remaining = 0 and work remains | 04/05 |
+| M9 | Reproduction: replay committed chunks only; split/draw manifests verified per scope: committed vs replay, pending vs embedded plan; `execution_ledger.csv` verified exactly; coverage reported (never "complete" for partial) | 04 |
+| M10 | Typed evidence: Python writes every evidence CSV from a declared schema (fixed columns, round-trip floats, Inf/-Inf, '' = missing), header-only when empty; generated R reads all as character, parses per declared type (int/num/text/bool), signed infinities, malformed → FAIL, missing only where the schema/reproduced status allows; length-prefixed composite keys; `sx_add_chk` NA → FAIL, NOT APPLICABLE only when declared | 01 |
+| M11 | Independent recomputation in R: stability + estimands from reproduced draws/coefs + declared pool (index/key/label from setup) + embedded alias map for coefficient labels; realized sizes from manifest + R grouping; ID partitions (app participant/cluster keys ↔ R groups) bijective; trace df/ref loglik/flags/rows; folds/boot reasons, flags | 02 |
+
+## Plan
+- [x] G0 baseline suite on b7610a0 (747 + 1 skip) + red reproductions 01–07 (auditor scripts 9/7, 6/2, 13/4; real R 04/05/06/07, script-R 01/02)
+- [x] G1 M1–M7 (identity, provenance, export transactions, consent) + tests incl. real R, GUI, migration
+- [x] G2 M8–M11 (ledger, budget, typed verifier, independent recomputation) + tests incl. real-R tamper suite
+- [x] G3 full suite (818 + 1 skip), build 090d120, frozen + installed upgrade checks, acceptance kit 131/131, benchmarks
+- [x] G4 docs/v1.3.6 (register, traceability, evidence, methods, acceptance 55–61), release
+
+### Review (v1.3.6)
+- First full run 812 pass / 6 fail (schema required train_score for fixed candidates; reason order; 3 test mistakes);
+  final 818 pass + 1 screenshot skip. Register 138 rows all PASS, 607 exact test-node links (12 unlinked + 5 ambiguous
+  inherited requirements resolved). Real-R red on v1.3.5 for 04/05/06/07 and 10/10 tampers accepted (01/02).
+- Found: V136-D1..D6 (portable consent default, swallowed budget denial, id(raw) keys, holdout realized split, legacy
+  validation records, a DPI regression caught in development). Runner bug (vacuous pass) caught by reading results.
+- Legacy policy: identity schema 2 searches / results unverified (no cache, resume, rebuild, runnable bundle).

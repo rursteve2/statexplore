@@ -1,0 +1,103 @@
+{
+  "checks": [
+    {
+      "test": "same_workbook_hash",
+      "expected": true,
+      "observed": true,
+      "passed": true
+    },
+    {
+      "test": "different_values",
+      "expected": true,
+      "observed": true,
+      "passed": true
+    },
+    {
+      "test": "same_metadata",
+      "expected": true,
+      "observed": true,
+      "passed": true
+    },
+    {
+      "test": "same_sheet_signature",
+      "expected": true,
+      "observed": true,
+      "passed": true
+    },
+    {
+      "test": "same_sheet_fit_identity",
+      "expected": true,
+      "observed": true,
+      "passed": true
+    },
+    {
+      "test": "same_sheet_context",
+      "expected": "current",
+      "observed": "current",
+      "passed": true
+    },
+    {
+      "test": "same_sheet_cache_admitted",
+      "expected": true,
+      "observed": true,
+      "passed": true
+    },
+    {
+      "test": "same_sheet_resume_allowed",
+      "expected": true,
+      "observed": true,
+      "passed": true
+    },
+    {
+      "test": "same_sheet_bundle_allowed",
+      "expected": true,
+      "observed": true,
+      "passed": true
+    },
+    {
+      "test": "different_sheet_signature_distinct",
+      "expected": true,
+      "observed": false,
+      "passed": false
+    },
+    {
+      "test": "different_sheet_fit_identity_distinct",
+      "expected": true,
+      "observed": false,
+      "passed": false
+    },
+    {
+      "test": "different_sheet_context_not_current",
+      "expected": true,
+      "observed": false,
+      "passed": false
+    },
+    {
+      "test": "different_sheet_cache_not_admitted",
+      "expected": false,
+      "observed": true,
+      "passed": false
+    },
+    {
+      "test": "different_sheet_resume_refused",
+      "expected": true,
+      "observed": false,
+      "passed": false
+    },
+    {
+      "test": "different_sheet_audit_not_matched",
+      "expected": false,
+      "observed": true,
+      "passed": false
+    },
+    {
+      "test": "different_sheet_bundle_refused_or_original",
+      "expected": true,
+      "observed": false,
+      "passed": false
+    }
+  ],
+  "pass": 9,
+  "fail": 7
+}
+correlations 0.9991717923620217 0.07341307696951486

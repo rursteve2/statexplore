@@ -142,3 +142,16 @@
 ## Fixtures for "below the double range" (v1.3.5)
 - Tune an underflow fixture with the EXACT test distribution in R (`pf(..., log.p = TRUE)`), not a chi-square
   approximation (it overstated the tail by ~30 %), and check the margin on the resampled sizes (80 % subsamples) too.
+
+## Check helpers: options keyword-only (v1.3.6)
+- `check(name, expected, actual, ok=None, tol=...)` called as `check(name, True, ok, "rel 1e-9")` put the tolerance text
+  into `ok` -> every such check PASSED vacuously. Make every option after the compared values keyword-only (`*,`) and
+  test that a positional extra raises. Re-read a runner's own results for "too easy" passes before trusting it.
+
+## Clean builds (v1.3.6)
+- build.py marks "+ local changes" when a TRACKED file is modified (tasks/todo.md counts). For a clean embedded build id:
+  commit code, `git stash push -u`, build, `git stash pop` - and remember the stash also hides uncommitted tool edits.
+
+## Exact-format CSV evidence in R (v1.3.6)
+- Read evidence with `colClasses = "character", na.strings = character(0)`; never let read.csv guess types ("001" ->
+  1, "NA" -> missing). A schema-required field must reflect every mode: fixed-candidate parts have no training score.

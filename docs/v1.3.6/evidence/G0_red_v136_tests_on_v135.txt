@@ -1,0 +1,614 @@
+statexplore from E:\sx_v135_base\src\statexplore\__init__.py 1.3.5
+.FFFFFFFFFFFFFFFFFFFFFFFFFF                                              [100%]
+================================== FAILURES ===================================
+__________ test_workbook_sheets_have_distinct_identities_everywhere ___________
+
+    def test_workbook_sheets_have_distinct_identities_everywhere():
+        """Port of the auditor's Round 3 workbook reproducer (baseline 9 pass / 7 fail): every consumer of the data identity
+        tells the two worksheets apart, and an unchanged same-sheet re-import still matches (positive controls)."""
+        from statexplore.discovery.engine import FIT_RULES, cache_from, create_run
+        from statexplore.discovery.history import context
+        from statexplore.discovery.space import SearchSettings, candidate_key, enumerate_candidates
+        from statexplore.discovery.validate import bundle_data
+        from statexplore.export.audit import current_context
+    
+        a, a2, b = _sheets()
+        # independent descriptive witnesses (values from the imported frames)
+        assert np.corrcoef(a.raw.y, a.raw.x * a.raw.z)[0, 1] == pytest.approx(0.9991717923620217, abs=1e-12)
+        assert np.corrcoef(b.raw.y, b.raw.x * b.raw.z)[0, 1] == pytest.approx(0.07341307696951486, abs=1e-12)
+        assert a.source.sha256 == b.source.sha256 == WORKBOOK_SHA and not a.raw.equals(b.raw)
+        assert [v.to_dict() for v in a.variables.values()] == [v.to_dict() for v in b.variables.values()]
+        s = SearchSettings(**SWB)
+        r1, r1b, r2 = create_run(a, s), create_run(a2, s), create_run(b, s)
+        c = next(enumerate_candidates(s))
+        k = candidate_key(c)
+        r1.rows = [{"idx": 0, "key": k, "status": "ok", "p": 0.001}]
+        r1.n_done, r1.status = 1, "partial"
+        r1.engine = {"fit_rules": FIT_RULES, "r_version": "synthetic-control", "packages": {}}
+        # positive controls: same sheet re-imported
+        assert r1.signature == r1b.signature and r1.fit_id == r1b.fit_id
+        assert context(a2, r1).state == "current"
+        assert k in cache_from(r1b, [r1], a2)
+        assert r1.resume_reason(a2) == ""
+        assert bundle_data({"search_signature": r1.signature}, a2, r1)[0] is not None
+        # the other worksheet
+>       assert r1.signature != r2.signature and r1.fit_id != r2.fit_id
+E       AssertionError: assert ('8d00378e213232cb5c70b7315a08bee1e40be662a13b2425f9011a01a974ee0c' != '8d00378e213232cb5c70b7315a08bee1e40be662a13b2425f9011a01a974ee0c')
+E        +  where '8d00378e213232cb5c70b7315a08bee1e40be662a13b2425f9011a01a974ee0c' = DiscoveryRun(settings=SearchSettings(outcome='y', candidates=['x', 'z', 'w'], required=[], max_predictors=2, max_order...ection': ''}], 'derived': [], 'filters': [], 'holdout': None}, validation_runs=[], grammar=4, parent_id='', lineage={}).signature
+E        +  and   '8d00378e213232cb5c70b7315a08bee1e40be662a13b2425f9011a01a974ee0c' = DiscoveryRun(settings=SearchSettings(outcome='y', candidates=['x', 'z', 'w'], required=[], max_predictors=2, max_order...ection': ''}], 'derived': [], 'filters': [], 'holdout': None}, validation_runs=[], grammar=4, parent_id='', lineage={}).signature
+
+tests\test_v136.py:110: AssertionError
+______________________ test_content_identity_definition _______________________
+
+    def test_content_identity_definition():
+        """Same values -> same identity; any value, row order, column order, text-vs-number, leading zero, missing-vs-empty
+        or parse option change -> another identity; metadata changes the VIEW identity only."""
+        from statexplore.core.dataset import Dataset, HoldoutSpec, SourceInfo
+        from statexplore.core.derive import FilterSpec
+>       from statexplore.core.identity import content_id, view_id
+E       ModuleNotFoundError: No module named 'statexplore.core.identity'
+
+tests\test_v136.py:126: ModuleNotFoundError
+___________ test_identity_survives_project_save_reopen_and_reimport ___________
+
+tmp_path = WindowsPath('E:/sx_tmp/red136/test_identity_survives_project0')
+
+    def test_identity_survives_project_save_reopen_and_reimport(tmp_path):
+        """Unchanged same-sheet re-import and project (Parquet) round trips keep the verified identity: the search stays
+        current, resumable state and cache admission are preserved, and the rebuilt snapshot reproduces the signature."""
+        from statexplore.core.derive import FilterSpec
+        from statexplore.core.project import Project
+        from statexplore.discovery.engine import create_run, data_signature
+        from statexplore.discovery.history import context
+        from statexplore.discovery.space import SearchSettings, view
+    
+        a, _a2, _b = _sheets()
+        run = create_run(a, SearchSettings(**SWB))
+        p = Project(a)
+        p.searches.append(run)
+        p.save(tmp_path / "p.sxp")
+        q = Project.open(tmp_path / "p.sxp")
+        r = q.searches[0]
+>       assert r.identity_schema == 3 and r.data_snapshot["content_id"] == run.data_snapshot["content_id"]
+               ^^^^^^^^^^^^^^^^^
+E       AttributeError: 'DiscoveryRun' object has no attribute 'identity_schema'
+
+tests\test_v136.py:179: AttributeError
+_______________ test_value_digest_is_computed_once_per_revision _______________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x00000260565D99D0>
+
+    def test_value_digest_is_computed_once_per_revision(monkeypatch):
+        """Performance contract: identities of many views / candidates hash the values once per imported revision."""
+>       from statexplore.core import identity
+E       ImportError: cannot import name 'identity' from 'statexplore.core' (E:\sx_v135_base\src\statexplore\core\__init__.py)
+
+tests\test_v136.py:190: ImportError
+_____________ test_session_data_keys_do_not_use_object_addresses ______________
+
+    def test_session_data_keys_do_not_use_object_addresses():
+        """RSession reload keys bind the content identity: two worksheets with the same file hash and metadata never share
+        the worker's loaded data (the v1.3.5 key used id(ds.raw), which can be reused by another frame)."""
+        from statexplore.analysis.session import RSession
+    
+        a, a2, b = _sheets()
+>       assert RSession._data_signature_of(a) == RSession._data_signature_of(a2)
+E       AssertionError: assert 'fef91be2654b...360b31af29ece' == 'c52dc548a93b...68a5fa2bb88bd'
+E         
+E         - c52dc548a93bd4cb1514d1c5976af3dedb8216fdd270f34d76d68a5fa2bb88bd
+E         + fef91be2654bf63b3371ffcb023f31602989a937c695de1f9a1360b31af29ece
+
+tests\test_v136.py:218: AssertionError
+________________ test_legacy_identity_is_unverified_everywhere ________________
+
+tmp_path = WindowsPath('E:/sx_tmp/red136/test_legacy_identity_is_unveri0')
+
+    def test_legacy_identity_is_unverified_everywhere(tmp_path):
+        """v1.3.5 searches (identity schema 2) stay viewable but are never cached from, resumed, rebuilt or exported as a
+        runnable reproduction; 'New search from this one' works and records the reason (explicit legacy policy)."""
+        from statexplore.discovery import validate as V
+        from statexplore.discovery.engine import FIT_RULES, ResumeRefused, cache_from, create_run, execute, restart_from
+        from statexplore.discovery.history import context
+        from statexplore.discovery.space import SearchSettings, candidate_key, enumerate_candidates, view
+        from statexplore.export.audit import audit_record
+    
+        a, a2, _b = _sheets()
+        s = SearchSettings(**SWB)
+        run = create_run(a, s)
+        k = candidate_key(next(enumerate_candidates(s)))
+        run.rows = [{"idx": 0, "key": k, "status": "ok", "p": 0.01}]
+        run.n_done, run.status = 1, "partial"
+        run.engine = {"fit_rules": FIT_RULES, "r_version": "x", "packages": {}}
+>       old, legacy_sig = _legacy(run)
+                          ^^^^^^^^^^^^
+
+tests\test_v136.py:258: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+run = DiscoveryRun(settings=SearchSettings(outcome='y', candidates=['x', 'z', 'w'], required=[], max_predictors=2, max_order...ection': ''}], 'derived': [], 'filters': [], 'holdout': None}, validation_runs=[], grammar=4, parent_id='', lineage={})
+
+    def _legacy(run):
+        meta = run.meta_dict()
+>       meta.pop("identity_schema")
+E       KeyError: 'identity_schema'
+
+tests\test_v136.py:229: KeyError
+_________ test_console_import_and_reshape_change_the_content_identity _________
+
+tmp_path = WindowsPath('E:/sx_tmp/red136/test_console_import_and_reshap0')
+
+    def test_console_import_and_reshape_change_the_content_identity(tmp_path):
+        from statexplore.core.console_import import diff_import
+>       from statexplore.core.identity import content_id
+E       ModuleNotFoundError: No module named 'statexplore.core.identity'
+
+tests\test_v136.py:280: ModuleNotFoundError
+__________________ test_transaction_policy_negative_controls __________________
+
+tmp_path = WindowsPath('E:/sx_tmp/red136/test_transaction_policy_negati0')
+
+    def test_transaction_policy_negative_controls(tmp_path):
+        """The central registry catches: data without consent (declared or disguised), unregistered files, symbolic links;
+        a failed export leaves no folder and no staging data behind; nothing in the parent folder is touched."""
+>       from statexplore.export.bundle import ConsentError, ExportError, export_transaction
+E       ModuleNotFoundError: No module named 'statexplore.export.bundle'
+
+tests\test_v136.py:306: ModuleNotFoundError
+_________________ test_portable_exports_never_reuse_a_folder __________________
+
+tmp_path = WindowsPath('E:/sx_tmp/red136/test_portable_exports_never_re0')
+
+    def test_portable_exports_never_reuse_a_folder(tmp_path):
+        """Consent true -> false into the same parent: two separate new folders; the second has no data file, its manifest
+        and inventory say code-only, and the first bundle and unrelated files are untouched."""
+        from statexplore.export.exporters import write_portable
+    
+        d = fx5("Test55L_LegacyUnderflow")
+        script = 'sx_data_file <- "C:/tmp/data.csv"\ndat <- utils::read.csv(sx_data_file)\n'
+        parent = tmp_path / "chosen"
+        parent.mkdir()
+        (parent / "analysis.R").write_text("# an older script\n")
+        (parent / "analysis_data.csv").write_text("old,data\n")
+        w1 = write_portable(script, parent, d, include_data=True)
+        w2 = write_portable(script, parent, d, include_data=False)
+>       f1, f2 = folder_of(w1), folder_of(w2)
+                 ^^^^^^^^^^^^^
+
+tests\test_v136.py:351: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests\test_v136.py:63: in folder_of
+    return one(paths, "bundle_inventory.json").parent
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+paths = [WindowsPath('E:/sx_tmp/red136/test_portable_exports_never_re0/chosen/analysis.R'), WindowsPath('E:/sx_tmp/red136/test...re0/chosen/analysis_manifest.json'), WindowsPath('E:/sx_tmp/red136/test_portable_exports_never_re0/chosen/README.txt')]
+name = 'bundle_inventory.json'
+
+    def one(paths, name: str) -> Path:
+        hits = [Path(p) for p in paths if Path(p).name == name]
+>       assert len(hits) == 1, (name, [Path(p).name for p in paths])
+E       AssertionError: ('bundle_inventory.json', ['analysis.R', 'analysis_data.csv', 'analysis_manifest.json', 'README.txt'])
+E       assert 0 == 1
+E        +  where 0 = len([])
+
+tests\test_v136.py:57: AssertionError
+___________________ test_audit_export_goes_to_a_new_folder ____________________
+
+tmp_path = WindowsPath('E:/sx_tmp/red136/test_audit_export_goes_to_a_ne0')
+
+    def test_audit_export_goes_to_a_new_folder(tmp_path):
+        from statexplore.discovery.engine import create_run
+        from statexplore.discovery.space import SearchSettings
+        from statexplore.export.audit import read_audit, write_audit
+    
+        a = import_file(WORKBOOK, sheet="A")
+        run = create_run(a, SearchSettings(**SWB))
+        f1 = write_audit(run, a, tmp_path)
+        f2 = write_audit(run, a, tmp_path)
+>       assert folder_of(f1) != folder_of(f2)
+               ^^^^^^^^^^^^^
+
+tests\test_v136.py:376: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests\test_v136.py:63: in folder_of
+    return one(paths, "bundle_inventory.json").parent
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+paths = [WindowsPath('E:/sx_tmp/red136/test_audit_export_goes_to_a_ne0/search_d2aac5925fb6_audit.json'), WindowsPath('E:/sx_tmp/red136/test_audit_export_goes_to_a_ne0/search_d2aac5925fb6_audit_report.md')]
+name = 'bundle_inventory.json'
+
+    def one(paths, name: str) -> Path:
+        hits = [Path(p) for p in paths if Path(p).name == name]
+>       assert len(hits) == 1, (name, [Path(p).name for p in paths])
+E       AssertionError: ('bundle_inventory.json', ['search_d2aac5925fb6_audit.json', 'search_d2aac5925fb6_audit_report.md'])
+E       assert 0 == 1
+E        +  where 0 = len([])
+
+tests\test_v136.py:57: AssertionError
+_________ test_historical_report_exports_the_original_view_or_refuses _________
+
+tmp_path = WindowsPath('E:/sx_tmp/red136/test_historical_report_exports0')
+
+    def test_historical_report_exports_the_original_view_or_refuses(tmp_path):
+        """Port of the auditor's AUD135-07 reproducer (baseline 6 pass / 2 fail): after the holdout seed changes, the Reports
+        export carries the ORIGINAL training rows (rebuilt from the result's snapshot and proven by the input SHA-256) - or,
+        when the original data cannot be proven, refuses with a reason. Never the current split with the old script."""
+        from statexplore.analysis.session import RSession
+        from statexplore.core.dataset import HoldoutSpec
+        from statexplore.core.project import Project
+        from statexplore.export.exporters import export
+    
+        d = _scores(tmp_path)
+        pr = Project(d)
+        sess = RSession(_FakeWorker(), tmp_path / "worker")
+        res, art = _t_one(sess, d)
+        pr.add_result(res, art)
+>       prov = res.values["analysis_provenance"]
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       KeyError: 'analysis_provenance'
+
+tests\test_v136.py:432: KeyError
+_____________ test_multiple_results_get_separately_bound_bundles ______________
+
+tmp_path = WindowsPath('E:/sx_tmp/red136/test_multiple_results_get_sepa0')
+
+    def test_multiple_results_get_separately_bound_bundles(tmp_path):
+        """Two results analysed under different holdout seeds -> two bundles, each with its OWN data (never one shared
+        data.csv); declined consent -> code-only bundles with no data anywhere."""
+        from statexplore.analysis.session import RSession
+        from statexplore.core.dataset import HoldoutSpec
+        from statexplore.core.project import Project
+        from statexplore.export.exporters import export
+    
+        d = _scores(tmp_path)
+        pr = Project(d)
+        sess = RSession(_FakeWorker(), tmp_path / "worker")
+        r1, a1 = _t_one(sess, d)
+        s1 = pd.read_csv(tmp_path / "worker" / "data.csv")["sx_split"].tolist()
+        d.set_holdout(HoldoutSpec(0.25, 2))
+        r2, a2 = _t_one(sess, d)
+        s2 = pd.read_csv(tmp_path / "worker" / "data.csv")["sx_split"].tolist()
+        assert s1 != s2
+        pr.add_result(r1, a1)
+        pr.add_result(r2, a2)
+>       w = export(pr, [r1.id, r2.id], tmp_path / "e", {"R", "py"}, include_history=False, include_data=True)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       TypeError: export() got an unexpected keyword argument 'include_data'
+
+tests\test_v136.py:488: TypeError
+__________________ test_result_without_provenance_is_refused __________________
+
+tmp_path = WindowsPath('E:/sx_tmp/red136/test_result_without_provenance0')
+
+    def test_result_without_provenance_is_refused(tmp_path):
+        """A result saved by v1.3.5 (no analysis provenance) is never paired with today's data as a runnable bundle."""
+        from statexplore.analysis.session import RSession
+        from statexplore.core.project import Project
+        from statexplore.export.exporters import export
+>       from statexplore.export.historical import Unverified, resolve
+E       ModuleNotFoundError: No module named 'statexplore.export.historical'
+
+tests\test_v136.py:505: ModuleNotFoundError
+____________ test_failed_result_keeps_provenance_and_stays_failed _____________
+
+tmp_path = WindowsPath('E:/sx_tmp/red136/test_failed_result_keeps_prove0')
+
+    def test_failed_result_keeps_provenance_and_stays_failed(tmp_path):
+        from statexplore.analysis.session import RSession
+        from statexplore.core.schema import Status
+        from statexplore.rbridge.worker import RScriptError
+    
+        class Failing(_FakeWorker):
+            def run(self, code, **kw):
+                if "t.test" in code:
+                    raise RScriptError("boom")
+                return super().run(code, **kw)
+        d = _scores(tmp_path)
+        res, _ = _t_one(RSession(Failing(), tmp_path / "w"), d)
+>       assert res.status is Status.FAILED and res.values["analysis_provenance"]["input_sha256"]
+                                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       KeyError: 'analysis_provenance'
+
+tests\test_v136.py:534: KeyError
+_____________ test_exact_budget_boundary_holdout[3-complete-3-0] ______________
+
+cap = 3, status = 'complete', used = 3, denied = 0
+
+    @pytest.mark.parametrize("cap, status, used, denied", [
+        (3, "complete", 3, 0),           # exactly the needed fits: COMPLETE although used == cap (AUD135-05)
+        (2, "partial", 2, 1),            # one fit short: the holdout part is a budget stop, never scored
+        (100, "complete", 3, 0)])
+    def test_exact_budget_boundary_holdout(cap, status, used, denied):
+        r = _runner(_ChunkSession(cost=3))
+        r.budget["cap"] = cap
+        v = r.execute()
+        b = v["fit_budget"]
+>       assert v["status"] == status and b["used"] == used and b["denied"] == denied and b["used"] <= cap
+E       AssertionError: assert ('partial' == 'complete'
+E         
+E         - complete
+E         + partial)
+
+tests\test_v136.py:821: AssertionError
+______________ test_exact_budget_boundary_holdout[2-partial-2-1] ______________
+
+cap = 2, status = 'partial', used = 2, denied = 1
+
+    @pytest.mark.parametrize("cap, status, used, denied", [
+        (3, "complete", 3, 0),           # exactly the needed fits: COMPLETE although used == cap (AUD135-05)
+        (2, "partial", 2, 1),            # one fit short: the holdout part is a budget stop, never scored
+        (100, "complete", 3, 0)])
+    def test_exact_budget_boundary_holdout(cap, status, used, denied):
+        r = _runner(_ChunkSession(cost=3))
+        r.budget["cap"] = cap
+        v = r.execute()
+        b = v["fit_budget"]
+>       assert v["status"] == status and b["used"] == used and b["denied"] == denied and b["used"] <= cap
+                                                               ^^^^^^^^^^^
+E       KeyError: 'denied'
+
+tests\test_v136.py:821: KeyError
+____________ test_exact_budget_boundary_holdout[100-complete-3-0] _____________
+
+cap = 100, status = 'complete', used = 3, denied = 0
+
+    @pytest.mark.parametrize("cap, status, used, denied", [
+        (3, "complete", 3, 0),           # exactly the needed fits: COMPLETE although used == cap (AUD135-05)
+        (2, "partial", 2, 1),            # one fit short: the holdout part is a budget stop, never scored
+        (100, "complete", 3, 0)])
+    def test_exact_budget_boundary_holdout(cap, status, used, denied):
+        r = _runner(_ChunkSession(cost=3))
+        r.budget["cap"] = cap
+        v = r.execute()
+        b = v["fit_budget"]
+>       assert v["status"] == status and b["used"] == used and b["denied"] == denied and b["used"] <= cap
+                                                               ^^^^^^^^^^^
+E       KeyError: 'denied'
+
+tests\test_v136.py:821: KeyError
+_ test_budget_exactly_exhausted_with_work_remaining_is_partial_not_dispatched _
+
+    def test_budget_exactly_exhausted_with_work_remaining_is_partial_not_dispatched():
+        s = _ChunkSession(cost=3)
+        r = _runner(s, modes=("holdout", "cv"))
+        r.budget["cap"] = 3                       # the holdout needs 3; the CV split cannot get a single fit
+        v = r.execute()
+        assert v["status"] == "partial" and v["fit_budget"]["used"] == 3 and len(s.titles) == 1
+>       led = {p["part"]: p["status"] for p in v["execution"]["parts"]}
+                                               ^^^^^^^^^^^^^^
+E       KeyError: 'execution'
+
+tests\test_v136.py:832: KeyError
+________________________ test_zero_budget_runs_nothing ________________________
+
+    def test_zero_budget_runs_nothing():
+        s = _ChunkSession()
+        r = _runner(s)
+        r.budget["cap"] = 0
+        v = r.execute()
+>       assert v["status"] == "partial" and not s.titles and v["execution"]["committed_parts"] == 0
+E       AssertionError: assert ('partial' == 'partial'
+E         
+E           partial and not ['AMD validation: holdout'])
+E        +  where ['AMD validation: holdout'] = <test_v136._ChunkSession object at 0x00000260565BE950>.titles
+
+tests\test_v136.py:842: AssertionError
+__________ test_cancel_before_and_after_first_chunk_and_late_cancel ___________
+
+    def test_cancel_before_and_after_first_chunk_and_late_cancel():
+        s = _ChunkSession()
+        v = _runner(s, modes=("holdout", "cv")).execute(should_stop=lambda: True)
+        assert v["status"] == "cancelled" and not s.titles
+        calls = {"n": 0}
+    
+        def after_first():
+            calls["n"] += 1
+            return calls["n"] > 1
+        s2 = _ChunkSession()
+        v2 = _runner(s2, modes=("holdout", "cv")).execute(should_stop=after_first)
+        assert v2["status"] == "cancelled" and len(s2.titles) == 1
+>       assert [p["status"] for p in v2["execution"]["parts"]] == ["scored", "not_run", "not_run"]
+                                     ^^^^^^^^^^^^^^^
+E       KeyError: 'execution'
+
+tests\test_v136.py:857: KeyError
+_ test_lost_worker_and_invalid_response_are_uncommitted_and_counters_unknown __
+
+    def test_lost_worker_and_invalid_response_are_uncommitted_and_counters_unknown():
+        s = _ChunkSession(fail_on="cv1")
+        v = _runner(s, modes=("holdout", "cv")).execute()
+        assert v["status"] == "failed"
+>       led = {p["part"]: p["status"] for p in v["execution"]["parts"]}
+                                               ^^^^^^^^^^^^^^
+E       KeyError: 'execution'
+
+tests\test_v136.py:879: KeyError
+___________ test_partial_bootstrap_chunks_and_budget_inside_a_chunk ___________
+
+    def test_partial_bootstrap_chunks_and_budget_inside_a_chunk():
+        s = _ChunkSession(cost=2)
+        r = _runner(s, modes=("bootstrap",), B=5)
+        r.chunk = 2
+        r.budget["cap"] = 5                  # draws 1, 2 fit (4 fits); draw 3 is denied inside chunk 2; chunk 3 not run
+        v = r.execute()
+>       led = {p["part"]: p["status"] for p in v["execution"]["parts"]}
+                                               ^^^^^^^^^^^^^^
+E       KeyError: 'execution'
+
+tests\test_v136.py:894: KeyError
+__________ test_adversarial_round2_port_reused_folders_and_exact_cap __________
+
+tmp_path = WindowsPath('E:/sx_tmp/red136/test_adversarial_round2_port_r0')
+
+    def test_adversarial_round2_port_reused_folders_and_exact_cap(tmp_path):
+        """Port of the auditor's Round 2 adversarial.py (baseline 13 pass / 4 fail) to the v1.3.6 interfaces: exports to a
+        reused destination now land in NEW folders - the stale script / data of the earlier export are not part of the
+        refusal export - and the exact-cap case is complete (assertions adapted to the unique-subfolder design)."""
+        from statexplore.discovery import engine
+        from statexplore.discovery import validate as V
+        from statexplore.discovery.space import SearchSettings
+        from statexplore.export.exporters import write_portable
+    
+        d = fx5("Test55L_LegacyUnderflow")
+        run = engine.create_run(d, SearchSettings(**{k: v for k, v in S55L.items() if k not in ("workers", "max_models",
+                                                                                               "max_minutes")}))
+        v = {"grammar": "validation-4", "schema": 2, "validation_id": "audit1", "config": {"modes": ["holdout"],
+             "pipeline": "fixed", "holdout_fraction": .2, "k": 5, "repeats": 1, "B": 1, "seed": 1}, "status": "complete",
+             "problems": [], "search_id": run.id, "search_identity": run.fit_id, "search_signature": run.signature,
+             "target_label": "rows", "target_estimand": "synthetic", "pipeline_label": "Fixed", "rule_label": "",
+             "predictions": [{"split": "holdout", "fold": 1, "row_id": 1, "observed": 1., "predicted": 1.,
+                              "participant": "1", "cluster": ""}],
+             "execution": {"parts": [{"part": "holdout:fold1", "mode": "holdout", "split": "holdout", "fold": 1, "b": None,
+                                      "chunk": 1, "status": "scored", "committed": True}]},
+             "scripts": ["# chunk"], "reproduce_script": 'dat <- utils::read.csv("x.csv")\n# synthetic test\n'}
+        a = tmp_path / "export"
+>       f1 = folder_of(V.export(v, str(a), ds=d, include_data=True))
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\test_v136.py:1244: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests\test_v136.py:63: in folder_of
+    return one(paths, "bundle_inventory.json").parent
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+paths = ['E:\\sx_tmp\\red136\\test_adversarial_round2_port_r0\\export\\validation_manifest.json', 'E:\\sx_tmp\\red136\\test_ad...dation_reproduce.R', 'E:\\sx_tmp\\red136\\test_adversarial_round2_port_r0\\export\\validation_reproduce_data.csv', ...]
+name = 'bundle_inventory.json'
+
+    def one(paths, name: str) -> Path:
+        hits = [Path(p) for p in paths if Path(p).name == name]
+>       assert len(hits) == 1, (name, [Path(p).name for p in paths])
+E       AssertionError: ('bundle_inventory.json', ['validation_manifest.json', 'predictions.csv', 'validation_expected.csv', 'validation_code.R', 'validation_reproduce.R', 'validation_reproduce_data.csv', ...])
+E       assert 0 == 1
+E        +  where 0 = len([])
+
+tests\test_v136.py:57: AssertionError
+__________ test_reports_export_asks_consent_and_writes_a_new_folder ___________
+
+window = <statexplore.gui.main_window.MainWindow(0x26054141cc0) at 0x000002605B01B980>
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000002605A7DB0D0>
+tmp_path = WindowsPath('E:/sx_tmp/red136/test_reports_export_asks_conse0')
+
+    def test_reports_export_asks_consent_and_writes_a_new_folder(window, monkeypatch, tmp_path):
+        from PySide6.QtCore import Qt
+        from PySide6.QtWidgets import QFileDialog, QMessageBox
+    
+>       p, r1, r2 = _project_with_results(tmp_path)
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\test_v136_gui.py:70: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+tmp_path = WindowsPath('E:/sx_tmp/red136/test_reports_export_asks_conse0')
+
+    def _project_with_results(tmp_path):
+        from statexplore.core.project import Project
+        from tests.test_v136 import _FakeWorker, _scores, _t_one
+        from statexplore.analysis.session import RSession
+    
+        d = _scores(tmp_path)
+        p = Project(d)
+        sess = RSession(_FakeWorker(), tmp_path / "w")
+        r1, a1 = _t_one(sess, d)
+        r2, a2 = _t_one(sess, d)
+>       r2.values.pop("analysis_provenance")              # as saved by StatExplore 1.3.5
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       KeyError: 'analysis_provenance'
+
+tests\test_v136_gui.py:60: KeyError
+---------------------------- Captured Qt messages -----------------------------
+QtWarningMsg: QFontDatabase: Cannot find font directory C:/Users/Stephen/Desktop/My stuff/statexplore/.venv/Lib/site-packages/PySide6/lib/fonts.
+Note that Qt no longer ships fonts. Deploy some (from https://dejavu-fonts.github.io/ for example) or switch to fontconfig.
+_______ test_code_dialog_refuses_unprovable_history_and_saves_provable ________
+
+window = <statexplore.gui.main_window.MainWindow(0x2605baedf90) at 0x000002605A81F780>
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000002605A81E590>
+tmp_path = WindowsPath('E:/sx_tmp/red136/test_code_dialog_refuses_unpro0')
+
+    def test_code_dialog_refuses_unprovable_history_and_saves_provable(window, monkeypatch, tmp_path):
+        from PySide6.QtWidgets import QFileDialog, QMessageBox
+    
+        from statexplore.gui.pages.eda import CodeDialog
+    
+>       p, r1, r2 = _project_with_results(tmp_path)
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\test_v136_gui.py:105: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+tmp_path = WindowsPath('E:/sx_tmp/red136/test_code_dialog_refuses_unpro0')
+
+    def _project_with_results(tmp_path):
+        from statexplore.core.project import Project
+        from tests.test_v136 import _FakeWorker, _scores, _t_one
+        from statexplore.analysis.session import RSession
+    
+        d = _scores(tmp_path)
+        p = Project(d)
+        sess = RSession(_FakeWorker(), tmp_path / "w")
+        r1, a1 = _t_one(sess, d)
+        r2, a2 = _t_one(sess, d)
+>       r2.values.pop("analysis_provenance")              # as saved by StatExplore 1.3.5
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       KeyError: 'analysis_provenance'
+
+tests\test_v136_gui.py:60: KeyError
+_______________ test_legacy_search_dialog_title_says_unverified _______________
+
+window = <statexplore.gui.main_window.MainWindow(0x2605d64de40) at 0x000002605D953E00>
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000002605B626890>
+tmp_path = WindowsPath('E:/sx_tmp/red136/test_legacy_search_dialog_titl0')
+
+    def test_legacy_search_dialog_title_says_unverified(window, monkeypatch, tmp_path):
+        from PySide6.QtWidgets import QMessageBox
+    
+        from statexplore.core.project import Project
+        from statexplore.discovery.engine import create_run
+        from statexplore.discovery.space import SearchSettings
+        from tests.test_v136 import SWB, WORKBOOK, _legacy
+    
+        a = import_file(WORKBOOK, sheet="A")
+        run = create_run(a, SearchSettings(**SWB))
+>       old, _sig = _legacy(run)
+                    ^^^^^^^^^^^^
+
+tests\test_v136_gui.py:132: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+run = DiscoveryRun(settings=SearchSettings(outcome='y', candidates=['x', 'z', 'w'], required=[], max_predictors=2, max_order...ection': ''}], 'derived': [], 'filters': [], 'holdout': None}, validation_runs=[], grammar=4, parent_id='', lineage={})
+
+    def _legacy(run):
+        meta = run.meta_dict()
+>       meta.pop("identity_schema")
+E       KeyError: 'identity_schema'
+
+tests\test_v136.py:229: KeyError
+=========================== short test summary info ===========================
+FAILED tests/test_v136.py::test_workbook_sheets_have_distinct_identities_everywhere
+FAILED tests/test_v136.py::test_content_identity_definition - ModuleNotFoundE...
+FAILED tests/test_v136.py::test_identity_survives_project_save_reopen_and_reimport
+FAILED tests/test_v136.py::test_value_digest_is_computed_once_per_revision - ...
+FAILED tests/test_v136.py::test_session_data_keys_do_not_use_object_addresses
+FAILED tests/test_v136.py::test_legacy_identity_is_unverified_everywhere - Ke...
+FAILED tests/test_v136.py::test_console_import_and_reshape_change_the_content_identity
+FAILED tests/test_v136.py::test_transaction_policy_negative_controls - Module...
+FAILED tests/test_v136.py::test_portable_exports_never_reuse_a_folder - Asser...
+FAILED tests/test_v136.py::test_audit_export_goes_to_a_new_folder - Assertion...
+FAILED tests/test_v136.py::test_historical_report_exports_the_original_view_or_refuses
+FAILED tests/test_v136.py::test_multiple_results_get_separately_bound_bundles
+FAILED tests/test_v136.py::test_result_without_provenance_is_refused - Module...
+FAILED tests/test_v136.py::test_failed_result_keeps_provenance_and_stays_failed
+FAILED tests/test_v136.py::test_exact_budget_boundary_holdout[3-complete-3-0]
+FAILED tests/test_v136.py::test_exact_budget_boundary_holdout[2-partial-2-1]
+FAILED tests/test_v136.py::test_exact_budget_boundary_holdout[100-complete-3-0]
+FAILED tests/test_v136.py::test_budget_exactly_exhausted_with_work_remaining_is_partial_not_dispatched
+FAILED tests/test_v136.py::test_zero_budget_runs_nothing - AssertionError: as...
+FAILED tests/test_v136.py::test_cancel_before_and_after_first_chunk_and_late_cancel
+FAILED tests/test_v136.py::test_lost_worker_and_invalid_response_are_uncommitted_and_counters_unknown
+FAILED tests/test_v136.py::test_partial_bootstrap_chunks_and_budget_inside_a_chunk
+FAILED tests/test_v136.py::test_adversarial_round2_port_reused_folders_and_exact_cap
+FAILED tests/test_v136_gui.py::test_reports_export_asks_consent_and_writes_a_new_folder
+FAILED tests/test_v136_gui.py::test_code_dialog_refuses_unprovable_history_and_saves_provable
+FAILED tests/test_v136_gui.py::test_legacy_search_dialog_title_says_unverified
+26 failed, 1 passed, 39 deselected in 4.89s

@@ -1,0 +1,57 @@
+{
+ "opened_by": "1.3.6",
+ "identity_schema": [
+  2,
+  2
+ ],
+ "partial_resume_reason": "this search was recorded with data identity schema 2 (StatExplore 1.3.5 or earlier: source file hash + metadata), which cannot prove which imported values it analysed (for example which worksheet of a workbook); its results stay viewable as history, but they are not reused, resumed or reproduced as verified; the search stays as it is - start a new search from it to refit every candidate",
+ "context_state": "unverified",
+ "cache_rows_from_legacy": 0,
+ "validation_export_files": [
+  "README.txt",
+  "REPRODUCTION_UNAVAILABLE.txt",
+  "bundle_inventory.json",
+  "candidate_trace.csv",
+  "folds.csv",
+  "performance.csv",
+  "predictions.csv",
+  "realized_sizes.csv",
+  "split_manifest.csv",
+  "validation_code.R",
+  "validation_expected.csv",
+  "validation_manifest.json"
+ ],
+ "validation_reproduction": {
+  "runnable": false,
+  "reason": "this validation was recorded by StatExplore 1.3.5 or earlier: its reproduction script lacks the typed, complete verification of v1.3.6 (AUD135-01/02), so it is not exported as a runnable reproduction; also: the project's data are not the data this validation analysed (this search was recorded with data identity schema 2 (StatExplore 1.3.5 or earlier: source file hash + metadata), which cannot prove which imported values it analysed (for example which worksheet of a workbook); its results stay viewable as history, but they are not reused, resumed or reproduced as verified)",
+  "bundle_kind": "results-only"
+ },
+ "result_export_files": [
+  "REPRODUCTION_UNAVAILABLE.txt",
+  "bundle_inventory.json",
+  "recorded_code_not_runnable.R",
+  "statexplore_results.xlsx"
+ ],
+ "historical_rows_unchanged": [
+  2,
+  3
+ ],
+ "restart": {
+  "id_new": true,
+  "parent": true,
+  "status": "partial",
+  "n_done": 2,
+  "identity_schema": 3
+ },
+ "after_resave": {
+  "resumable": true,
+  "reason": "",
+  "legacy_still_legacy": 2,
+  "result_provenance_legacy": true
+ },
+ "after_resume": {
+  "status": "complete",
+  "n_done": 3,
+  "total": 3
+ }
+}

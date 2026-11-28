@@ -1,0 +1,39 @@
+{
+ "version": "1.3.5",
+ "AUD135-04": {
+  "status": "cancelled",
+  "reproduce_exit": 1,
+  "failed_checks": [
+   "split manifest: same rows"
+  ],
+  "tail": "        not applicable to this validation\n                               not applicable to this validation\n                               not applicable to this validation\n                               not applicable to this validation\n app 12000, reproduced 6000, only in app 6000, only reproduced 0\nVERIFICATION FAILED: 1 of 65 checks (see validation_check_results.csv): split manifest: same rows\n"
+ },
+ "AUD135-06": {
+  "cache_rows_admitted_from_sheet_A": 3,
+  "rows_marked_reused": 3,
+  "B_p_equal_A_p": true,
+  "B_p_equal_fresh_B_p": false,
+  "p_A": {
+   "x:z|x+x:z+z": 1.3135467414862284e-106,
+   "w:x|w+w:x+x": 0.3813212642532343,
+   "w:z|w+w:z+z": 0.993355176150836
+  },
+  "p_B_reported": {
+   "x:z|x+x:z+z": 1.3135467414862284e-106,
+   "w:x|w+w:x+x": 0.3813212642532343,
+   "w:z|w+w:z+z": 0.993355176150836
+  },
+  "p_B_fresh": {
+   "x:z|x+x:z+z": 0.38291285587076584,
+   "w:x|w+w:x+x": 0.7999492769814713,
+   "w:z|w+w:z+z": 0.6435518154042542
+  }
+ },
+ "AUD135-07": {
+  "historical_mean": 9.7,
+  "runnable_script_exported": true,
+  "reproduce_exit": 0,
+  "exported_bundle_mean": 10.3,
+  "matches_historical": false
+ }
+}

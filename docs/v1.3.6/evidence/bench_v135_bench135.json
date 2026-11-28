@@ -1,0 +1,197 @@
+{
+ "version": "1.3.5",
+ "repeats": 3,
+ "workloads": {
+  "51H3": {
+   "runs": [
+    {
+     "setup_s": 0.913,
+     "execute_s": 63.469,
+     "wall_s": 64.382,
+     "peak_mb": 419,
+     "status": "complete",
+     "selections": [
+      17,
+      17,
+      17,
+      17,
+      17,
+      17,
+      17,
+      17,
+      17,
+      17,
+      17,
+      17,
+      17,
+      17,
+      17,
+      17,
+      17,
+      17,
+      17,
+      17
+     ],
+     "fit_budget": {
+      "used": 680,
+      "cache_hits": 660,
+      "retries": 0,
+      "requested_bound": 1340
+     }
+    },
+    {
+     "setup_s": 0.976,
+     "execute_s": 62.324,
+     "wall_s": 63.299,
+     "peak_mb": 431,
+     "status": "complete",
+     "selections": [
+      17,
+      17,
+      17,
+      17,
+      17,
+      17,
+      17,
+      17,
+      17,
+      17,
+      17,
+      17,
+      17,
+      17,
+      17,
+      17,
+      17,
+      17,
+      17,
+      17
+     ],
+     "fit_budget": {
+      "used": 680,
+      "cache_hits": 660,
+      "retries": 0,
+      "requested_bound": 1340
+     }
+    },
+    {
+     "setup_s": 0.885,
+     "execute_s": 62.459,
+     "wall_s": 63.344,
+     "peak_mb": 439,
+     "status": "complete",
+     "selections": [
+      17,
+      17,
+      17,
+      17,
+      17,
+      17,
+      17,
+      17,
+      17,
+      17,
+      17,
+      17,
+      17,
+      17,
+      17,
+      17,
+      17,
+      17,
+      17,
+      17
+     ],
+     "fit_budget": {
+      "used": 680,
+      "cache_hits": 660,
+      "retries": 0,
+      "requested_bound": 1340
+     }
+    }
+   ],
+   "median_s": 63.344,
+   "range_s": [
+    63.299,
+    64.382
+   ]
+  },
+  "60F": {
+   "total": 147713444,
+   "indices": [
+    {
+     "index": 0,
+     "runs": [
+      {
+       "wall_s": 0.6687,
+       "peak_mb": 109,
+       "resolved": true,
+       "problems": []
+      },
+      {
+       "wall_s": 0.6677,
+       "peak_mb": 109,
+       "resolved": true,
+       "problems": []
+      },
+      {
+       "wall_s": 0.6538,
+       "peak_mb": 109,
+       "resolved": true,
+       "problems": []
+      }
+     ],
+     "median_s": 0.6677
+    },
+    {
+     "index": 73856722,
+     "runs": [
+      {
+       "wall_s": 0.6636,
+       "peak_mb": 109,
+       "resolved": true,
+       "problems": []
+      },
+      {
+       "wall_s": 0.6699,
+       "peak_mb": 109,
+       "resolved": true,
+       "problems": []
+      },
+      {
+       "wall_s": 0.704,
+       "peak_mb": 109,
+       "resolved": true,
+       "problems": []
+      }
+     ],
+     "median_s": 0.6699
+    },
+    {
+     "index": 147713443,
+     "runs": [
+      {
+       "wall_s": 0.6851,
+       "peak_mb": 109,
+       "resolved": true,
+       "problems": []
+      },
+      {
+       "wall_s": 0.6648,
+       "peak_mb": 109,
+       "resolved": true,
+       "problems": []
+      },
+      {
+       "wall_s": 0.652,
+       "peak_mb": 109,
+       "resolved": true,
+       "problems": []
+      }
+     ],
+     "median_s": 0.6648
+    }
+   ]
+  }
+ }
+}

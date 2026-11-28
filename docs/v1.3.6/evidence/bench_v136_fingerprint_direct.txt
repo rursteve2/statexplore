@@ -1,0 +1,4 @@
+(100000, 10) {dtype('float64'): 10}
+cold values_digest s 0.0107
+cold data_signature s 0.011
+warm per call ms 0.709

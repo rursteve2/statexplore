@@ -1,0 +1,61 @@
+{
+ "version": "1.3.5",
+ "repeats": 3,
+ "workloads": {
+  "FP": {
+   "runs": [
+    {
+     "cold_signature_s": 0.001,
+     "warm_1000_signature_and_fit_identity_s": 0.611,
+     "save_reopen_signature_s": 0.202,
+     "signature_stable_after_reopen": true,
+     "wall_s": 0.814,
+     "peak_mb": 140
+    },
+    {
+     "cold_signature_s": 0.0,
+     "warm_1000_signature_and_fit_identity_s": 0.592,
+     "save_reopen_signature_s": 0.172,
+     "signature_stable_after_reopen": true,
+     "wall_s": 0.764,
+     "peak_mb": 177
+    },
+    {
+     "cold_signature_s": 0.0,
+     "warm_1000_signature_and_fit_identity_s": 0.644,
+     "save_reopen_signature_s": 0.203,
+     "signature_stable_after_reopen": true,
+     "wall_s": 0.848,
+     "peak_mb": 181
+    }
+   ],
+   "median_s": 0.814
+  },
+  "VAL": {
+   "runs": [
+    {
+     "wall_s": 2.285,
+     "export_s": 0.301,
+     "status": "complete",
+     "fits_used": 42,
+     "peak_mb": 267
+    },
+    {
+     "wall_s": 2.255,
+     "export_s": 0.309,
+     "status": "complete",
+     "fits_used": 42,
+     "peak_mb": 281
+    },
+    {
+     "wall_s": 2.268,
+     "export_s": 0.312,
+     "status": "complete",
+     "fits_used": 42,
+     "peak_mb": 282
+    }
+   ],
+   "median_s": 2.268
+  }
+ }
+}

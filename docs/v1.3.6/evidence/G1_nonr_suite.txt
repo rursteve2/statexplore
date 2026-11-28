@@ -1,0 +1,676 @@
+.....................................FF................................. [ 16%]
+........................................................................ [ 32%]
+....................s...........................F..FF.F....FFFF........F [ 49%]
+........................................................................ [ 65%]
+........................................................................ [ 82%]
+....................................FFFF................................ [ 98%]
+.......                                                                  [100%]
+================================== FAILURES ===================================
+___________________________ test_xlsx_values_match ____________________________
+
+project_with_results = <statexplore.core.project.Project object at 0x000001E502CEA310>
+tmp_path = WindowsPath('E:/sx_tmp/G1_nonr_suite/test_xlsx_values_match0')
+
+    def test_xlsx_values_match(project_with_results, tmp_path):
+        proj = project_with_results
+        folder = tmp_path / "x"
+        exporters.export(proj, [r.id for r in proj.results], folder, {"xlsx"}, search_ids=[proj.searches[0].id])
+>       book = pd.read_excel(folder / "statexplore_results.xlsx", sheet_name=None)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\test_export.py:89: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+.venv\Lib\site-packages\pandas\io\excel\_base.py:513: in read_excel
+    io = ExcelFile(
+.venv\Lib\site-packages\pandas\io\excel\_base.py:1679: in __init__
+    ext = inspect_excel_format(
+.venv\Lib\site-packages\pandas\io\excel\_base.py:1511: in inspect_excel_format
+    with get_handle(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+path_or_buf = WindowsPath('E:/sx_tmp/G1_nonr_suite/test_xlsx_values_match0/x/statexplore_results.xlsx')
+mode = 'rb', encoding = 'utf-8', compression = None, memory_map = False
+is_text = False, errors = 'strict', storage_options = None
+
+    def get_handle(
+        path_or_buf: FilePath | BaseBuffer,
+        mode: str,
+        *,
+        encoding: str | None = None,
+        compression: CompressionOptions | None = None,
+        memory_map: bool = False,
+        is_text: bool = True,
+        errors: str | None = None,
+        storage_options: StorageOptions | None = None,
+    ) -> IOHandles[str] | IOHandles[bytes]:
+        """
+        Get file handle for given path/buffer and mode.
+    
+        Parameters
+        ----------
+        path_or_buf : str or file handle
+            File path or object.
+        mode : str
+            Mode to open path_or_buf with.
+        encoding : str or None
+            Encoding to use.
+        compression : str or dict, default 'infer'
+            For on-the-fly compression of the output data. If 'infer' and 'path_or_buf'
+            is path-like, then detect compression from the following extensions: '.gz',
+            '.bz2', '.zip', '.xz', '.zst', '.tar', '.tar.gz', '.tar.xz' or '.tar.bz2'
+            (otherwise no compression).
+            Set to ``None`` for no compression.
+            Can also be a dict with key ``'method'`` set
+            to one of {``'zip'``, ``'gzip'``, ``'bz2'``, ``'zstd'``, ``'xz'``, ``'tar'``}
+            and other key-value pairs are forwarded to
+            ``zipfile.ZipFile``, ``gzip.GzipFile``,
+            ``bz2.BZ2File``, ``zstandard.ZstdCompressor``, ``lzma.LZMAFile`` or
+            ``tarfile.TarFile``, respectively.
+            As an example, the following could be passed for faster compression and to
+            create a reproducible gzip archive:
+            ``compression={'method': 'gzip', 'compresslevel': 1, 'mtime': 1}``.
+    
+               May be a dict with key 'method' as compression mode
+               and other keys as compression options if compression
+               mode is 'zip'.
+    
+               Passing compression options as keys in dict is
+               supported for compression modes 'gzip', 'bz2', 'zstd' and 'zip'.
+    
+        memory_map : bool, default False
+            See parsers._parser_params for more information. Only used by read_csv.
+        is_text : bool, default True
+            Whether the type of the content passed to the file/buffer is string or
+            bytes. This is not the same as `"b" not in mode`. If a string content is
+            passed to a binary file/buffer, a wrapper is inserted.
+        errors : str, default 'strict'
+            Specifies how encoding and decoding errors are to be handled.
+            See the errors argument for :func:`open` for a full list
+            of options.
+        storage_options: StorageOptions = None
+            Passed to _get_filepath_or_buffer
+    
+        Returns the dataclass IOHandles
+        """
+        # Windows does not default to utf-8. Set to utf-8 for a consistent behavior
+        encoding = encoding or "utf-8"
+    
+        errors = errors or "strict"
+    
+        # read_csv does not know whether the buffer is opened in binary/text mode
+        if _is_binary_mode(path_or_buf, mode) and "b" not in mode:
+            mode += "b"
+    
+        # validate encoding and errors
+        codecs.lookup(encoding)
+        if isinstance(errors, str):
+            codecs.lookup_error(errors)
+    
+        # open URLs
+        ioargs = _get_filepath_or_buffer(
+            path_or_buf,
+            encoding=encoding,
+            compression=compression,
+            mode=mode,
+            storage_options=storage_options,
+        )
+    
+        handle = ioargs.filepath_or_buffer
+        handles: list[BaseBuffer] = []
+        completed = False
+    
+        try:
+            # memory mapping needs to be the first step
+            # only used for read_csv
+            handle, memory_map, handles = _maybe_memory_map(handle, memory_map)
+    
+            is_path = isinstance(handle, str)
+            compression_args = dict(ioargs.compression)
+            compression = compression_args.pop("method")
+    
+            # Only for write methods
+            if "r" not in mode and is_path:
+                check_parent_directory(str(handle))
+    
+            if compression:
+                if compression != "zstd":
+                    # compression libraries do not like an explicit text-mode
+                    ioargs.mode = ioargs.mode.replace("t", "")
+                elif compression == "zstd" and "b" not in ioargs.mode:
+                    # python-zstandard defaults to text mode, but we always expect
+                    # compression libraries to use binary mode.
+                    ioargs.mode += "b"
+    
+                # GZ Compression
+                if compression == "gzip":
+                    if isinstance(handle, str):
+                        handle = gzip.GzipFile(
+                            filename=handle,
+                            mode=ioargs.mode,
+                            **compression_args,
+                        )
+                    else:
+                        handle = gzip.GzipFile(
+                            # No overload variant of "GzipFile" matches argument types
+                            # "Union[str, BaseBuffer]", "str", "Dict[str, Any]"
+                            fileobj=handle,  # type: ignore[call-overload]
+                            mode=ioargs.mode,
+                            **compression_args,
+                        )
+    
+                # BZ Compression
+                elif compression == "bz2":
+                    import bz2
+    
+                    # Overload of "BZ2File" to handle pickle protocol 5
+                    # "Union[str, BaseBuffer]", "str", "Dict[str, Any]"
+                    handle = bz2.BZ2File(  # type: ignore[call-overload]
+                        handle,
+                        mode=ioargs.mode,
+                        **compression_args,
+                    )
+    
+                # ZIP Compression
+                elif compression == "zip":
+                    # error: Argument 1 to "_BytesZipFile" has incompatible type
+                    # "Union[str, BaseBuffer]"; expected "Union[Union[str, PathLike[str]],
+                    # ReadBuffer[bytes], WriteBuffer[bytes]]"
+                    handle = _BytesZipFile(
+                        handle,  # type: ignore[arg-type]
+                        ioargs.mode,
+                        **compression_args,
+                    )
+                    if handle.buffer.mode == "r":
+                        handles.append(handle)
+                        zip_names = handle.buffer.namelist()
+                        if len(zip_names) == 1:
+                            # Read the entire zip entry into memory rather than
+                            # returning a streaming ZipExtFile via .open(). On
+                            # Python <3.12, ZipExtFile has poor buffering that
+                            # causes O(n²) performance with pickle.load() and
+                            # other consumers that issue many small reads
+                            # (GH#59279). Can be reverted to .open() once the
+                            # minimum Python version is 3.12.
+                            handle = BytesIO(handle.buffer.read(zip_names.pop()))
+                        elif not zip_names:
+                            raise ValueError(f"Zero files found in ZIP file {path_or_buf}")
+                        else:
+                            raise ValueError(
+                                "Multiple files found in ZIP file. "
+                                f"Only one file per ZIP: {zip_names}"
+                            )
+    
+                # TAR Encoding
+                elif compression == "tar":
+                    compression_args.setdefault("mode", ioargs.mode)
+                    if isinstance(handle, str):
+                        handle = _BytesTarFile(name=handle, **compression_args)
+                    else:
+                        # error: Argument "fileobj" to "_BytesTarFile" has incompatible
+                        # type "BaseBuffer"; expected "Union[ReadBuffer[bytes],
+                        # WriteBuffer[bytes], None]"
+                        handle = _BytesTarFile(
+                            fileobj=handle,  # type: ignore[arg-type]
+                            **compression_args,
+                        )
+                    assert isinstance(handle, _BytesTarFile)
+                    if "r" in handle.buffer.mode:
+                        handles.append(handle)
+                        files = handle.buffer.getnames()
+                        if len(files) == 1:
+                            file = handle.buffer.extractfile(files[0])
+                            assert file is not None
+                            handle = file
+                        elif not files:
+                            raise ValueError(
+                                f"Zero files found in TAR archive {path_or_buf}"
+                            )
+                        else:
+                            raise ValueError(
+                                "Multiple files found in TAR archive. "
+                                f"Only one file per TAR archive: {files}"
+                            )
+    
+                # XZ Compression
+                elif compression == "xz":
+                    # error: Argument 1 to "LZMAFile" has incompatible type
+                    # "Union[str, BaseBuffer]"; expected "Optional[Union[Union[str,
+                    # bytes, PathLike[str], PathLike[bytes]], IO[bytes]], None]"
+                    import lzma
+    
+                    handle = lzma.LZMAFile(
+                        handle,  # type: ignore[arg-type]
+                        ioargs.mode,
+                        **compression_args,
+                    )
+    
+                # Zstd Compression
+                elif compression == "zstd":
+                    zstd = import_optional_dependency("zstandard")
+                    if "r" in ioargs.mode:
+                        open_args = {"dctx": zstd.ZstdDecompressor(**compression_args)}
+                    else:
+                        open_args = {"cctx": zstd.ZstdCompressor(**compression_args)}
+                    handle = zstd.open(
+                        handle,
+                        mode=ioargs.mode,
+                        **open_args,
+                    )
+    
+                # Unrecognized Compression
+                else:
+                    msg = f"Unrecognized compression type: {compression}"
+                    raise ValueError(msg)
+    
+                assert not isinstance(handle, str)
+                handles.append(handle)
+    
+            elif isinstance(handle, str):
+                # Check whether the filename is to be opened in binary mode.
+                # Binary mode does not support 'encoding' and 'newline'.
+                if ioargs.encoding and "b" not in ioargs.mode:
+                    # Encoding
+                    handle = open(
+                        handle,
+                        ioargs.mode,
+                        encoding=ioargs.encoding,
+                        errors=errors,
+                        newline="",
+                    )
+                else:
+                    # Binary mode
+>                   handle = open(handle, ioargs.mode)
+                             ^^^^^^^^^^^^^^^^^^^^^^^^^
+E                   FileNotFoundError: [Errno 2] No such file or directory: 'E:\\sx_tmp\\G1_nonr_suite\\test_xlsx_values_match0\\x\\statexplore_results.xlsx'
+
+.venv\Lib\site-packages\pandas\io\common.py:954: FileNotFoundError
+______________________________ test_docx_and_pdf ______________________________
+
+project_with_results = <statexplore.core.project.Project object at 0x000001E546572350>
+tmp_path = WindowsPath('E:/sx_tmp/G1_nonr_suite/test_docx_and_pdf0')
+qtbot = <pytestqt.qtbot.QtBot object at 0x000001E502EB4FD0>
+
+    def test_docx_and_pdf(project_with_results, tmp_path, qtbot):
+        from docx import Document
+    
+        proj = project_with_results
+        folder = tmp_path / "d"
+        exporters.export(proj, [r.id for r in proj.results], folder, {"docx", "pdf"})
+>       doc = Document(str(folder / "statexplore_report.docx"))
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\test_export.py:105: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+.venv\Lib\site-packages\docx\api.py:27: in Document
+    document_part = cast("DocumentPart", Package.open(docx).main_document_part)
+                                         ^^^^^^^^^^^^^^^^^^
+.venv\Lib\site-packages\docx\opc\package.py:126: in open
+    pkg_reader = PackageReader.from_file(pkg_file)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv\Lib\site-packages\docx\opc\pkgreader.py:22: in from_file
+    phys_reader = PhysPkgReader(pkg_file)
+                  ^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+cls = <class 'docx.opc.phys_pkg.PhysPkgReader'>
+pkg_file = 'E:\\sx_tmp\\G1_nonr_suite\\test_docx_and_pdf0\\d\\statexplore_report.docx'
+
+    def __new__(cls, pkg_file):
+        # if `pkg_file` is a string, treat it as a path
+        if isinstance(pkg_file, str):
+            if os.path.isdir(pkg_file):
+                reader_cls = _DirPkgReader
+            elif is_zipfile(pkg_file):
+                reader_cls = _ZipPkgReader
+            else:
+>               raise PackageNotFoundError("Package not found at '%s'" % pkg_file)
+E               docx.opc.exceptions.PackageNotFoundError: Package not found at 'E:\sx_tmp\G1_nonr_suite\test_docx_and_pdf0\d\statexplore_report.docx'
+
+.venv\Lib\site-packages\docx\opc\phys_pkg.py:21: PackageNotFoundError
+____________ test_52d_partial_search_resumable_with_reason_states _____________
+
+    def test_52d_partial_search_resumable_with_reason_states():
+        from statexplore.core.project import Project
+        from statexplore.core.derive import FilterSpec
+    
+        work = Path(os.environ.get("TEMP", "."))
+        p = Project.open(FX / "StatExplore_Test52D_Persistence.sxp")
+        run = next(r for r in p.searches if r.id == "ea77ac2fedc4")
+        # v1.3.5 (AUD134-03): its rows were fitted under fit rules 3, so it is no longer resumable (reason shown)
+        assert run.status == "partial" and run.n_done == 5 and run.total == 15 and not run.resumable
+>       assert "fit rules 3" in run.resume_reason(p.dataset)
+E       AssertionError: assert 'fit rules 3' in 'this search was recorded with data identity schema 2 (StatExplore 1.3.5 or earlier: source file hash + metadata), whi...ed, resumed or reproduced as verified; the search stays as it is - start a new search from it to refit every candidate'
+E        +  where 'this search was recorded with data identity schema 2 (StatExplore 1.3.5 or earlier: source file hash + metadata), whi...ed, resumed or reproduced as verified; the search stays as it is - start a new search from it to refit every candidate' = resume_reason(<statexplore.core.dataset.Dataset object at 0x000001E553727890>)
+E        +    where resume_reason = DiscoveryRun(settings=SearchSettings(outcome='Y', candidates=['X01', 'X02', 'X03', 'X04', 'X05', 'X06'], required=['Ti...p': '<=', 'value': 4.0}], 'holdout': None}, validation_runs=[], grammar=2, parent_id='', lineage={}, identity_schema=2).resume_reason
+E        +    and   <statexplore.core.dataset.Dataset object at 0x000001E553727890> = <statexplore.core.project.Project object at 0x000001E54657CE50>.dataset
+
+tests\test_v134.py:630: AssertionError
+_______ test_legacy_runs_without_identity_or_old_rules_are_never_reused _______
+
+    def test_legacy_runs_without_identity_or_old_rules_are_never_reused():
+        from statexplore.discovery import engine
+        from statexplore.discovery.engine import DiscoveryRun
+        from statexplore.discovery.space import SearchSettings
+    
+        s = SearchSettings(outcome="Y", candidates=["A"])
+        cur = DiscoveryRun(settings=s, family="gaussian", total=1, signature="sig", fit_id="F")
+        row = {"idx": 0, "key": "main|A", "status": "ok"}
+        legacy = DiscoveryRun(settings=s, family="gaussian", total=1, signature="sig", fit_id="", rows=[row])
+        old_rules = DiscoveryRun(settings=s, family="gaussian", total=1, signature="sig", fit_id="F", rows=[row],
+                                 engine={"fit_rules": 3})
+        good = DiscoveryRun(settings=s, family="gaussian", total=1, signature="sig", fit_id="F", rows=[row],
+                            engine={"fit_rules": engine.FIT_RULES})
+        assert engine.cache_from(cur, [legacy, old_rules]) == {}
+>       assert list(engine.cache_from(cur, [legacy, old_rules, good])) == ["main|A"]
+E       AssertionError: assert [] == ['main|A']
+E         
+E         Right contains one more item: 'main|A'
+E         Use -v to get more diff
+
+tests\test_v134.py:723: AssertionError
+__________________ test_audit_record_roundtrip_and_refusals ___________________
+
+tmp_path = WindowsPath('E:/sx_tmp/G1_nonr_suite/test_audit_record_roundtrip_an0')
+
+    def test_audit_record_roundtrip_and_refusals(tmp_path):
+        from statexplore.core.project import Project
+        from statexplore.export.audit import AuditError, read_audit, validate_record, write_audit
+    
+        p = Project.open(FX / "StatExplore_Test52D_Persistence.sxp")
+        run = next(r for r in p.searches if r.id == "ea77ac2fedc4")
+        files = write_audit(run, p.dataset, tmp_path)
+        rec = read_audit(files[0])
+        # audit schema 2 (v1.3.5, AUD134-07): historical vs current data blocks; the 52D search is no longer resumable
+        assert rec["search"]["id"] == "ea77ac2fedc4" and rec["grammar"]["stored_total"] == 15
+>       assert "fit rules 3" in rec["search"]["resume"] and rec["search"]["historical_old_rules"] is True
+E       AssertionError: assert ('fit rules 3' in 'this search was recorded with data identity schema 2 (StatExplore 1.3.5 or earlier: source file hash + metadata), whi...ed, resumed or reproduced as verified; the search stays as it is - start a new search from it to refit every candidate')
+
+tests\test_v134.py:741: AssertionError
+____________ test_reopened_partial_search_shows_resume_and_reasons ____________
+
+window = <statexplore.gui.main_window.MainWindow(0x1e5666cc520) at 0x000001E553A8E6C0>
+tmp_path = WindowsPath('E:/sx_tmp/G1_nonr_suite/test_reopened_partial_search_s0')
+
+    def test_reopened_partial_search_shows_resume_and_reasons(window, tmp_path):
+        """v1.3.5 (AUD134-03) supersedes the v1.3.4 expectation: the owner's 52D partial search was fitted under fit rules 3,
+        so Resume is disabled WITH the reason and 'New search from this one' is offered instead."""
+        src = tmp_path / "p52d.sxp"
+        shutil.copy(FX / "StatExplore_Test52D_Persistence.sxp", src)
+        window.open_project(str(src))
+        pg = _page(window)
+        pg.run = next(r for r in window.state.project.searches if r.id == "ea77ac2fedc4")
+        pg._show_run()
+>       assert not pg.resume_btn.isEnabled() and "fit rules 3" in pg.resume_reason.text()
+E       AssertionError: assert (not False and 'fit rules 3' in 'Resume unavailable: this search was recorded with data identity schema 2 (StatExplore 1.3.5 or earlier: source file h...d, resumed or reproduced as verified; the search stays as it is - start a new search from it to refit every candidate.')
+E        +  where False = <built-in method isEnabled of PySide6.QtWidgets.QPushButton object at 0x000001E55AA25D40>()
+E        +    where <built-in method isEnabled of PySide6.QtWidgets.QPushButton object at 0x000001E55AA25D40> = <PySide6.QtWidgets.QPushButton(0x1e569b29870) at 0x000001E55AA25D40>.isEnabled
+E        +      where <PySide6.QtWidgets.QPushButton(0x1e569b29870) at 0x000001E55AA25D40> = <statexplore.gui.pages.discovery.DiscoveryPage(0x1e5666aba00) at 0x000001E55AA237C0>.resume_btn
+E        +  and   'Resume unavailable: this search was recorded with data identity schema 2 (StatExplore 1.3.5 or earlier: source file h...d, resumed or reproduced as verified; the search stays as it is - start a new search from it to refit every candidate.' = <built-in method text of PySide6.QtWidgets.QLabel object at 0x000001E55AA24540>()
+E        +    where <built-in method text of PySide6.QtWidgets.QLabel object at 0x000001E55AA24540> = <PySide6.QtWidgets.QLabel(0x1e569c30010) at 0x000001E55AA24540>.text
+E        +      where <PySide6.QtWidgets.QLabel(0x1e569c30010) at 0x000001E55AA24540> = <statexplore.gui.pages.discovery.DiscoveryPage(0x1e5666aba00) at 0x000001E55AA237C0>.resume_reason
+
+tests\test_v134_gui.py:50: AssertionError
+__________________ test_simulated_display_scaling_layout[1] ___________________
+
+tmp_path = WindowsPath('E:/sx_tmp/G1_nonr_suite/test_simulated_display_scaling0')
+scale = '1'
+
+    @pytest.mark.parametrize("scale", ["1", "1.25", "1.5", "2"])
+    def test_simulated_display_scaling_layout(tmp_path, scale):
+        """V134-017 (simulated, labelled as such): the main window at QT_SCALE_FACTOR 1 / 1.25 / 1.5 / 2 lays out the
+        Discovery page without errors; minimum width fits a 1366-pixel-wide screen at that scale. Physical-display DPI is an
+        owner-approved deferral, not covered here."""
+        code = (r'''
+    import json, sys
+    from PySide6.QtWidgets import QApplication
+    app = QApplication(sys.argv)
+    from statexplore.gui.main_window import MainWindow
+    from statexplore.gui.state import AppState
+    w = MainWindow(AppState()); w.resize(1366, 768); w.show(); app.processEvents()
+    from statexplore.gui.main_window import SECTIONS
+    w.sidebar.setCurrentRow(SECTIONS.index("Automated Model Discovery"))
+    app.processEvents()
+    pix = w.grab(); pix.save(sys.argv[1])
+    json.dump({"min_w": w.minimumSizeHint().width(), "dpr": app.devicePixelRatio(), "w": w.width()}, open(sys.argv[2], "w"))
+    w.close()
+    ''')
+        (tmp_path / "s.py").write_text(code, encoding="utf-8")
+        env = dict(os.environ, QT_QPA_PLATFORM="offscreen", QT_SCALE_FACTOR=scale,
+                   QT_QPA_FONTDIR=os.environ.get("QT_QPA_FONTDIR", r"C:\Windows\Fonts"))
+        r = subprocess.run([sys.executable, str(tmp_path / "s.py"), str(tmp_path / "s.png"), str(tmp_path / "s.json")],
+                           capture_output=True, text=True, timeout=300, env=env)
+        assert r.returncode == 0, r.stderr[-2000:]
+        info = json.loads((tmp_path / "s.json").read_text())
+>       assert info["min_w"] <= 1366
+E       assert 1580 <= 1366
+
+tests\test_v134_gui.py:271: AssertionError
+_________________ test_simulated_display_scaling_layout[1.25] _________________
+
+tmp_path = WindowsPath('E:/sx_tmp/G1_nonr_suite/test_simulated_display_scaling1')
+scale = '1.25'
+
+    @pytest.mark.parametrize("scale", ["1", "1.25", "1.5", "2"])
+    def test_simulated_display_scaling_layout(tmp_path, scale):
+        """V134-017 (simulated, labelled as such): the main window at QT_SCALE_FACTOR 1 / 1.25 / 1.5 / 2 lays out the
+        Discovery page without errors; minimum width fits a 1366-pixel-wide screen at that scale. Physical-display DPI is an
+        owner-approved deferral, not covered here."""
+        code = (r'''
+    import json, sys
+    from PySide6.QtWidgets import QApplication
+    app = QApplication(sys.argv)
+    from statexplore.gui.main_window import MainWindow
+    from statexplore.gui.state import AppState
+    w = MainWindow(AppState()); w.resize(1366, 768); w.show(); app.processEvents()
+    from statexplore.gui.main_window import SECTIONS
+    w.sidebar.setCurrentRow(SECTIONS.index("Automated Model Discovery"))
+    app.processEvents()
+    pix = w.grab(); pix.save(sys.argv[1])
+    json.dump({"min_w": w.minimumSizeHint().width(), "dpr": app.devicePixelRatio(), "w": w.width()}, open(sys.argv[2], "w"))
+    w.close()
+    ''')
+        (tmp_path / "s.py").write_text(code, encoding="utf-8")
+        env = dict(os.environ, QT_QPA_PLATFORM="offscreen", QT_SCALE_FACTOR=scale,
+                   QT_QPA_FONTDIR=os.environ.get("QT_QPA_FONTDIR", r"C:\Windows\Fonts"))
+        r = subprocess.run([sys.executable, str(tmp_path / "s.py"), str(tmp_path / "s.png"), str(tmp_path / "s.json")],
+                           capture_output=True, text=True, timeout=300, env=env)
+        assert r.returncode == 0, r.stderr[-2000:]
+        info = json.loads((tmp_path / "s.json").read_text())
+>       assert info["min_w"] <= 1366
+E       assert 1580 <= 1366
+
+tests\test_v134_gui.py:271: AssertionError
+_________________ test_simulated_display_scaling_layout[1.5] __________________
+
+tmp_path = WindowsPath('E:/sx_tmp/G1_nonr_suite/test_simulated_display_scaling2')
+scale = '1.5'
+
+    @pytest.mark.parametrize("scale", ["1", "1.25", "1.5", "2"])
+    def test_simulated_display_scaling_layout(tmp_path, scale):
+        """V134-017 (simulated, labelled as such): the main window at QT_SCALE_FACTOR 1 / 1.25 / 1.5 / 2 lays out the
+        Discovery page without errors; minimum width fits a 1366-pixel-wide screen at that scale. Physical-display DPI is an
+        owner-approved deferral, not covered here."""
+        code = (r'''
+    import json, sys
+    from PySide6.QtWidgets import QApplication
+    app = QApplication(sys.argv)
+    from statexplore.gui.main_window import MainWindow
+    from statexplore.gui.state import AppState
+    w = MainWindow(AppState()); w.resize(1366, 768); w.show(); app.processEvents()
+    from statexplore.gui.main_window import SECTIONS
+    w.sidebar.setCurrentRow(SECTIONS.index("Automated Model Discovery"))
+    app.processEvents()
+    pix = w.grab(); pix.save(sys.argv[1])
+    json.dump({"min_w": w.minimumSizeHint().width(), "dpr": app.devicePixelRatio(), "w": w.width()}, open(sys.argv[2], "w"))
+    w.close()
+    ''')
+        (tmp_path / "s.py").write_text(code, encoding="utf-8")
+        env = dict(os.environ, QT_QPA_PLATFORM="offscreen", QT_SCALE_FACTOR=scale,
+                   QT_QPA_FONTDIR=os.environ.get("QT_QPA_FONTDIR", r"C:\Windows\Fonts"))
+        r = subprocess.run([sys.executable, str(tmp_path / "s.py"), str(tmp_path / "s.png"), str(tmp_path / "s.json")],
+                           capture_output=True, text=True, timeout=300, env=env)
+        assert r.returncode == 0, r.stderr[-2000:]
+        info = json.loads((tmp_path / "s.json").read_text())
+>       assert info["min_w"] <= 1366
+E       assert 1580 <= 1366
+
+tests\test_v134_gui.py:271: AssertionError
+__________________ test_simulated_display_scaling_layout[2] ___________________
+
+tmp_path = WindowsPath('E:/sx_tmp/G1_nonr_suite/test_simulated_display_scaling3')
+scale = '2'
+
+    @pytest.mark.parametrize("scale", ["1", "1.25", "1.5", "2"])
+    def test_simulated_display_scaling_layout(tmp_path, scale):
+        """V134-017 (simulated, labelled as such): the main window at QT_SCALE_FACTOR 1 / 1.25 / 1.5 / 2 lays out the
+        Discovery page without errors; minimum width fits a 1366-pixel-wide screen at that scale. Physical-display DPI is an
+        owner-approved deferral, not covered here."""
+        code = (r'''
+    import json, sys
+    from PySide6.QtWidgets import QApplication
+    app = QApplication(sys.argv)
+    from statexplore.gui.main_window import MainWindow
+    from statexplore.gui.state import AppState
+    w = MainWindow(AppState()); w.resize(1366, 768); w.show(); app.processEvents()
+    from statexplore.gui.main_window import SECTIONS
+    w.sidebar.setCurrentRow(SECTIONS.index("Automated Model Discovery"))
+    app.processEvents()
+    pix = w.grab(); pix.save(sys.argv[1])
+    json.dump({"min_w": w.minimumSizeHint().width(), "dpr": app.devicePixelRatio(), "w": w.width()}, open(sys.argv[2], "w"))
+    w.close()
+    ''')
+        (tmp_path / "s.py").write_text(code, encoding="utf-8")
+        env = dict(os.environ, QT_QPA_PLATFORM="offscreen", QT_SCALE_FACTOR=scale,
+                   QT_QPA_FONTDIR=os.environ.get("QT_QPA_FONTDIR", r"C:\Windows\Fonts"))
+        r = subprocess.run([sys.executable, str(tmp_path / "s.py"), str(tmp_path / "s.png"), str(tmp_path / "s.json")],
+                           capture_output=True, text=True, timeout=300, env=env)
+        assert r.returncode == 0, r.stderr[-2000:]
+        info = json.loads((tmp_path / "s.json").read_text())
+>       assert info["min_w"] <= 1366
+E       assert 1580 <= 1366
+
+tests\test_v134_gui.py:271: AssertionError
+______________ test_52d_historical_resume_is_refused_with_reason ______________
+
+    def test_52d_historical_resume_is_refused_with_reason():
+        """Saved 52D: grammar 2, fit rules 3, 5 of 15 done. v1.3.4 allowed the resume (mixing fit rules 3 and 4 in one
+        multiplicity family); v1.3.5 refuses with the reason and offers a new linked search. The original stays unchanged."""
+        from statexplore.discovery import engine
+    
+        p, run = _52d()
+        before = _fingerprint(run)
+        assert run.engine.get("fit_rules") == 3 and run.grammar == 2 and run.n_done == 5 and len(p.dataset.raw) == 960
+        assert not run.resumable
+        why = run.resume_reason(p.dataset)
+>       assert "fit rules 3" in why and "new search" in why
+E       AssertionError: assert ('fit rules 3' in 'this search was recorded with data identity schema 2 (StatExplore 1.3.5 or earlier: source file hash + metadata), whi...ed, resumed or reproduced as verified; the search stays as it is - start a new search from it to refit every candidate')
+
+tests\test_v135.py:316: AssertionError
+__________ test_audit_historical_identity_survives_data_replacement ___________
+
+tmp_path = WindowsPath('E:/sx_tmp/G1_nonr_suite/test_audit_historical_identity0')
+
+    def test_audit_historical_identity_survives_data_replacement(tmp_path):
+        from statexplore.export.audit import SCHEMA_VERSION, read_audit, write_audit
+    
+        p, run = _p50()
+        orig_sha = run.data_snapshot["source_sha256"]
+        a = read_audit(write_audit(run, p.dataset, tmp_path / "a")[0])
+>       assert SCHEMA_VERSION == 2 and a["schema_version"] == 2
+E       assert (3 == 2)
+
+tests\test_v135.py:813: AssertionError
+___ test_audit_missing_historical_metadata_is_unknown_and_tails_round_trip ____
+
+tmp_path = WindowsPath('E:/sx_tmp/G1_nonr_suite/test_audit_missing_historical_0')
+
+    def test_audit_missing_historical_metadata_is_unknown_and_tails_round_trip(tmp_path):
+        from statexplore.export.audit import read_audit, write_audit
+    
+        p, run = _52d()
+        rec = read_audit(write_audit(run, p.dataset, tmp_path)[0])
+        h = rec["data"]["historical"]
+        assert h["source_file"].startswith("unknown") and h["snapshot_schema"] == 1      # schema-1 snapshot: no file name
+        assert rec["data"]["current_context"]["source_file"] == "StatExplore_Test51F_Null_13.csv"
+>       assert "fit rules 3" in rec["search"]["resume"] and rec["grammar"]["stored_total"] == 15
+E       AssertionError: assert ('fit rules 3' in 'this search was recorded with data identity schema 2 (StatExplore 1.3.5 or earlier: source file hash + metadata), whi...ed, resumed or reproduced as verified; the search stays as it is - start a new search from it to refit every candidate')
+
+tests\test_v135.py:835: AssertionError
+_______ test_validation_export_refuses_runnable_bundle_over_other_data ________
+
+tmp_path = WindowsPath('E:/sx_tmp/G1_nonr_suite/test_validation_export_refuses0')
+
+    def test_validation_export_refuses_runnable_bundle_over_other_data(tmp_path):
+        from statexplore.discovery import validate as V
+    
+        p, run = _p50()
+        v = _validation_record(run)
+        ok = tmp_path / "ok"
+        V.export(v, str(ok), ds=p.dataset, include_data=True, run=run)
+>       man = json.loads((ok / "validation_manifest.json").read_text())
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\test_v135.py:861: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+..\..\..\AppData\Local\Programs\Python\Python311\Lib\pathlib.py:1058: in read_text
+    with self.open(mode='r', encoding=encoding, errors=errors) as f:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = WindowsPath('E:/sx_tmp/G1_nonr_suite/test_validation_export_refuses0/ok/validation_manifest.json')
+mode = 'r', buffering = -1, encoding = 'locale', errors = None, newline = None
+
+    def open(self, mode='r', buffering=-1, encoding=None,
+             errors=None, newline=None):
+        """
+        Open the file pointed by this path and return a file object, as
+        the built-in open() function does.
+        """
+        if "b" not in mode:
+            encoding = io.text_encoding(encoding)
+>       return io.open(self, mode, buffering, encoding, errors, newline)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       FileNotFoundError: [Errno 2] No such file or directory: 'E:\\sx_tmp\\G1_nonr_suite\\test_validation_export_refuses0\\ok\\validation_manifest.json'
+
+..\..\..\AppData\Local\Programs\Python\Python311\Lib\pathlib.py:1044: FileNotFoundError
+_______ test_validation_export_filter_change_uses_rebuilt_original_view _______
+
+tmp_path = WindowsPath('E:/sx_tmp/G1_nonr_suite/test_validation_export_filter_0')
+
+    def test_validation_export_filter_change_uses_rebuilt_original_view(tmp_path):
+        from statexplore.core.derive import FilterSpec
+        from statexplore.discovery import validate as V
+    
+        p, run = _p50()
+        p.dataset.filters = [FilterSpec(variable="TIME", op="<=", value=1e9)]
+        out = tmp_path / "f"
+        V.export(_validation_record(run), str(out), ds=p.dataset, include_data=True, run=run)
+>       man = json.loads((out / "validation_manifest.json").read_text())
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\test_v135.py:887: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+..\..\..\AppData\Local\Programs\Python\Python311\Lib\pathlib.py:1058: in read_text
+    with self.open(mode='r', encoding=encoding, errors=errors) as f:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = WindowsPath('E:/sx_tmp/G1_nonr_suite/test_validation_export_filter_0/f/validation_manifest.json')
+mode = 'r', buffering = -1, encoding = 'locale', errors = None, newline = None
+
+    def open(self, mode='r', buffering=-1, encoding=None,
+             errors=None, newline=None):
+        """
+        Open the file pointed by this path and return a file object, as
+        the built-in open() function does.
+        """
+        if "b" not in mode:
+            encoding = io.text_encoding(encoding)
+>       return io.open(self, mode, buffering, encoding, errors, newline)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       FileNotFoundError: [Errno 2] No such file or directory: 'E:\\sx_tmp\\G1_nonr_suite\\test_validation_export_filter_0\\f\\validation_manifest.json'
+
+..\..\..\AppData\Local\Programs\Python\Python311\Lib\pathlib.py:1044: FileNotFoundError
+=========================== short test summary info ===========================
+SKIPPED [1] tests\test_v132_gui.py:192: screenshots only when STATEXPLORE_SHOTS is set (evidence run, not a functional test)
+exit 1

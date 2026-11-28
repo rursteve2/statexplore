@@ -1,0 +1,14 @@
+.........................                                                [100%]
+============================== warnings summary ===============================
+tests/test_v136.py::test_each_field_family_tamper_fails_with_a_named_check[universe]
+  C:\Users\Stephen\Desktop\My stuff\statexplore\tests\test_v136.py:992: Pandas4Warning: The inplace keyword in DataFrame.drop is deprecated and will be removed in a future version (PDEP-8).
+  See https://pandas.pydata.org/docs/dev/whatsnew/v3.1.0.html#deprecation-inplace for more details.
+    ("universe", "stability.csv", lambda df: df.drop(index=len(df) - 1, inplace=True),
+
+tests/test_v136.py::test_each_field_family_tamper_fails_with_a_named_check[column]
+  C:\Users\Stephen\Desktop\My stuff\statexplore\tests\test_v136.py:1016: Pandas4Warning: The inplace keyword in DataFrame.drop is deprecated and will be removed in a future version (PDEP-8).
+  See https://pandas.pydata.org/docs/dev/whatsnew/v3.1.0.html#deprecation-inplace for more details.
+    ("column", "candidate_trace.csv", lambda df: df.drop(columns="rows_sig", inplace=True), "candidate trace: columns"),
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+exit 0
